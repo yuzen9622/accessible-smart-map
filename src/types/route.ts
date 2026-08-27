@@ -527,8 +527,6 @@ export interface DisabledParking {
   chargeType?: string;
   spaceLabel?: string;
   isMarked: boolean;
-  latitude: number;
-  longitude: number;
   location: GeoPoint;
   importedAt: string;
 }
@@ -536,7 +534,8 @@ export interface DisabledParking {
 // --- Nearby parking union (GET /a11y/parking/nearby) ---
 // The endpoint returns a mix of two shapes, discriminated by `type`:
 //  - "disabled"/"standard": on-street parking spaces (DisabledParking shape)
-//  - "lot": parking lots imported from TDX (name/address/position, …)
+//  - "lot": parking lots imported from TDX (name/address/location, …)
+// Both shapes carry coordinates only in GeoJSON `location`.
 
 /** On-street parking space (身障/一般路邊停車格). */
 export interface ParkingSpaceNearby extends DisabledParking {
@@ -565,7 +564,7 @@ export interface ParkingLotNearby {
   wheelchairAccessible?: boolean;
   disabledSpaces?: number;
   totalCarSpaces?: number;
-  position: GeoPoint;
+  location: GeoPoint;
   importedAt: string;
 }
 

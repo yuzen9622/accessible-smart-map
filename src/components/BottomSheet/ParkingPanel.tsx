@@ -15,6 +15,7 @@ import { useFetchLocation } from "@/hook/useFetchLocation";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyParking } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
+import { geoCoords } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import { formatDistance, type ParkingNearbyItem } from "@/types/route";
 import { Badge } from "../ui/badge";
@@ -71,18 +72,12 @@ export function chargeTypesLabels(
   });
 }
 
-/** 取出任一種停車項目的 [lng, lat]（lot 用 position、格位用 latitude/longitude）。 */
+/** 取出任一種停車項目的座標；停車場與路邊格位都只有 GeoJSON `location`。 */
 export function parkingItemLngLat(item: ParkingNearbyItem): {
   lng: number;
   lat: number;
 } | null {
-  if (item.type === "lot") {
-    const [lng, lat] = item.position.coordinates;
-    return Number.isFinite(lng) && Number.isFinite(lat) ? { lng, lat } : null;
-  }
-  return Number.isFinite(item.longitude) && Number.isFinite(item.latitude)
-    ? { lng: item.longitude, lat: item.latitude }
-    : null;
+  return geoCoords(item.location);
 }
 
 function ParkingCard({

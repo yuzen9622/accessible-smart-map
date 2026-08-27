@@ -36,7 +36,7 @@ describe("useMapStore parking state", () => {
     carParkId: "CP01",
     name: "測試停車場",
     city: "台北市",
-    position: { type: "Point", coordinates: [121.55, 25.03] },
+    location: { type: "Point", coordinates: [121.55, 25.03] },
     importedAt: "2026-08-19T00:00:00.000Z",
   };
 

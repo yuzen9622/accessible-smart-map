@@ -46,15 +46,23 @@ describe("chargeTypesLabels", () => {
   });
 });
 
+// Fixtures copied from a live GET /a11y/parking/nearby response: both shapes
+// carry coordinates only in `location` — there is no `position`/`latitude`.
 describe("parkingItemLngLat", () => {
   const lot: ParkingNearbyItem = {
     type: "lot",
-    _id: "lot-1",
-    carParkId: "07P1C0100A",
-    name: "城市車旅",
-    city: "臺中市",
-    position: { type: "Point", coordinates: [120.64201, 24.13365] },
-    importedAt: "2026-08-14T12:02:20.235Z",
+    _id: "6a7f03cfe221e3d2e94636fd",
+    carParkId: "TPE1015",
+    name: "呷呷房西門中華1站停車場",
+    address: "臺北市中正區延平南路110號地下2至3層",
+    city: "臺北市",
+    carParkType: 3,
+    chargeTypes: [4],
+    wheelchairAccessible: true,
+    disabledSpaces: 1,
+    totalCarSpaces: 43,
+    location: { type: "Point", coordinates: [121.5093, 25.04274] },
+    importedAt: "2026-08-14T12:02:20.234Z",
   };
 
   const space: ParkingNearbyItem = {
@@ -65,8 +73,6 @@ describe("parkingItemLngLat", () => {
     quantity: 1,
     placeName: "商港八路",
     isMarked: true,
-    latitude: 25.15043,
-    longitude: 121.4102,
     location: {
       type: "Point",
       coordinates: [121.4102, 25.15043],
@@ -74,22 +80,30 @@ describe("parkingItemLngLat", () => {
     importedAt: "2026-08-14T12:02:20.235Z",
   };
 
-  it("reads GeoJSON position.coordinates for lots (lng, lat order)", () => {
-    expect(parkingItemLngLat(lot)).toEqual({ lng: 120.64201, lat: 24.13365 });
+  it("reads GeoJSON location.coordinates for lots (lng, lat order)", () => {
+    expect(parkingItemLngLat(lot)).toEqual({ lng: 121.5093, lat: 25.04274 });
   });
 
-  it("reads latitude/longitude for space items", () => {
+  it("reads GeoJSON location.coordinates for space items", () => {
     expect(parkingItemLngLat(space)).toEqual({ lng: 121.4102, lat: 25.15043 });
   });
 
   it("returns null for non-finite coordinates", () => {
     const bad = {
       ...lot,
-      position: {
+      location: {
         type: "Point" as const,
         coordinates: [Number.NaN, 24.13365] as [number, number],
       },
     };
     expect(parkingItemLngLat(bad)).toBeNull();
+  });
+
+  it("returns null instead of throwing when location is absent", () => {
+    const noLocation = {
+      ...lot,
+      location: undefined,
+    } as unknown as ParkingNearbyItem;
+    expect(parkingItemLngLat(noLocation)).toBeNull();
   });
 });

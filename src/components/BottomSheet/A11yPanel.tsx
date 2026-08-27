@@ -16,7 +16,7 @@ import { useFetchLocation } from "@/hook/useFetchLocation";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyHazardReports, getNearbyParking } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
-import { cn } from "@/lib/utils";
+import { cn, geoCoords } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import { A11yEnum } from "@/types";
 import {
@@ -97,36 +97,30 @@ export default function A11yPanel({
       distance: haversineMeters(userLocation, p.position),
     }));
     const parking = nearbyParking.flatMap((p) => {
-      if (p.type === "lot") {
-        const [lng, lat] = p.position.coordinates;
-        if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [];
-        const position = { lat, lng };
-        return [
-          {
-            key: `p_${p._id}`,
-            kind: "parking" as const,
-            title: p.name,
-            desc:
-              [
-                p.address,
-                p.wheelchairAccessible ? t("wheelchairFriendly") : null,
-              ]
-                .filter(Boolean)
-                .join(" · ") || undefined,
-            position,
-            distance: haversineMeters(userLocation, position),
-          },
-        ];
-      }
-      const position = { lat: p.latitude, lng: p.longitude };
-      if (!Number.isFinite(position.lat) || !Number.isFinite(position.lng))
-        return [];
+      const position = geoCoords(p.location);
+      if (!position) return [];
+      const { title, desc } =
+        p.type === "lot"
+          ? {
+              title: p.name,
+              desc:
+                [
+                  p.address,
+                  p.wheelchairAccessible ? t("wheelchairFriendly") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || undefined,
+            }
+          : {
+              title: p.placeName,
+              desc: `${p.district ?? ""} · ${t("spots", { count: p.quantity })}`,
+            };
       return [
         {
           key: `p_${p._id}`,
           kind: "parking" as const,
-          title: p.placeName,
-          desc: `${p.district ?? ""} · ${t("spots", { count: p.quantity })}`,
+          title,
+          desc,
           position,
           distance: haversineMeters(userLocation, position),
         },
