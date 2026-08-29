@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getAccessibleRoute } from "@/lib/api/a11y";
+import { ApiError } from "@/lib/fetch";
 import { haversineMeters } from "@/lib/geo";
 import {
   extendBounds,
@@ -190,7 +191,26 @@ export default function useComputeRoute() {
         setRouteWaypoints([]);
         setLiveBusPositions([]);
         console.error("Route planning error:", error);
-        toast.error("路線規劃失敗，請稍後再試");
+        // A 422 means the request was understood and genuinely has no answer;
+        // "try again later" would be a lie that costs the user another wait.
+        const reason = error instanceof ApiError ? error.reason : undefined;
+        if (reason === "NO_ROUTE") {
+          toast.error(
+            t(
+              "routeErrorNoRoute",
+              "這兩點之間找不到可行的步行路線，請試著調整起訖點",
+            ),
+          );
+        } else if (reason === "NO_ACCESSIBLE_ROUTE") {
+          toast.error(
+            t(
+              "routeErrorNoAccessibleRoute",
+              "找不到符合你無障礙條件的路線，可試著放寬條件",
+            ),
+          );
+        } else {
+          toast.error("路線規劃失敗，請稍後再試");
+        }
         return false;
       } finally {
         setIsLoading(false);
