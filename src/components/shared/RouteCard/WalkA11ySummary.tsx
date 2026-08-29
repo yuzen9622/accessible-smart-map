@@ -36,12 +36,6 @@ const FEATURE_ORDER: A11yFeature[] = [
   "exit_gate",
 ];
 
-const SURFACE_LABEL_KEY: Record<string, string> = {
-  paved: "surfacePaved",
-  unpaved: "surfaceUnpaved",
-  gravel: "surfaceGravel",
-};
-
 // 建築物無障礙設施設計規範: ramps may not exceed 1:12 (8.33%).
 function gradeSlope(percent: number): Grade {
   if (percent <= 5) return "good";
@@ -103,19 +97,8 @@ export function WalkA11ySummary({ leg }: { leg: WalkLeg }) {
       ? leg.crossings - leg.crossingsWithCurbRamp
       : null;
 
-  const surfaceKey = leg.surfaceType && SURFACE_LABEL_KEY[leg.surfaceType];
-  const footnotes: string[] = [];
-  if (surfaceKey) {
-    footnotes.push(t("walkA11ySurface", { surface: t(surfaceKey) }));
-  }
-  if (leg.sidewalkRampCount != null) {
-    footnotes.push(
-      t("walkA11ySidewalkRamps", { count: leg.sidewalkRampCount }),
-    );
-  }
-
   const hasMetrics = slope != null || width != null || unconfirmed != null;
-  if (!legend.length && !hasMetrics && !footnotes.length) return null;
+  if (!legend.length && !hasMetrics) return null;
 
   return (
     <div className="mt-2 space-y-1.5">
@@ -168,10 +151,6 @@ export function WalkA11ySummary({ leg }: { leg: WalkLeg }) {
             />
           )}
         </div>
-      )}
-
-      {footnotes.length > 0 && (
-        <p className="text-xs text-muted-foreground">{footnotes.join("・")}</p>
       )}
     </div>
   );

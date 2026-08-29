@@ -41,6 +41,7 @@ import type {
   BusLeg,
   MetroLeg,
   SlimOsmA11y,
+  WalkLeg,
 } from "@/types/route";
 
 const mockUseMapStore = vi.mocked(useMapStore);
@@ -473,6 +474,19 @@ describe("RouteCard", () => {
 
     // Attribution footer.
     expect(html).toContain("資料來源：台北市政府開放資料");
+  });
+
+  it("omits pavement and curb-ramp registry footnotes from pedestrian routes", () => {
+    const pedestrianRoute = buildRoute();
+    pedestrianRoute.engine = "pedestrian-a11y";
+    const walkLeg = pedestrianRoute.legs[0] as WalkLeg;
+    walkLeg.surfaceType = "paved";
+    walkLeg.sidewalkRampCount = 0;
+
+    const html = renderRoute(pedestrianRoute, 0, true);
+
+    expect(html).not.toContain("鋪面 已鋪面");
+    expect(html).not.toContain("沿線人行道登錄 0 處緣石坡道");
   });
 
   it("renders route-level warning badge and leg alert notices when alerts exist", () => {
