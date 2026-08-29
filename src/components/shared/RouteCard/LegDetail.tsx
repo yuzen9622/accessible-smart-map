@@ -8,13 +8,14 @@ import {
   TramFront,
 } from "lucide-react";
 import { useAppTranslation } from "@/i18n/client";
-import type { RouteLeg, WaitInfo } from "@/types/route";
+import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
 import { DriveStepsList } from "./DriveStepsList";
 import { TransitStops } from "./TransitStops";
 import type { PointLabelContext } from "./utils";
 import { getPointLabel, shouldAppendExitNumber } from "./utils";
+import { WalkA11ySummary } from "./WalkA11ySummary";
 import { WalkStepsList } from "./WalkStepsList";
 
 export function LegIcon({ leg }: { leg: RouteLeg }) {
@@ -72,12 +73,14 @@ export function LegDetail({
   isLast,
   pointCtx,
   isSelected,
+  engine,
 }: {
   leg: RouteLeg;
   isFirst: boolean;
   isLast: boolean;
   pointCtx: PointLabelContext;
   isSelected: boolean;
+  engine?: AccessibleRoute["engine"];
 }) {
   const { t } = useAppTranslation();
   switch (leg.type) {
@@ -112,6 +115,7 @@ export function LegDetail({
               {t("a11yFacilitiesAlong", { count: leg.a11yFacilities.length })}
             </p>
           )}
+          {engine === "pedestrian-a11y" && <WalkA11ySummary leg={leg} />}
           {isSelected && <WalkStepsList steps={leg.steps} />}
         </div>
       );

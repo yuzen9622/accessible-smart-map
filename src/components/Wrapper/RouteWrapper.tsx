@@ -8,18 +8,72 @@ import {
   TrainFrontTunnelIcon,
   TramFront,
 } from "lucide-react";
-import { type JSX, useMemo } from "react";
+import { Fragment, type JSX, useMemo } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { useShallow } from "zustand/react/shallow";
 import useMapStore from "@/stores/useMapStore";
-import type { RouteLeg } from "@/types/route";
-import { getLegColor } from "@/types/route";
+import type { RouteLeg, WalkLeg } from "@/types/route";
+import { A11Y_FEATURE_COLOR, getLegColor } from "@/types/route";
 import Polyline from "../Polyline";
 
 function polylineToPath(
   polyline: [number, number][],
 ): { lat: number; lng: number }[] {
   return polyline.map(([lng, lat]) => ({ lat, lng }));
+}
+
+function A11ySegmentOverlay({ leg, legKey }: { leg: WalkLeg; legKey: string }) {
+  if (!leg.a11ySegments?.length) return null;
+
+  return (
+    <>
+      {leg.a11ySegments.map((segment) => {
+        const color = A11Y_FEATURE_COLOR[segment.feature];
+        const id = `${legKey}-${segment.feature}-${segment.startIndex}-${segment.endIndex}`;
+
+        // An elevator's two ends share one ground coordinate, so the slice is
+        // a single point and cannot be drawn as a line.
+        if (segment.startIndex === segment.endIndex) {
+          const point = leg.polyline[segment.startIndex];
+          if (!point) return null;
+          return (
+            <Marker
+              key={id}
+              longitude={point[0]}
+              latitude={point[1]}
+              anchor="center"
+            >
+              <div
+                className="h-3 w-3 rounded-full border-2 border-white shadow"
+                style={{ backgroundColor: color }}
+              />
+            </Marker>
+          );
+        }
+
+        const path = polylineToPath(
+          leg.polyline.slice(segment.startIndex, segment.endIndex + 1),
+        );
+        if (path.length < 2) return null;
+
+        return (
+          <Polyline
+            key={id}
+            id={id}
+            path={path}
+            strokeColor={color}
+            strokeOpacity={0.95}
+            strokeWeight={6}
+            // Indoor geometry is a straight-line approximation between exit
+            // proxies, not a surveyed path.
+            dashArray={segment.indoor ? [1, 2] : undefined}
+            lineCap="round"
+            lineJoin="round"
+          />
+        );
+      })}
+    </>
+  );
 }
 
 function getLegIcon(leg: RouteLeg) {
@@ -160,17 +214,19 @@ export default function RouteLine() {
 
       if (isWalking) {
         return (
-          <Polyline
-            key={`leg-${legKey}`}
-            id={`route-leg-${index}`}
-            path={path}
-            strokeColor={color}
-            strokeOpacity={0.8}
-            strokeWeight={6}
-            dashArray={[2, 4]}
-            lineCap="round"
-            lineJoin="round"
-          />
+          <Fragment key={`leg-${legKey}`}>
+            <Polyline
+              id={`route-leg-${index}`}
+              path={path}
+              strokeColor={color}
+              strokeOpacity={0.8}
+              strokeWeight={6}
+              dashArray={[2, 4]}
+              lineCap="round"
+              lineJoin="round"
+            />
+            <A11ySegmentOverlay leg={leg} legKey={`route-leg-${index}`} />
+          </Fragment>
         );
       }
 

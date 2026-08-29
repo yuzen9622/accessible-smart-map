@@ -246,6 +246,30 @@ export const RouteCard = memo(function RouteCard({
             <Badge>{t("selectedRoute")}</Badge>
           </div>
 
+          {/* The only channel telling the user this route carries no
+              accessibility guarantee, so it sits above the leg list. */}
+          {!!route.warnings?.length && (
+            <div className="space-y-1">
+              {route.warnings.map((warning) => (
+                <p
+                  key={warning}
+                  className={cn(
+                    "flex items-start gap-1 text-xs",
+                    route.degraded === true
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-amber-600 dark:text-amber-400",
+                  )}
+                >
+                  <AlertTriangle
+                    className="h-3 w-3 shrink-0 mt-0.5"
+                    aria-hidden
+                  />
+                  <span>{warning}</span>
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Leg overview */}
           <div className="relative space-y-2">
             {route.legs.map((leg, index) => {
@@ -280,6 +304,7 @@ export const RouteCard = memo(function RouteCard({
                       isLast={index === route.legs.length - 1}
                       pointCtx={pointCtx}
                       isSelected={isSelected}
+                      engine={route.engine}
                     />
                   </div>
                 </div>
