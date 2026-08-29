@@ -104,6 +104,32 @@ export interface IntermediateStop {
 
 // --- Leg types (discriminated union by `type`) ---
 
+export type A11yFeature =
+  | "elevator"
+  | "escalator"
+  | "moving_walkway"
+  | "ramp"
+  | "curb_ramp_crossing"
+  | "crossing"
+  | "stairs"
+  | "fare_gate"
+  | "exit_gate";
+
+/**
+ * Index range into the leg's `polyline`, inclusive on both ends. Ranges are
+ * sorted and never overlap. `startIndex === endIndex` is a point facility
+ * (an elevator's two ends share one ground coordinate), not a zero-length line.
+ */
+export interface A11ySegment {
+  feature: A11yFeature;
+  startIndex: number;
+  endIndex: number;
+  indoor: boolean;
+  distanceM: number | null;
+  maxSlopePercent: number | null;
+  minWidthCm: number | null;
+}
+
 export interface WalkLeg {
   type: "WALK";
   from: string;
@@ -115,6 +141,17 @@ export interface WalkLeg {
   a11yRefs?: string[];
   exitInfo?: ExitInfo | null;
   steps?: WalkStep[];
+  maxSlopePercent?: number | null;
+  crossings?: number | null;
+  crossingsWithCurbRamp?: number | null;
+  minPathWidthCm?: number | null;
+  surfaceType?: string;
+  /** Curb ramps registered on the government sidewalk segments this leg runs
+   * along — a count for the whole leg, not positions on the path. */
+  sidewalkRampCount?: number;
+  /** Only present on `engine: "pedestrian-a11y"` routes. An empty array means
+   * "checked, nothing classifiable"; an absent field means "never checked". */
+  a11ySegments?: A11ySegment[];
 }
 
 export interface BusLeg {
@@ -252,6 +289,13 @@ export type A11yLabel = "excellent" | "good" | "fair" | "poor" | "critical";
 // --- Single route ---
 export interface AccessibleRoute {
   routeId: string;
+  /** Which engine picked this walking route. Absent on transit/drive routes.
+   * This is the only stable branch key — `warnings` are prose and may be
+   * reworded at any time. */
+  engine?: "pedestrian-a11y" | "otp-fallback";
+  /** Absent when not degraded, so test for `=== true`. */
+  degraded?: boolean;
+  warnings?: string[];
   /** Short-lived bearer capability used to arm voice navigation (30 min TTL). */
   routeToken?: string;
   routeName: string;
@@ -416,14 +460,45 @@ export interface DriveStep {
   polyline: [number, number][]; // [lng, lat][] (GeoJSON order)
 }
 
+export type WalkRelativeDirection =
+  | "DEPART"
+  | "CONTINUE"
+  | "STRAIGHT"
+  | "LEFT"
+  | "RIGHT"
+  | "SLIGHTLY_LEFT"
+  | "SLIGHTLY_RIGHT"
+  | "HARD_LEFT"
+  | "HARD_RIGHT"
+  | "UTURN_LEFT"
+  | "UTURN_RIGHT"
+  | "CIRCLE_CLOCKWISE"
+  | "CIRCLE_COUNTERCLOCKWISE"
+  | "ELEVATOR"
+  | "ESCALATOR"
+  | "MOVING_WALKWAY"
+  | "FARE_GATE"
+  | "ENTER_STATION"
+  | "EXIT_STATION";
+
+export type WalkAbsoluteDirection =
+  | "NORTH"
+  | "NORTHEAST"
+  | "EAST"
+  | "SOUTHEAST"
+  | "SOUTH"
+  | "SOUTHWEST"
+  | "WEST"
+  | "NORTHWEST";
+
 export interface WalkStep {
-  instruction?: string;
-  maneuver?: string;
-  relativeDirection: string;
-  absoluteDirection: string | null;
+  relativeDirection: WalkRelativeDirection;
+  absoluteDirection: WalkAbsoluteDirection | null;
   streetName: string;
   bogusName: boolean;
   area: boolean;
+  stairs: boolean;
+  steepSlope: boolean;
   distanceM: number;
   location: [number, number]; // [lng, lat] (GeoJSON order)
 }
@@ -668,6 +743,21 @@ export function scoreToStars(score: number): number {
   return 1;
 }
 
+// The backend classifies only, it makes no judgement about good or bad.
+// Shared so the map overlay and the route card's legend cannot drift apart —
+// the legend is the only thing telling the user what a coloured line means.
+export const A11Y_FEATURE_COLOR: Record<A11yFeature, string> = {
+  stairs: "#dc2626",
+  crossing: "#f59e0b",
+  curb_ramp_crossing: "#16a34a",
+  ramp: "#16a34a",
+  elevator: "#2563eb",
+  escalator: "#2563eb",
+  moving_walkway: "#2563eb",
+  fare_gate: "#7c3aed",
+  exit_gate: "#7c3aed",
+};
+
 const LEG_COLORS: Record<string, string> = {
   WALK: "#3b82f6",
   BUS: "#22c55e",
@@ -692,11 +782,31 @@ export function formatDuration(minutes: number): string {
   return `${mins} min`;
 }
 
+// Slope comes from a DEM and carries physically impossible outliers — the
+// graph holds edges over 6000%, and the API will happily return 1033.8. Past
+// these bounds the number is noise, not a gentler or steeper path.
+const SLOPE_PLAUSIBLE_MAX_STAIRS = 100;
+const SLOPE_PLAUSIBLE_MAX_PATH = 35;
+
+export function plausibleSlopePercent(
+  value: number | null | undefined,
+  hasStairs: boolean,
+): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
+  const limit = hasStairs
+    ? SLOPE_PLAUSIBLE_MAX_STAIRS
+    : SLOPE_PLAUSIBLE_MAX_PATH;
+  return value > limit ? null : value;
+}
+
 export function formatDistance(meters: number): string {
   if (!Number.isFinite(meters)) return "";
   // >=100km: whole km, a decimal place is false precision at that range.
   if (meters >= 100_000) return `${Math.round(meters / 1000)} km`;
   if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  // Below 10m the round-to-10 rule renders a real 4m step as "0 m", which
+  // reads as no movement at all — the CSR engine emits plenty of these.
+  if (meters < 10) return `${Math.round(meters)} m`;
   // Round to the nearest 10m — "583 m" implies GPS accuracy this app
   // doesn't have; "580 m" reads as the estimate it actually is.
   return `${Math.round(meters / 10) * 10} m`;
