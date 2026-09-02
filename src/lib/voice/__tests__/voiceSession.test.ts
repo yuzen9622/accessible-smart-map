@@ -686,6 +686,14 @@ describe("VoiceSessionController", () => {
         instruction: "向前直行",
         remainingM: 30,
       },
+      {
+        type: "nav.progress",
+        remainingDistanceM: 24,
+        remainingDurationSec: 180,
+        estimatedArrivalAt: "2026-09-02T12:00:00.000Z",
+        etaSource: "server",
+        distanceToNextM: 12,
+      },
       { type: "nav.offroute", distanceM: 72 },
       {
         type: "nav.rerouting",

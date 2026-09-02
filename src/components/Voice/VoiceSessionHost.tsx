@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import useVoiceSession from "@/hook/useVoiceSession";
 import { haversineMeters } from "@/lib/geo";
 import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
+import { toNavProgressUpdate } from "@/lib/voice/navProgress";
 import type { VoiceNavigationEvent } from "@/lib/voice/voiceSession";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -228,6 +229,22 @@ export default function VoiceSessionHost() {
             navigationEvent.remainingM,
           );
           break;
+        case "nav.progress": {
+          const currentNavigationId =
+            map.selectRoute?.route.navigationId ?? nav.navigationId;
+          const currentRouteVersion =
+            map.selectRoute?.route.routeVersion ?? nav.routeVersion;
+          if (
+            nav.navigationSource === "voice" &&
+            !nav.arrived &&
+            currentNavigationId !== null &&
+            navigationEvent.navigationId === currentNavigationId &&
+            navigationEvent.routeVersion === currentRouteVersion
+          ) {
+            nav.setProgress(toNavProgressUpdate(navigationEvent));
+          }
+          break;
+        }
         case "nav.transit": {
           const nextTransit = nav.instructions.findIndex(
             (step, index) =>
@@ -278,8 +295,6 @@ export default function VoiceSessionHost() {
           break;
         case "nav.arrived":
           nav.setArrived(true);
-          nav.setDistanceToNextM(0);
-          nav.setRemainingM(0);
           break;
         case "nav.stop":
           lastSentPositionRef.current = null;

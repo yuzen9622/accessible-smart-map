@@ -119,6 +119,17 @@ export type VoiceNavigationEvent =
       remainingM: number;
     }
   | {
+      type: "nav.progress";
+      navigationId: string;
+      routeVersion: number;
+      currentStepIndex: number;
+      remainingDistanceM: number;
+      remainingDurationSec: number;
+      estimatedArrivalAt: string;
+      etaSource: "schedule" | "realtime" | "free_flow" | "estimated";
+      distanceToNextM: number | null;
+    }
+  | {
       type: "nav.transit";
       leg: {
         mode: "BUS" | "METRO" | "THSR" | "TRA";
@@ -631,6 +642,7 @@ export class VoiceSessionController {
       }
       case "nav.start":
       case "nav.step":
+      case "nav.progress":
       case "nav.transit":
       case "nav.arrived":
       case "nav.stop":
