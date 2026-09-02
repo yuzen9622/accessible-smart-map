@@ -7,6 +7,7 @@ export type HeadingSource = "compass" | "gps" | null;
 export type CompassPermission = "unknown" | "granted" | "denied";
 export type NavViewMode = "3d" | "2d";
 export type NavigationSource = "local" | "voice";
+export type RerouteStatus = "idle" | "pending" | "error";
 
 /**
  * High-frequency turn-by-turn runtime state, kept OUT of useMapStore on
@@ -17,6 +18,8 @@ export type NavigationSource = "local" | "voice";
 interface NavState {
   /** Which state machine owns step advancement for the active navigation. */
   navigationSource: NavigationSource;
+  navigationId: string | null;
+  routeVersion: number;
   instructions: NavInstruction[];
   warnings: string[];
   currentStepIndex: number;
@@ -27,6 +30,10 @@ interface NavState {
   gpsHeading: number | null;
   headingSource: HeadingSource;
   isOffRoute: boolean;
+  rerouteStatus: RerouteStatus;
+  rerouteError: string | null;
+  rerouteRetryable: boolean;
+  rerouteRetryNonce: number;
   arrived: boolean;
   compassPermission: CompassPermission;
   /** Timestamp of the last manual step change; brief lock against auto-advance. */
@@ -49,6 +56,10 @@ interface NavState {
 
 interface NavAction {
   setNavigationSource: (source: NavigationSource) => void;
+  setNavigationIdentity: (
+    navigationId: string | null,
+    routeVersion: number,
+  ) => void;
   setInstructions: (
     instructions: NavInstruction[],
     warnings?: string[],
@@ -65,6 +76,10 @@ interface NavAction {
   setUserHeading: (deg: number | null, source: HeadingSource) => void;
   setGpsHeading: (deg: number | null) => void;
   setIsOffRoute: (v: boolean) => void;
+  setReroutePending: () => void;
+  setRerouteIdle: () => void;
+  setRerouteError: (message: string, retryable?: boolean) => void;
+  requestRerouteRetry: () => void;
   setArrived: (v: boolean) => void;
   setCompassPermission: (p: CompassPermission) => void;
   setFollowPaused: (v: boolean) => void;
@@ -81,6 +96,8 @@ type NavStore = NavState & NavAction;
 
 const initialState: NavState = {
   navigationSource: "local",
+  navigationId: null,
+  routeVersion: 0,
   instructions: [],
   warnings: [],
   currentStepIndex: 0,
@@ -89,6 +106,10 @@ const initialState: NavState = {
   gpsHeading: null,
   headingSource: null,
   isOffRoute: false,
+  rerouteStatus: "idle",
+  rerouteError: null,
+  rerouteRetryable: false,
+  rerouteRetryNonce: 0,
   arrived: false,
   compassPermission: "unknown",
   lastManualTs: 0,
@@ -104,6 +125,8 @@ const initialState: NavState = {
 const useNavStore = create<NavStore>((set) => ({
   ...initialState,
   setNavigationSource: (navigationSource) => set({ navigationSource }),
+  setNavigationIdentity: (navigationId, routeVersion) =>
+    set({ navigationId, routeVersion }),
   setInstructions: (instructions, warnings = []) =>
     set({
       instructions,
@@ -111,6 +134,9 @@ const useNavStore = create<NavStore>((set) => ({
       currentStepIndex: 0,
       arrived: false,
       isOffRoute: false,
+      rerouteStatus: "idle",
+      rerouteError: null,
+      rerouteRetryable: false,
     }),
   setCurrentStepIndex: (currentStepIndex) => set({ currentStepIndex }),
   applyVoiceStep: (currentStepIndex, instruction, remainingM) =>
@@ -130,6 +156,22 @@ const useNavStore = create<NavStore>((set) => ({
     set({ userHeading, headingSource }),
   setGpsHeading: (gpsHeading) => set({ gpsHeading }),
   setIsOffRoute: (isOffRoute) => set({ isOffRoute }),
+  setReroutePending: () =>
+    set({
+      rerouteStatus: "pending",
+      rerouteError: null,
+      rerouteRetryable: false,
+    }),
+  setRerouteIdle: () =>
+    set({
+      rerouteStatus: "idle",
+      rerouteError: null,
+      rerouteRetryable: false,
+    }),
+  setRerouteError: (rerouteError, rerouteRetryable = true) =>
+    set({ rerouteStatus: "error", rerouteError, rerouteRetryable }),
+  requestRerouteRetry: () =>
+    set((state) => ({ rerouteRetryNonce: state.rerouteRetryNonce + 1 })),
   setArrived: (arrived) => set({ arrived }),
   setCompassPermission: (compassPermission) => set({ compassPermission }),
   setFollowPaused: (followPaused) => set({ followPaused }),

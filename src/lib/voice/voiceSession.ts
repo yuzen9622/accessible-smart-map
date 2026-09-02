@@ -1,3 +1,5 @@
+import type { AccessibleRoute, NavInstruction } from "@/types/route";
+
 /**
  * VoiceSessionController — pure TS state machine for the realtime voice
  * assistant WebSocket session (Gemini Live proxy).
@@ -131,6 +133,33 @@ export type VoiceNavigationEvent =
       reason: "user_voice" | "user_ui" | "arrived" | "session_end";
     }
   | { type: "nav.offroute"; distanceM: number }
+  | {
+      type: "nav.rerouting";
+      navigationId: string;
+      previousRouteVersion: number;
+      clientRequestId: string;
+    }
+  | ({
+      type: "nav.route_replaced";
+      navigationId: string;
+      previousRouteVersion: number;
+      routeVersion: number;
+      routeToken: string;
+      route: AccessibleRoute;
+      warnings: string[];
+      currentStepIndex: 0;
+    } & (
+      | { instructions: NavInstruction[]; steps?: never }
+      | { steps: VoiceNavStep[]; instructions?: never }
+    ))
+  | {
+      type: "nav.reroute_failed";
+      navigationId: string;
+      previousRouteVersion: number;
+      code: string;
+      message: string;
+      retryable: boolean;
+    }
   | {
       type: "nav.error";
       code: "NAV_ROUTE_INVALID" | "NO_ROUTE_ARMED";
@@ -606,6 +635,9 @@ export class VoiceSessionController {
       case "nav.arrived":
       case "nav.stop":
       case "nav.offroute":
+      case "nav.rerouting":
+      case "nav.route_replaced":
+      case "nav.reroute_failed":
       case "nav.error": {
         this.deps.onNavigationEvent(message as VoiceNavigationEvent);
         return;
