@@ -48,8 +48,14 @@ export default function Polyline({
   };
 
   return (
-    <Source id={id} type="geojson" data={geojson}>
-      <Layer id={`${id}-line`} type="line" paint={paint} layout={layout} />
+    <Source key={id} id={id} type="geojson" data={geojson}>
+      <Layer
+        key={`${id}-line`}
+        id={`${id}-line`}
+        type="line"
+        paint={paint}
+        layout={layout}
+      />
     </Source>
   );
 }

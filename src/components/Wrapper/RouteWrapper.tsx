@@ -27,9 +27,9 @@ function A11ySegmentOverlay({ leg, legKey }: { leg: WalkLeg; legKey: string }) {
 
   return (
     <>
-      {leg.a11ySegments.map((segment) => {
+      {leg.a11ySegments.map((segment, segIdx) => {
         const color = A11Y_FEATURE_COLOR[segment.feature];
-        const id = `${legKey}-${segment.feature}-${segment.startIndex}-${segment.endIndex}`;
+        const id = `${legKey}-${segment.feature}-${segment.startIndex}-${segment.endIndex}-${segIdx}`;
 
         // An elevator's two ends share one ground coordinate, so the slice is
         // a single point and cannot be drawn as a line.
@@ -175,7 +175,7 @@ export default function RouteLine() {
       </>
     );
 
-    const stepLines = allLegs.map((leg, index) => {
+    const stepLines = allLegs.map((leg) => {
       if (!leg.polyline?.length) return null;
 
       const path = polylineToPath(leg.polyline);
@@ -189,6 +189,7 @@ export default function RouteLine() {
       ].join("-");
       const color = getLegColor(leg);
       const isWalking = leg.type === "WALK";
+      const legId = `route-leg-${legKey}`;
 
       if (lastLegType !== null && lastLegType !== leg.type && path[0]) {
         markers.push(
@@ -216,7 +217,8 @@ export default function RouteLine() {
         return (
           <Fragment key={`leg-${legKey}`}>
             <Polyline
-              id={`route-leg-${index}`}
+              key={legId}
+              id={legId}
               path={path}
               strokeColor={color}
               strokeOpacity={0.8}
@@ -225,7 +227,7 @@ export default function RouteLine() {
               lineCap="round"
               lineJoin="round"
             />
-            <A11ySegmentOverlay leg={leg} legKey={`route-leg-${index}`} />
+            <A11ySegmentOverlay leg={leg} legKey={legId} />
           </Fragment>
         );
       }
@@ -233,7 +235,7 @@ export default function RouteLine() {
       return (
         <Polyline
           key={`leg-${legKey}`}
-          id={`route-leg-${index}`}
+          id={legId}
           path={path}
           strokeColor={color}
           strokeOpacity={1}
