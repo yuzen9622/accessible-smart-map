@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useAppTranslation } from "@/i18n/client";
 import { getRouteInstructions } from "@/lib/api/a11y";
 import {
@@ -13,6 +13,15 @@ import {
   shortestAngleLerp,
 } from "@/lib/geo";
 import {
+  isVehicleLegType,
+  type NavLegType,
+  navThresholdsFor,
+  resolveActiveLegType,
+  resolveCurrentLegType,
+  resolveNavHeading,
+  selectNextStepIndex,
+} from "@/lib/navigation/legMode";
+import {
   createNavigationGeometryRuntime,
   observeLocalNavigationGeometry,
   replaceNavigationGeometryRuntime,
@@ -22,10 +31,9 @@ import useNavStore, { type HeadingSource } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
 import useRouteReroute from "./useRouteReroute";
 
-// Tuning constants for the turn-by-turn engine.
-const ARRIVE_THRESHOLD_M = 18; // pass within this of a maneuver → advance step
-const FINAL_ARRIVE_THRESHOLD_M = 25; // within this of the destination → arrived
-const OFF_ROUTE_M = 40; // perpendicular distance from route to flag off-route
+// Tuning constants for the turn-by-turn engine. The distance thresholds are
+// leg-type dependent (see lib/navigation/legMode) — a car needs a far wider
+// maneuver and off-route radius than a pedestrian.
 const OFF_ROUTE_HITS = 3; // consecutive off-route samples before flagging
 const MANUAL_LOCK_MS = 8000; // honor a manual step change for this long
 const CAMERA_THROTTLE_MS = 350;
@@ -33,6 +41,8 @@ const HEADING_WRITE_MS = 200;
 const COMPASS_FRESH_MS = 1500;
 const NAV_PITCH = 60;
 const NAV_ZOOM = 17.5;
+const NAV_ZOOM_VEHICLE = 16.5; // a car needs more road ahead in frame
+const HANDOFF_EASE_MS = 900; // drive → walk camera re-frame
 const SMOOTH_FACTOR = 0.25;
 const INTRO_EASE_MS = 1200; // nav-start camera animation
 const PREVIEW_EASE_MS = 800; // step-preview camera animation
@@ -47,6 +57,11 @@ function gpsNearRoute(loc: LatLng | null, cp: CumulativePath | null): boolean {
 /** Camera pitch for the user's 3D/2D view choice. */
 function navPitch(): number {
   return useNavStore.getState().viewMode === "2d" ? 0 : NAV_PITCH;
+}
+
+/** Camera zoom for the mode the given step belongs to. */
+function navZoomForLeg(isVehicle: boolean): number {
+  return isVehicle ? NAV_ZOOM_VEHICLE : NAV_ZOOM;
 }
 
 /** True on iOS 13+, where DeviceOrientation needs an explicit permission grant. */
@@ -83,13 +98,49 @@ export default function useNavigation() {
   const offHitsRef = useRef(0);
   // While the intro animation runs, the follow/preview cameras stay hands-off.
   const introUntilRef = useRef(0);
+  // Same, for the drive → walk handoff ease: the 350 ms follow tick would
+  // otherwise interrupt it mid-flight and snap the zoom.
+  const cameraHoldUntilRef = useRef(0);
 
   // Heading working state (kept in refs; written to the store throttled).
   const compassRef = useRef<number | null>(null);
   const compassTsRef = useRef(0);
   const smoothRef = useRef<number | null>(null);
+  const lastLegTypeRef = useRef<NavLegType | null>(null);
 
   useEffect(() => observeLocalNavigationGeometry(geometryRef.current), []);
+
+  // ---- Composite-route handoff (e.g. drive to an accessible parking space,
+  // then walk): the moment the active step crosses the vehicle/on-foot
+  // boundary, drop the heading smoothed for the old mode — a car bearing
+  // lerping into a walking bearing spins the marker — clear the off-route
+  // streak accumulated at driving tolerances, and ease the camera to the new
+  // mode's zoom instead of letting the follow tick jump it. ----
+  const applyLegHandoff = useCallback((nextIndex: number) => {
+    offHitsRef.current = 0;
+    smoothRef.current = null;
+    compassRef.current = null;
+    compassTsRef.current = 0;
+
+    const nav = useNavStore.getState();
+    if (nav.isOffRoute) {
+      nav.setIsOffRoute(false);
+      nav.setRerouteIdle();
+    }
+
+    const { map, userLocation: loc } = useMapStore.getState();
+    const target = geometryRef.current.waypoints[nextIndex]?.coord ?? loc;
+    if (!map || !target) return;
+    cameraHoldUntilRef.current = Date.now() + HANDOFF_EASE_MS;
+    map.easeTo({
+      center: [target.lng, target.lat],
+      zoom: navZoomForLeg(
+        isVehicleLegType(resolveActiveLegType(nav.instructions, nextIndex)),
+      ),
+      pitch: navPitch(),
+      duration: HANDOFF_EASE_MS,
+    });
+  }, []);
 
   // ---- Nav-start camera: anchor on the user only when they're near the
   // route; otherwise frame the route start so the map never flies off to a
@@ -109,7 +160,7 @@ export default function useNavigation() {
       introUntilRef.current = Date.now() + INTRO_EASE_MS;
       map.flyTo({
         center: [anchor.lng, anchor.lat],
-        zoom: NAV_ZOOM,
+        zoom: navZoomForLeg(isVehicleLegType(route.legs[0]?.type)),
         pitch: navPitch(),
         duration: INTRO_EASE_MS,
       });
@@ -179,8 +230,15 @@ export default function useNavigation() {
     // Leave the prev/next buttons in control instead.
     if (proj.perpDistM > FOLLOW_GPS_MAX_M) return;
 
+    const activeLegType = resolveCurrentLegType(
+      nav.instructions,
+      wps,
+      proj.alongM,
+    );
+    const thresholds = navThresholdsFor(activeLegType);
+
     // Off-route: require a few consecutive far samples before flagging.
-    if (proj.perpDistM > OFF_ROUTE_M) {
+    if (proj.perpDistM > thresholds.offRouteM) {
       offHitsRef.current += 1;
       if (offHitsRef.current >= OFF_ROUTE_HITS && !nav.isOffRoute) {
         nav.setIsOffRoute(true);
@@ -195,11 +253,9 @@ export default function useNavigation() {
       clearOffRouteEpisode();
     }
 
-    // Next maneuver = first waypoint still ahead of the user along the route.
-    let nextIdx = wps.findIndex(
-      (w) => w.alongM > proj.alongM + ARRIVE_THRESHOLD_M,
-    );
-    if (nextIdx === -1) nextIdx = wps.length - 1;
+    // Next maneuver = first waypoint still ahead of the user along the route,
+    // each measured against its own leg's arrive radius.
+    const nextIdx = selectNextStepIndex(nav.instructions, wps, proj.alongM);
 
     // Auto-advance forward only; honor a recent manual override briefly.
     const manualActive = Date.now() - nav.lastManualTs < MANUAL_LOCK_MS;
@@ -207,8 +263,19 @@ export default function useNavigation() {
       !manualActive && nextIdx > nav.currentStepIndex
         ? nextIdx
         : nav.currentStepIndex;
-    if (displayIdx !== nav.currentStepIndex)
+    if (displayIdx !== nav.currentStepIndex) {
       nav.setCurrentStepIndex(displayIdx);
+    }
+
+    if (
+      lastLegTypeRef.current !== null &&
+      activeLegType !== null &&
+      isVehicleLegType(lastLegTypeRef.current) !==
+        isVehicleLegType(activeLegType)
+    ) {
+      applyLegHandoff(displayIdx);
+    }
+    lastLegTypeRef.current = activeLegType;
 
     const totalM = cp.cumM[cp.cumM.length - 1] ?? 0;
     const remainingMeters = Math.max(0, totalM - proj.alongM);
@@ -228,11 +295,16 @@ export default function useNavigation() {
       etaSource: "local",
     });
 
-    // Arrival: close to the final maneuver point.
+    // Arrival: close to the final maneuver point, at the final leg's radius
+    // (a drive-only route ends at a parking space, not on a doorstep).
     const finalWp = wps[wps.length - 1];
+    const finalThresholds = navThresholdsFor(
+      resolveActiveLegType(nav.instructions, nav.instructions.length - 1),
+    );
     if (
       finalWp?.coord &&
-      haversineMeters(userLocation, finalWp.coord) < FINAL_ARRIVE_THRESHOLD_M
+      haversineMeters(userLocation, finalWp.coord) <
+        finalThresholds.finalArriveM
     ) {
       if (!nav.arrived) nav.setArrived(true);
     }
@@ -241,6 +313,7 @@ export default function useNavigation() {
     navigationSource,
     confirmOffRouteEpisode,
     clearOffRouteEpisode,
+    applyLegHandoff,
     route?.totalMinutes,
   ]);
 
@@ -337,22 +410,34 @@ export default function useNavigation() {
       const loc = useMapStore.getState().userLocation;
       if (!map) return;
 
-      // Resolve heading: fresh compass wins, else GPS course-over-ground.
-      let raw: number | null = null;
-      let source: HeadingSource = null;
-      if (
-        compassRef.current != null &&
-        now - compassTsRef.current < COMPASS_FRESH_MS
-      ) {
-        raw = compassRef.current;
-        source = "compass";
-      } else {
-        const g = useNavStore.getState().gpsHeading;
-        if (g != null) {
-          raw = g;
-          source = "gps";
-        }
-      }
+      // Resolve heading. Walking: a fresh compass wins. Driving: GPS
+      // course-over-ground wins — a cradled phone's compass points wherever
+      // the mount does, not where the vehicle is going.
+      const nav = useNavStore.getState();
+      const currentLeg =
+        geometryRef.current.path && geometryRef.current.waypoints.length && loc
+          ? resolveCurrentLegType(
+              nav.instructions,
+              geometryRef.current.waypoints,
+              projectToPath(
+                loc,
+                geometryRef.current.path.path,
+                geometryRef.current.path.cumM,
+              ).alongM,
+            )
+          : resolveActiveLegType(nav.instructions, nav.currentStepIndex);
+      const isVehicle = isVehicleLegType(currentLeg);
+      const resolved = resolveNavHeading({
+        isVehicle,
+        compassHeading: compassRef.current,
+        compassAgeMs: now - compassTsRef.current,
+        compassFreshMs: COMPASS_FRESH_MS,
+        gpsHeading: nav.gpsHeading,
+        userHeading: nav.userHeading,
+        headingSource: nav.headingSource,
+      });
+      const raw: number | null = resolved?.heading ?? null;
+      const source: HeadingSource = resolved?.source ?? null;
 
       let smoothed: number | null = smoothRef.current;
       if (raw != null) {
@@ -371,6 +456,9 @@ export default function useNavigation() {
       // Let the user inspect the map freely after a drag; the resume
       // button (NavigationController) re-enables follow.
       if (useNavStore.getState().followPaused) return;
+
+      // Don't interrupt the handoff ease mid-flight.
+      if (now < cameraHoldUntilRef.current) return;
 
       if (loc && now - lastCamTs > CAMERA_THROTTLE_MS) {
         // 3D: heading-up tilted follow. 2D: flat north-up plane, still

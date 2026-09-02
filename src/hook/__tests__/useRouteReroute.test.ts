@@ -358,7 +358,8 @@ describe("LocalRerouteController", () => {
   it("reuses the same clientRequestId when retrying in the same episode", async () => {
     seedOldRuntime();
     let idCounter = 1;
-    const post = vi.fn()
+    const post = vi
+      .fn()
       .mockRejectedValueOnce(new ApiError("503 unavailable", 503))
       .mockResolvedValueOnce(successfulEnvelope());
 
@@ -384,13 +385,19 @@ describe("LocalRerouteController", () => {
     await reroute.confirmOffRouteEpisode();
     expect(post).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ clientRequestId: "req-id-1", reason: "OFF_ROUTE" }),
+      expect.objectContaining({
+        clientRequestId: "req-id-1",
+        reason: "OFF_ROUTE",
+      }),
     );
 
     await reroute.retry();
     expect(post).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ clientRequestId: "req-id-1", reason: "MANUAL" }),
+      expect.objectContaining({
+        clientRequestId: "req-id-1",
+        reason: "MANUAL",
+      }),
     );
   });
 });

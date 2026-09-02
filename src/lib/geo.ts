@@ -171,6 +171,7 @@ export function resolveWaypoints(
   instructions: NavInstruction[],
   { path, cumM }: CumulativePath,
 ): Waypoint[] {
+  if (path.length === 0) return [];
   const last = path.length - 1;
   return instructions.map((ins) => {
     let idx = ins.polylineIndex;
