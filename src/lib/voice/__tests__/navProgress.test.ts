@@ -4,6 +4,12 @@ import type { VoiceNavigationEvent } from "../voiceSession";
 
 type NavProgressEvent = Extract<VoiceNavigationEvent, { type: "nav.progress" }>;
 
+/** The server may omit optional progress fields entirely (or send an
+ * unparsable value); these tests feed exactly those payloads to the parser. */
+type PartialProgressEvent = Pick<NavProgressEvent, "type"> &
+  Partial<Record<keyof NavProgressEvent, unknown>> &
+  NavProgressEvent;
+
 describe("toNavProgressUpdate", () => {
   it("maps a complete progress event with real backend etaSource values", () => {
     const event: NavProgressEvent = {
@@ -28,7 +34,9 @@ describe("toNavProgressUpdate", () => {
   });
 
   it("omits keys that are absent from the event", () => {
-    const update = toNavProgressUpdate({ type: "nav.progress" } as any);
+    const update = toNavProgressUpdate({
+      type: "nav.progress",
+    } as PartialProgressEvent);
 
     expect(Object.keys(update)).toEqual([]);
     expect(update).not.toHaveProperty("remainingM");
@@ -54,7 +62,7 @@ describe("toNavProgressUpdate", () => {
     const update = toNavProgressUpdate({
       type: "nav.progress",
       remainingDurationSec: Number.NaN,
-    } as any);
+    } as PartialProgressEvent);
 
     expect(update).not.toHaveProperty("remainingDurationSec");
     expect(update).not.toHaveProperty("etaSource");
@@ -64,7 +72,7 @@ describe("toNavProgressUpdate", () => {
     const update = toNavProgressUpdate({
       type: "nav.progress",
       estimatedArrivalAt: "not-an-iso-date",
-    } as any);
+    } as PartialProgressEvent);
 
     expect(update).not.toHaveProperty("estimatedArrivalAt");
     expect(update).not.toHaveProperty("etaSource");
@@ -77,7 +85,7 @@ describe("toNavProgressUpdate", () => {
         remainingDistanceM: -240,
         remainingDurationSec: -180,
         distanceToNextM: -12,
-      } as any),
+      } as PartialProgressEvent),
     ).toEqual({
       remainingM: 0,
       remainingDurationSec: 0,
@@ -91,7 +99,7 @@ describe("toNavProgressUpdate", () => {
       toNavProgressUpdate({
         type: "nav.progress",
         remainingDurationSec: 180,
-      } as any),
+      } as PartialProgressEvent),
     ).toEqual({ remainingDurationSec: 180, etaSource: "estimated" });
   });
 });

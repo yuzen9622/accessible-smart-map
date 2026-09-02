@@ -40,7 +40,11 @@ export function toNavProgressUpdate(
         update.estimatedArrivalAt = estimatedArrivalAt;
     }
   }
-  if ("etaSource" in event && event.etaSource && VALID_ETA_SOURCES.has(event.etaSource)) {
+  if (
+    "etaSource" in event &&
+    event.etaSource &&
+    VALID_ETA_SOURCES.has(event.etaSource)
+  ) {
     update.etaSource = event.etaSource as EtaSource;
   } else if (
     "remainingDurationSec" in update ||

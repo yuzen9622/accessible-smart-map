@@ -100,9 +100,13 @@ interface ErrorMessage {
 export interface VoiceNavStep {
   index: number;
   instruction: string;
-  legType: "WALK" | "BUS" | "METRO" | "THSR" | "TRA";
+  legType: "WALK" | "DRIVE" | "MOTORCYCLE" | "BUS" | "METRO" | "THSR" | "TRA";
   distanceM: number | null;
   isTransit: boolean;
+  type?: string;
+  relativeDirection?: string | null;
+  streetName?: string | null;
+  bearing?: number | null;
 }
 
 export type VoiceNavigationEvent =
@@ -116,7 +120,7 @@ export type VoiceNavigationEvent =
       type: "nav.step";
       currentStepIndex: number;
       instruction: string;
-      remainingM: number;
+      remainingM: number | null;
     }
   | {
       type: "nav.progress";

@@ -91,7 +91,7 @@ interface NavAction {
   applyVoiceStep: (
     index: number,
     instruction: string,
-    remainingM: number,
+    remainingM: number | null,
   ) => void;
   /** Manual override from the prev/next buttons. */
   setStepIndex: (index: number) => void;
@@ -205,7 +205,7 @@ const useNavStore = create<NavStore>((set) => ({
   requestRerouteRetry: () =>
     set((state) => ({ rerouteRetryNonce: state.rerouteRetryNonce + 1 })),
   setArrived: (arrived) =>
-    set((s) => ({
+    set(() => ({
       arrived,
       ...(arrived
         ? {

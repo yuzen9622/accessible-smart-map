@@ -23,15 +23,14 @@ function toNavInstruction(
 ): NavInstruction {
   return {
     text: step.instruction,
-    type: step.isTransit
-      ? "transit_board"
-      : step.index === 0
-        ? "depart"
-        : "turn",
-    bearing: null,
-    relativeDirection: null,
+    type:
+      (step.type as NavInstruction["type"]) ??
+      (step.isTransit ? "transit_board" : step.index === 0 ? "depart" : "turn"),
+    bearing: step.bearing ?? null,
+    relativeDirection:
+      (step.relativeDirection as NavInstruction["relativeDirection"]) ?? null,
     distanceM: step.distanceM,
-    streetName: null,
+    streetName: step.streetName ?? null,
     legType: step.legType,
     polylineIndex: null,
   };
