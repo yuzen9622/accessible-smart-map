@@ -8,6 +8,21 @@ export type CompassPermission = "unknown" | "granted" | "denied";
 export type NavViewMode = "3d" | "2d";
 export type NavigationSource = "local" | "voice";
 export type RerouteStatus = "idle" | "pending" | "error";
+export type EtaSource =
+  | "schedule"
+  | "realtime"
+  | "free_flow"
+  | "estimated"
+  | "local"
+  | null;
+
+export interface NavProgressUpdate {
+  remainingM?: number | null;
+  remainingDurationSec?: number | null;
+  estimatedArrivalAt?: number | null;
+  etaSource?: EtaSource;
+  distanceToNextM?: number | null;
+}
 
 /**
  * High-frequency turn-by-turn runtime state, kept OUT of useMapStore on
@@ -42,6 +57,14 @@ interface NavState {
   followPaused: boolean;
   /** Meters left along the whole route (written by the engine). */
   remainingM: number | null;
+  /** Seconds left along the whole route. */
+  remainingDurationSec: number | null;
+  /** Estimated arrival timestamp in epoch milliseconds. */
+  estimatedArrivalAt: number | null;
+  /** Whether the ETA came from the server or local engine. */
+  etaSource: EtaSource;
+  /** Timestamp of the most recent ETA write in epoch milliseconds. */
+  etaUpdatedAt: number | null;
   /** Total route length in meters (set when instructions load). */
   routeTotalM: number | null;
   /** TTS announcements on step changes. */
@@ -84,6 +107,7 @@ interface NavAction {
   setCompassPermission: (p: CompassPermission) => void;
   setFollowPaused: (v: boolean) => void;
   setRemainingM: (m: number | null) => void;
+  setProgress: (update: NavProgressUpdate) => void;
   setRouteTotalM: (m: number | null) => void;
   setVoiceEnabled: (v: boolean) => void;
   setStepListOpen: (v: boolean) => void;
@@ -115,6 +139,10 @@ const initialState: NavState = {
   lastManualTs: 0,
   followPaused: false,
   remainingM: null,
+  remainingDurationSec: null,
+  estimatedArrivalAt: null,
+  etaSource: null,
+  etaUpdatedAt: null,
   routeTotalM: null,
   voiceEnabled: false,
   stepListOpen: false,
@@ -137,6 +165,10 @@ const useNavStore = create<NavStore>((set) => ({
       rerouteStatus: "idle",
       rerouteError: null,
       rerouteRetryable: false,
+      remainingDurationSec: null,
+      estimatedArrivalAt: null,
+      etaSource: null,
+      etaUpdatedAt: null,
     }),
   setCurrentStepIndex: (currentStepIndex) => set({ currentStepIndex }),
   applyVoiceStep: (currentStepIndex, instruction, remainingM) =>
@@ -172,10 +204,52 @@ const useNavStore = create<NavStore>((set) => ({
     set({ rerouteStatus: "error", rerouteError, rerouteRetryable }),
   requestRerouteRetry: () =>
     set((state) => ({ rerouteRetryNonce: state.rerouteRetryNonce + 1 })),
-  setArrived: (arrived) => set({ arrived }),
+  setArrived: (arrived) =>
+    set((s) => ({
+      arrived,
+      ...(arrived
+        ? {
+            remainingM: 0,
+            distanceToNextM: 0,
+            remainingDurationSec: 0,
+            estimatedArrivalAt: null,
+            etaSource: null,
+            etaUpdatedAt: null,
+          }
+        : {}),
+    })),
   setCompassPermission: (compassPermission) => set({ compassPermission }),
   setFollowPaused: (followPaused) => set({ followPaused }),
   setRemainingM: (remainingM) => set({ remainingM }),
+  setProgress: (update) =>
+    set(() => {
+      const progress: Partial<NavState> = {};
+      if ("remainingM" in update && update.remainingM !== undefined)
+        progress.remainingM = update.remainingM;
+      if (
+        "remainingDurationSec" in update &&
+        update.remainingDurationSec !== undefined
+      )
+        progress.remainingDurationSec = update.remainingDurationSec;
+      if (
+        "estimatedArrivalAt" in update &&
+        update.estimatedArrivalAt !== undefined
+      )
+        progress.estimatedArrivalAt = update.estimatedArrivalAt;
+      if ("etaSource" in update && update.etaSource !== undefined)
+        progress.etaSource = update.etaSource;
+      if ("distanceToNextM" in update && update.distanceToNextM !== undefined)
+        progress.distanceToNextM = update.distanceToNextM;
+      if (
+        ("remainingDurationSec" in update &&
+          update.remainingDurationSec !== undefined) ||
+        ("estimatedArrivalAt" in update &&
+          update.estimatedArrivalAt !== undefined)
+      ) {
+        progress.etaUpdatedAt = Date.now();
+      }
+      return progress;
+    }),
   setRouteTotalM: (routeTotalM) => set({ routeTotalM }),
   setVoiceEnabled: (voiceEnabled) => set({ voiceEnabled }),
   setStepListOpen: (stepListOpen) => set({ stepListOpen }),
