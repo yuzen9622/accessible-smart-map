@@ -652,6 +652,7 @@
   "then": "Then",
   "end": "End",
   "stepList": "Steps",
+  "parkThenWalk": "Continue on foot after you park",
   "minutesLeft": "{{count}} min",
   "etaArrive": "Arrive ~{{time}}",
   "facilityAhead": "Accessible {{name}} {{distance}} ahead",

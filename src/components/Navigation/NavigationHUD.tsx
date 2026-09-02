@@ -1,23 +1,13 @@
 "use client";
 
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ArrowUpLeft,
-  ArrowUpRight,
-  Bus,
+  Bike,
+  Car,
   CheckCircle2,
-  CornerUpLeft,
-  CornerUpRight,
-  Flag,
+  Footprints,
   List,
-  Navigation,
-  Redo2,
   RefreshCw,
   Square,
-  TramFront,
-  Undo2,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -29,19 +19,24 @@ import useComputeRoute from "@/hook/useComputeRoute";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
+import {
+  findLegHandoffIndex,
+  isVehicleLegType,
+  resolveActiveLegType,
+} from "@/lib/navigation/legMode";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
 import {
   formatDistance,
   type HazardReport,
-  type NavInstruction,
   type SlimOsmA11y,
 } from "@/types/route";
 import {
   TriangleAlertIcon,
   type TriangleAlertIconHandle,
 } from "../ui/triangle-alert-icon";
+import { stepIcon } from "./navStepIcon";
 import type { RecalculateContext } from "./RecalculateOverlay";
 import RecalculateOverlay from "./RecalculateOverlay";
 
@@ -66,43 +61,6 @@ function AlertPulseIcon() {
       isAnimated={false}
     />
   );
-}
-
-function stepIcon(step: NavInstruction | undefined) {
-  if (!step) return ArrowUp;
-  switch (step.type) {
-    case "arrive":
-      return Flag;
-    case "depart":
-      return Navigation;
-    case "transit_board":
-    case "transit_alight":
-      return step.legType === "BUS" ? Bus : TramFront;
-    case "facility":
-      return ArrowUpDown;
-    default:
-      break;
-  }
-  switch (step.relativeDirection) {
-    case "正前方":
-      return ArrowUp;
-    case "左前方":
-      return ArrowUpLeft;
-    case "右前方":
-      return ArrowUpRight;
-    case "左側":
-      return CornerUpLeft;
-    case "右側":
-      return CornerUpRight;
-    case "左後方":
-      return Undo2;
-    case "右後方":
-      return Redo2;
-    case "正後方":
-      return ArrowDown;
-    default:
-      return ArrowUp;
-  }
 }
 
 const FACILITY_LABEL_KEY: Record<SlimOsmA11y["category"], string> = {
@@ -169,6 +127,18 @@ export default function NavigationHUD() {
   const nextStep = instructions[currentStep + 1];
   const StepIcon = stepIcon(step);
   const NextIcon = stepIcon(nextStep);
+
+  // ---- Travel-mode chrome: driving legs get their own badge, and a
+  // composite route (drive to an accessible parking space, then walk) warns
+  // the driver before the mode changes under them. ----
+  const activeLegType = resolveActiveLegType(instructions, currentStep);
+  const isVehicleLeg = isVehicleLegType(activeLegType);
+  const ModeIcon = activeLegType === "MOTORCYCLE" ? Bike : Car;
+  const modeLabel =
+    activeLegType === "MOTORCYCLE" ? t("motorcycle") : t("drive");
+  const handoffIndex = findLegHandoffIndex(instructions, currentStep);
+  const handoffStep =
+    handoffIndex != null ? instructions[handoffIndex] : undefined;
 
   // ---- Voice announcements (state lives in the store; UI toggle sits in the
   // right-hand control stack) ----
@@ -399,14 +369,22 @@ export default function NavigationHUD() {
                   {step?.text ?? t("preparingNav")}
                 </p>
               </div>
-              {instructions.length > 0 && (
-                <span className="shrink-0 text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
-                  {t("stepOf", {
-                    current: currentStep + 1,
-                    total: instructions.length,
-                  })}
-                </span>
-              )}
+              <div className="shrink-0 flex flex-col items-end gap-1.5">
+                {isVehicleLeg && (
+                  <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
+                    <ModeIcon className="h-3.5 w-3.5 shrink-0" />
+                    {modeLabel}
+                  </span>
+                )}
+                {instructions.length > 0 && (
+                  <span className="text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
+                    {t("stepOf", {
+                      current: currentStep + 1,
+                      total: instructions.length,
+                    })}
+                  </span>
+                )}
+              </div>
             </div>
             {nextStep && (
               <div className="flex items-center gap-2.5 bg-white/5 border-t border-white/10 px-6 py-3">
@@ -416,6 +394,14 @@ export default function NavigationHUD() {
                 <NextIcon className="h-4.5 w-4.5 shrink-0 text-white/60" />
                 <span className="text-sm text-white/70 truncate">
                   {nextStep.text}
+                </span>
+              </div>
+            )}
+            {handoffStep && (
+              <div className="flex items-center gap-2.5 bg-white/5 border-t border-white/10 px-6 py-3">
+                <Footprints className="h-4.5 w-4.5 shrink-0 text-white/60" />
+                <span className="text-sm text-white/70 truncate">
+                  {t("parkThenWalk")}
                 </span>
               </div>
             )}

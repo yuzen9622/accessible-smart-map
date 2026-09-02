@@ -653,6 +653,7 @@
   "then": "接著",
   "end": "結束",
   "stepList": "步驟列表",
+  "parkThenWalk": "停好車後改為步行導航",
   "minutesLeft": "{{count}} 分",
   "etaArrive": "預計 {{time}} 抵達",
   "facilityAhead": "前方 {{distance}} 有無障礙{{name}}可使用",
