@@ -11,6 +11,8 @@ import type {
   A11yFacility,
   AccessibleRouteData,
   AccessibleRouteRequest,
+  AccessibleRouteRerouteData,
+  AccessibleRouteRerouteRequest,
   EnvironmentData,
   HazardReport,
   NavInstructionsData,
@@ -61,6 +63,19 @@ export async function getAccessibleRoute(request: AccessibleRouteRequest) {
     },
   );
   return response as ApiResponse<AccessibleRouteData>;
+}
+
+export async function rerouteAccessibleRoute(
+  request: AccessibleRouteRerouteRequest,
+) {
+  const response = await fetchRequest(
+    `${END_POINT}/api/v1/a11y/accessible-route/reroute`,
+    {
+      method: "POST",
+      body: request,
+    },
+  );
+  return response as ApiResponse<AccessibleRouteRerouteData>;
 }
 
 export async function getRouteInstructions(request: NavInstructionsRequest) {

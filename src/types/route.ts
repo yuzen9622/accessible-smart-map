@@ -289,6 +289,10 @@ export type A11yLabel = "excellent" | "good" | "fair" | "poor" | "critical";
 // --- Single route ---
 export interface AccessibleRoute {
   routeId: string;
+  /** Stable navigation identity returned for reroute-capable routes. */
+  navigationId?: string;
+  /** Monotonic navigation route version. Initial reroute-capable routes use 1. */
+  routeVersion?: number;
   /** Which engine picked this walking route. Absent on transit/drive routes.
    * This is the only stable branch key — `warnings` are prose and may be
    * reworded at any time. */
@@ -515,6 +519,36 @@ export interface NavInstructionsRequest {
   userHeading?: number;
   language?: string;
 }
+
+export type RerouteReason = "OFF_ROUTE" | "MANUAL";
+
+export interface AccessibleRouteRerouteRequest {
+  routeToken: string;
+  currentPosition: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+  };
+  previousRouteVersion: number;
+  reason: RerouteReason;
+  clientRequestId: string;
+}
+
+/** Reroute responses may name the complete replacement list `instructions`
+ * or `steps`; callers normalize either form before applying it. */
+export type AccessibleRouteRerouteData = {
+  navigationId: string;
+  previousRouteVersion: number;
+  routeVersion: number;
+  routeToken: string;
+  route: AccessibleRoute;
+  warnings: string[];
+  currentStepIndex: 0;
+  replayed: boolean;
+} & (
+  | { instructions: NavInstruction[]; steps?: never }
+  | { steps: NavInstruction[]; instructions?: never }
+);
 
 // --- Hazard Report (from /a11y/reports) ---
 export interface HazardGeoPoint {

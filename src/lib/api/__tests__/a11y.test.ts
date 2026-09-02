@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHazardReport } from "@/lib/api/a11y";
+import { createHazardReport, rerouteAccessibleRoute } from "@/lib/api/a11y";
 import { END_POINT } from "@/lib/config";
 import { ApiError } from "@/lib/fetch";
 import useAuthStore from "@/stores/useAuthStore";
@@ -148,4 +148,90 @@ describe("createHazardReport", () => {
 
     expect(capturedHeaders.Authorization).toBe("Bearer test-jwt-token");
   });
+});
+
+describe("rerouteAccessibleRoute", () => {
+  it("POSTs the frozen reroute body without destination or preferences", async () => {
+    const body = {
+      routeToken: "route-token-v1",
+      currentPosition: {
+        latitude: 25.033,
+        longitude: 121.565,
+        accuracy: 8,
+      },
+      previousRouteVersion: 1,
+      reason: "OFF_ROUTE" as const,
+      clientRequestId: "73e27df0-f3fa-4bf2-9320-da6bcb83d51a",
+    };
+    let capturedInit: RequestInit | undefined;
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        capturedInit = init;
+        return jsonResponse({
+          ok: true,
+          code: 200,
+          data: {
+            navigationId: "nav-1",
+            previousRouteVersion: 1,
+            routeVersion: 2,
+            routeToken: "route-token-v2",
+            route: { routeId: "route-v2" },
+            instructions: [],
+            warnings: [],
+            currentStepIndex: 0,
+            replayed: false,
+          },
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await rerouteAccessibleRoute(body);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${END_POINT}/api/v1/a11y/accessible-route/reroute`,
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(capturedInit).toBeDefined();
+    const sent = JSON.parse(capturedInit?.body as string);
+    expect(Object.keys(sent).sort()).toEqual([
+      "clientRequestId",
+      "currentPosition",
+      "previousRouteVersion",
+      "reason",
+      "routeToken",
+    ]);
+    expect(sent).not.toHaveProperty("destination");
+    expect(sent).not.toHaveProperty("preferences");
+  });
+
+  it.each([409, 410, 422, 503])(
+    "preserves the reroute HTTP error code %i",
+    async (code) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          jsonResponse(
+            { ok: false, code, message: `reroute failed ${code}` },
+            code,
+            "Error",
+          ),
+        ),
+      );
+
+      await expect(
+        rerouteAccessibleRoute({
+          routeToken: "route-token-v1",
+          currentPosition: { latitude: 25.033, longitude: 121.565 },
+          previousRouteVersion: 1,
+          reason: "OFF_ROUTE",
+          clientRequestId: "73e27df0-f3fa-4bf2-9320-da6bcb83d51a",
+        }),
+      ).rejects.toMatchObject({ code, message: `reroute failed ${code}` });
+    },
+  );
 });
