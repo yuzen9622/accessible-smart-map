@@ -5,10 +5,8 @@ import {
   Check,
   Copy,
   Home,
-  MapPin,
   RefreshCw,
   RotateCcw,
-  ShieldAlert,
   Terminal,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,7 +24,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppTranslation } from "@/i18n/client";
 import { fallbackLng, languages } from "@/i18n/setting";
 import { cn } from "@/lib/utils";
@@ -119,26 +116,8 @@ export default function ErrorPage({ error, reset }: ErrorProps) {
         aria-hidden="true"
       />
 
-      <Card className="relative w-full max-w-lg border-border/80 bg-card/95 shadow-xl backdrop-blur-md transition-all duration-300 sm:rounded-2xl">
+      <Card className="relative w-full max-w-lg overflow-hidden border-border/80 bg-card/95 shadow-xl backdrop-blur-md transition-all duration-300 sm:rounded-2xl">
         <CardHeader className="text-center pb-4 pt-6 sm:pt-8">
-          {/* 系統標籤與狀態徽章 */}
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <Badge
-              variant="outline"
-              className="gap-1.5 border-primary/30 bg-primary/5 text-primary text-xs font-normal px-2.5 py-1"
-            >
-              <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>臺北無障礙智慧地圖</span>
-            </Badge>
-            <Badge
-              variant="destructive"
-              className="gap-1 text-xs font-medium px-2 py-0.5"
-            >
-              <ShieldAlert className="h-3 w-3" aria-hidden="true" />
-              <span>{t("systemProtected", "安全防護攔截")}</span>
-            </Badge>
-          </div>
-
           {/* 核心圖示容器 */}
           <div
             className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-destructive/10 text-destructive ring-8 ring-destructive/5 dark:bg-destructive/20 dark:ring-destructive/10"
@@ -172,31 +151,34 @@ export default function ErrorPage({ error, reset }: ErrorProps) {
           )}
         </CardHeader>
 
-        <CardContent className="space-y-4 px-6">
+        <CardContent className="space-y-4 px-6 min-w-0 w-full">
           {/* 詳細除錯資訊折疊區塊 */}
-          {(isDev || error.message) && (
-            <details className="group rounded-xl border border-border/60 bg-muted/40 p-2 text-left transition-colors">
-              <summary className="flex cursor-pointer select-none items-center justify-between px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          {(isDev || error.message || error.digest || error.stack) && (
+            <details className="group w-full min-w-0 overflow-hidden rounded-xl border border-border/60 bg-muted/40 p-2.5 text-left transition-colors">
+              <summary className="flex cursor-pointer select-none items-center justify-between px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-w-0">
                 <span className="flex items-center gap-2">
-                  <Terminal className="h-3.5 w-3.5 text-primary" />
+                  <Terminal className="h-3.5 w-3.5 text-primary shrink-0" />
                   <span>{t("errorDetails", "詳細錯誤資訊")}</span>
                 </span>
                 <span className="text-[11px] text-muted-foreground/80 group-open:hidden">
-                  展開
+                  {t("expand", "展開")}
                 </span>
               </summary>
 
-              <div className="mt-2 space-y-2 pt-1 border-t border-border/40">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-[11px] font-medium text-muted-foreground">
-                    {error.name || "Error Exception"}
+              <div className="mt-2 space-y-2 pt-1 border-t border-border/40 min-w-0 w-full">
+                <div className="flex items-center justify-between gap-2 px-1 min-w-0">
+                  <span
+                    className="text-[11px] font-medium text-muted-foreground truncate shrink min-w-0"
+                    title={error.name || "Error"}
+                  >
+                    {error.name || "Error"}
                   </span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={handleCopyDebugInfo}
-                    className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                    className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-foreground shrink-0"
                   >
                     {copied ? (
                       <>
@@ -212,16 +194,21 @@ export default function ErrorPage({ error, reset }: ErrorProps) {
                   </Button>
                 </div>
 
-                <ScrollArea className="max-h-36 w-full rounded-lg border border-border/60 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100 dark:bg-black">
-                  <div className="text-red-400 font-semibold mb-1">
-                    {error.message}
+                <div className="max-h-48 w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border border-border/60 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100 dark:bg-black">
+                  <div className="text-red-400 font-semibold break-words break-all whitespace-pre-wrap">
+                    {error.message || t("errorNoMessage", "未提供詳細錯誤訊息")}
                   </div>
+                  {error.digest && !error.message && (
+                    <div className="text-zinc-400 text-[10px] break-words break-all mt-1">
+                      Digest: {error.digest}
+                    </div>
+                  )}
                   {error.stack && (
-                    <pre className="text-zinc-400 whitespace-pre-wrap break-all text-[10px]">
+                    <pre className="text-zinc-400 whitespace-pre-wrap break-words break-all text-[10px] font-mono mt-2 pt-2 border-t border-zinc-800/80">
                       {error.stack}
                     </pre>
                   )}
-                </ScrollArea>
+                </div>
               </div>
             </details>
           )}

@@ -5,10 +5,8 @@ import {
   Check,
   Copy,
   Home,
-  MapPin,
   RefreshCw,
   RotateCcw,
-  ShieldAlert,
   Terminal,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -92,21 +90,9 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
           />
 
           {/* Shadcn 風格高質感核心卡片 */}
-          <div className="relative w-full max-w-lg rounded-2xl border border-slate-200/80 bg-white/95 p-6 sm:p-8 shadow-2xl backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/95 transition-all">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-6 sm:p-8 shadow-2xl backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-900/95 transition-all">
             {/* Header 區塊 */}
             <div className="text-center pb-2">
-              {/* 系統標籤與防護徽章 */}
-              <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-blue-600/30 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/50 dark:text-blue-300">
-                  <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>臺北無障礙智慧地圖</span>
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-950/80 dark:text-red-300">
-                  <ShieldAlert className="h-3 w-3" aria-hidden="true" />
-                  <span>全域防護攔截</span>
-                </span>
-              </div>
-
               {/* 核心警示圖示 */}
               <div
                 className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-8 ring-red-50 dark:bg-red-950/50 dark:text-red-400 dark:ring-red-950/30"
@@ -134,11 +120,14 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
             </div>
 
             {/* 詳細除錯資訊折疊區塊 */}
-            {(process.env.NODE_ENV !== "production" || error?.message) && (
-              <details className="group my-5 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2 text-left dark:border-zinc-800 dark:bg-zinc-950/50 transition-colors">
+            {(process.env.NODE_ENV !== "production" ||
+              error?.message ||
+              error?.digest ||
+              error?.stack) && (
+              <details className="group my-5 w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/80 bg-slate-50/80 p-2 text-left dark:border-zinc-800 dark:bg-zinc-950/50 transition-colors">
                 <summary className="flex cursor-pointer select-none items-center justify-between px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <span className="flex items-center gap-2">
-                    <Terminal className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    <Terminal className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                     <span>詳細錯誤資訊</span>
                   </span>
                   <span className="text-[11px] text-slate-400 group-open:hidden">
@@ -146,15 +135,18 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
                   </span>
                 </summary>
 
-                <div className="mt-2 space-y-2 pt-1 border-t border-slate-200 dark:border-zinc-800">
-                  <div className="flex items-center justify-between px-1">
-                    <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-400">
+                <div className="mt-2 space-y-2 pt-1 border-t border-slate-200 dark:border-zinc-800 min-w-0 w-full">
+                  <div className="flex items-center justify-between gap-2 px-1 min-w-0">
+                    <span
+                      className="text-[11px] font-medium text-slate-500 dark:text-zinc-400 truncate shrink min-w-0"
+                      title={error?.name || "Global Error Exception"}
+                    >
                       {error?.name || "Global Error Exception"}
                     </span>
                     <button
                       type="button"
                       onClick={handleCopyDebugInfo}
-                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors"
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors shrink-0"
                     >
                       {copied ? (
                         <>
@@ -172,12 +164,17 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
                     </button>
                   </div>
 
-                  <div className="max-h-40 overflow-auto rounded-lg border border-slate-300 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100 dark:border-zinc-800">
-                    <div className="text-red-400 font-semibold mb-1">
-                      {error?.message || "未提供錯誤訊息"}
+                  <div className="max-h-48 w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border border-slate-300 bg-zinc-950 p-3 font-mono text-[11px] leading-relaxed text-zinc-100 dark:border-zinc-800">
+                    <div className="text-red-400 font-semibold break-words break-all whitespace-pre-wrap">
+                      {error?.message || "未提供詳細錯誤訊息"}
                     </div>
+                    {error?.digest && !error?.message && (
+                      <div className="text-zinc-400 text-[10px] break-words break-all mt-1">
+                        Digest: {error.digest}
+                      </div>
+                    )}
                     {error?.stack && (
-                      <pre className="text-zinc-400 whitespace-pre-wrap break-all text-[10px] m-0">
+                      <pre className="text-zinc-400 whitespace-pre-wrap break-words break-all text-[10px] m-0 font-mono mt-2 pt-2 border-t border-zinc-800/80">
                         {error.stack}
                       </pre>
                     )}

@@ -31,6 +31,22 @@ describe("Route ErrorPage ([lng]/error.tsx)", () => {
     expect(html).toContain("TRANSIT_500");
     expect(html).toContain("詳細錯誤資訊");
     expect(html).toContain("Failed to load transit data");
+    expect(html).toContain("break-words break-all");
+
+    // Verify removed badges are no longer rendered
+    expect(html).not.toContain("安全防護攔截");
+    expect(html).not.toContain("臺北無障礙智慧地圖</span>");
+  });
+
+  it("handles empty error message with fallback text", () => {
+    const error = new Error("") as Error & { digest?: string };
+    const resetMock = vi.fn();
+
+    const html = renderToStaticMarkup(
+      <ErrorPage error={error} reset={resetMock} />,
+    );
+
+    expect(html).toContain("未提供詳細錯誤訊息");
   });
 });
 
@@ -63,5 +79,21 @@ describe("GlobalError (global-error.tsx)", () => {
     expect(html).toContain("返回首頁");
     expect(html).toContain("詳細錯誤資訊");
     expect(html).toContain("Fatal root layout failure");
+    expect(html).toContain("break-words break-all");
+
+    // Verify removed badges are no longer rendered
+    expect(html).not.toContain("全域防護攔截");
+    expect(html).not.toContain("臺北無障礙智慧地圖</span>");
+  });
+
+  it("handles empty error message with fallback text", () => {
+    const error = new Error("") as Error & { digest?: string };
+    const resetMock = vi.fn();
+
+    const html = renderToStaticMarkup(
+      <GlobalError error={error} reset={resetMock} />,
+    );
+
+    expect(html).toContain("未提供詳細錯誤訊息");
   });
 });
