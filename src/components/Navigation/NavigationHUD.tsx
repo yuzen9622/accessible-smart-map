@@ -134,6 +134,8 @@ export default function NavigationHUD() {
   const distanceToNextM = useNavStore((s) => s.distanceToNextM);
   const remainingM = useNavStore((s) => s.remainingM);
   const routeTotalM = useNavStore((s) => s.routeTotalM);
+  const remainingDurationSec = useNavStore((s) => s.remainingDurationSec);
+  const estimatedArrivalAt = useNavStore((s) => s.estimatedArrivalAt);
   const isOffRoute = useNavStore((s) => s.isOffRoute);
   const arrived = useNavStore((s) => s.arrived);
   const voiceEnabled = useNavStore((s) => s.voiceEnabled);
@@ -321,22 +323,32 @@ export default function NavigationHUD() {
 
   // ---- ETA (proportional estimate over the whole route) ----
   const remainMinutes = useMemo(() => {
+    if (remainingDurationSec != null)
+      return Math.max(1, Math.round(remainingDurationSec / 60));
     if (!route) return null;
     if (remainingM == null || !routeTotalM) return route.totalMinutes;
     return Math.max(
       1,
       Math.round(route.totalMinutes * (remainingM / routeTotalM)),
     );
-  }, [route, remainingM, routeTotalM]);
+  }, [remainingDurationSec, route, remainingM, routeTotalM]);
 
   const etaText = useMemo(() => {
-    if (remainMinutes == null) return null;
-    const eta = new Date(Date.now() + remainMinutes * 60_000);
-    return eta.toLocaleTimeString(i18n.language === "zh-TW" ? "zh-TW" : "en", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }, [remainMinutes, i18n.language]);
+    const target =
+      estimatedArrivalAt != null
+        ? new Date(estimatedArrivalAt)
+        : remainMinutes != null
+          ? new Date(Date.now() + remainMinutes * 60_000)
+          : null;
+    if (!target) return null;
+    return target.toLocaleTimeString(
+      i18n.language === "zh-TW" ? "zh-TW" : "en",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+      },
+    );
+  }, [estimatedArrivalAt, remainMinutes, i18n.language]);
 
   return (
     <>

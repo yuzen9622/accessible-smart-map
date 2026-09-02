@@ -210,14 +210,23 @@ export default function useNavigation() {
     if (displayIdx !== nav.currentStepIndex)
       nav.setCurrentStepIndex(displayIdx);
 
-    const target = wps[Math.min(displayIdx, wps.length - 1)];
-    nav.setDistanceToNextM(
-      target ? Math.max(0, target.alongM - proj.alongM) : null,
-    );
-
-    // Whole-route progress for the ETA status bar.
     const totalM = cp.cumM[cp.cumM.length - 1] ?? 0;
-    nav.setRemainingM(Math.max(0, totalM - proj.alongM));
+    const remainingMeters = Math.max(0, totalM - proj.alongM);
+    const totalSec =
+      route?.totalMinutes != null ? route.totalMinutes * 60 : null;
+    const remainingSec =
+      totalSec != null && totalM > 0
+        ? Math.round(totalSec * (remainingMeters / totalM))
+        : null;
+    const target = wps[Math.min(displayIdx, wps.length - 1)];
+    nav.setProgress({
+      distanceToNextM: target ? Math.max(0, target.alongM - proj.alongM) : null,
+      remainingM: remainingMeters,
+      remainingDurationSec: remainingSec,
+      estimatedArrivalAt:
+        remainingSec != null ? Date.now() + remainingSec * 1000 : null,
+      etaSource: "local",
+    });
 
     // Arrival: close to the final maneuver point.
     const finalWp = wps[wps.length - 1];
@@ -232,6 +241,7 @@ export default function useNavigation() {
     navigationSource,
     confirmOffRouteEpisode,
     clearOffRouteEpisode,
+    route?.totalMinutes,
   ]);
 
   // ---- Step-preview camera: when GPS can't anchor the camera (missing or
