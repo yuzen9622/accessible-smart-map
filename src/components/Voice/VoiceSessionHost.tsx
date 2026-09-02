@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import useVoiceSession from "@/hook/useVoiceSession";
 import { haversineMeters } from "@/lib/geo";
+import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
 import type { VoiceNavigationEvent } from "@/lib/voice/voiceSession";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -193,6 +194,10 @@ export default function VoiceSessionHost() {
             0,
           );
           nav.setNavigationSource("voice");
+          nav.setNavigationIdentity(
+            map.selectRoute?.route.navigationId ?? null,
+            map.selectRoute?.route.routeVersion ?? 0,
+          );
           nav.setInstructions(instructions);
           nav.setCurrentStepIndex(navigationEvent.currentStepIndex);
           nav.setDistanceToNextM(
@@ -235,6 +240,41 @@ export default function VoiceSessionHost() {
         }
         case "nav.offroute":
           nav.setIsOffRoute(true);
+          break;
+        case "nav.rerouting":
+          handleVoiceRerouteEvent({
+            type: "nav.rerouting",
+            navigationId: navigationEvent.navigationId,
+            previousRouteVersion: navigationEvent.previousRouteVersion,
+          });
+          break;
+        case "nav.route_replaced": {
+          const instructions = navigationEvent.instructions
+            ? navigationEvent.instructions
+            : navigationEvent.steps.map(toNavInstruction);
+          handleVoiceRerouteEvent({
+            type: "nav.route_replaced",
+            replacement: {
+              navigationId: navigationEvent.navigationId,
+              previousRouteVersion: navigationEvent.previousRouteVersion,
+              routeVersion: navigationEvent.routeVersion,
+              routeToken: navigationEvent.routeToken,
+              route: navigationEvent.route,
+              instructions,
+              warnings: navigationEvent.warnings,
+              currentStepIndex: navigationEvent.currentStepIndex,
+            },
+          });
+          break;
+        }
+        case "nav.reroute_failed":
+          handleVoiceRerouteEvent({
+            type: "nav.reroute_failed",
+            navigationId: navigationEvent.navigationId,
+            previousRouteVersion: navigationEvent.previousRouteVersion,
+            message: navigationEvent.message,
+            retryable: navigationEvent.retryable,
+          });
           break;
         case "nav.arrived":
           nav.setArrived(true);

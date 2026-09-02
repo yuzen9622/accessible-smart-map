@@ -138,6 +138,10 @@ export default function NavigationHUD() {
   const arrived = useNavStore((s) => s.arrived);
   const voiceEnabled = useNavStore((s) => s.voiceEnabled);
   const navigationSource = useNavStore((s) => s.navigationSource);
+  const rerouteStatus = useNavStore((s) => s.rerouteStatus);
+  const rerouteError = useNavStore((s) => s.rerouteError);
+  const rerouteRetryable = useNavStore((s) => s.rerouteRetryable);
+  const requestRerouteRetry = useNavStore((s) => s.requestRerouteRetry);
   const stepListOpen = useNavStore((s) => s.stepListOpen);
   const setStepListOpen = useNavStore((s) => s.setStepListOpen);
   const setVoiceEnabled = useNavStore((s) => s.setVoiceEnabled);
@@ -407,24 +411,34 @@ export default function NavigationHUD() {
         )}
 
         {/* Off-route strip */}
-        {isOffRoute && !arrived && (
+        {(isOffRoute || rerouteStatus !== "idle") && !arrived && (
           <div
             role="alert"
             className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/95 text-white shadow-lg"
           >
             <AlertPulseIcon />
-            <p className="flex-1 text-sm font-semibold">{t("offRoute")}</p>
-            <button
-              type="button"
-              disabled={isRecalcBusy}
-              onClick={handleRecalculate}
-              className="shrink-0 flex items-center gap-1.5 bg-white/25 hover:bg-white/35 rounded-full px-4 py-2.5 min-h-[44px] text-sm font-semibold transition-colors"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${isRecalcBusy ? "animate-spin" : ""}`}
-              />
-              {t("recalculate")}
-            </button>
+            <p className="flex-1 text-sm font-semibold">
+              {rerouteError ??
+                (rerouteStatus === "pending"
+                  ? t("recalculate")
+                  : t("offRoute"))}
+            </p>
+            {navigationSource === "local" &&
+              (rerouteStatus !== "error" || rerouteRetryable) && (
+                <button
+                  type="button"
+                  disabled={rerouteStatus === "pending"}
+                  onClick={requestRerouteRetry}
+                  className="shrink-0 flex items-center gap-1.5 bg-white/25 hover:bg-white/35 rounded-full px-4 py-2.5 min-h-[44px] text-sm font-semibold transition-colors disabled:opacity-60"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${
+                      rerouteStatus === "pending" ? "animate-spin" : ""
+                    }`}
+                  />
+                  {rerouteStatus === "error" ? t("retry") : t("recalculate")}
+                </button>
+              )}
           </div>
         )}
 
@@ -478,14 +492,16 @@ export default function NavigationHUD() {
                   type: hazardAlert.type,
                 })}
               </span>
-              <button
-                type="button"
-                disabled={isRecalcBusy}
-                onClick={handleRecalculate}
-                className="shrink-0 bg-amber-700/20 dark:bg-amber-300/20 hover:bg-amber-700/30 dark:hover:bg-amber-300/30 font-semibold whitespace-nowrap px-4 py-2.5 min-h-[44px] rounded-full transition-colors disabled:opacity-50"
-              >
-                {t("viewAlternative")}
-              </button>
+              {navigationSource === "local" && (
+                <button
+                  type="button"
+                  disabled={isRecalcBusy}
+                  onClick={handleRecalculate}
+                  className="shrink-0 bg-amber-700/20 dark:bg-amber-300/20 hover:bg-amber-700/30 dark:hover:bg-amber-300/30 font-semibold whitespace-nowrap px-4 py-2.5 min-h-[44px] rounded-full transition-colors disabled:opacity-50"
+                >
+                  {t("viewAlternative")}
+                </button>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
