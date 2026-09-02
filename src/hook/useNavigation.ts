@@ -10,13 +10,17 @@ import {
   haversineMeters,
   normalizeDeg,
   projectToPath,
-  resolveWaypoints,
   shortestAngleLerp,
-  type Waypoint,
 } from "@/lib/geo";
+import {
+  createNavigationGeometryRuntime,
+  observeLocalNavigationGeometry,
+  replaceNavigationGeometryRuntime,
+} from "@/lib/navigation/navigationGeometryRuntime";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type HeadingSource } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
+import useRouteReroute from "./useRouteReroute";
 
 // Tuning constants for the turn-by-turn engine.
 const ARRIVE_THRESHOLD_M = 18; // pass within this of a maneuver → advance step
@@ -73,9 +77,9 @@ export default function useNavigation() {
 
   const currentStepIndex = useNavStore((s) => s.currentStepIndex);
   const instructions = useNavStore((s) => s.instructions);
+  const { confirmOffRouteEpisode, clearOffRouteEpisode } = useRouteReroute();
 
-  const pathRef = useRef<CumulativePath | null>(null);
-  const waypointsRef = useRef<Waypoint[]>([]);
+  const geometryRef = useRef(createNavigationGeometryRuntime());
   const offHitsRef = useRef(0);
   // While the intro animation runs, the follow/preview cameras stay hands-off.
   const introUntilRef = useRef(0);
@@ -84,6 +88,8 @@ export default function useNavigation() {
   const compassRef = useRef<number | null>(null);
   const compassTsRef = useRef(0);
   const smoothRef = useRef<number | null>(null);
+
+  useEffect(() => observeLocalNavigationGeometry(geometryRef.current), []);
 
   // ---- Nav-start camera: anchor on the user only when they're near the
   // route; otherwise frame the route start so the map never flies off to a
@@ -95,7 +101,7 @@ export default function useNavigation() {
     const id = requestAnimationFrame(() => {
       const { map, userLocation } = useMapStore.getState();
       const cp = buildCumulativePath(route.legs);
-      pathRef.current = cp;
+      geometryRef.current.path = cp;
       const anchor = gpsNearRoute(userLocation, cp)
         ? userLocation
         : (cp.path[0] ?? userLocation);
@@ -123,12 +129,19 @@ export default function useNavigation() {
       .then((res) => {
         if (cancelled) return;
         if (res.ok && res.data?.instructions) {
-          const cp = buildCumulativePath(route.legs);
-          pathRef.current = cp;
-          waypointsRef.current = resolveWaypoints(res.data.instructions, cp);
-          useNavStore
-            .getState()
-            .setInstructions(res.data.instructions, res.data.warnings ?? []);
+          replaceNavigationGeometryRuntime(
+            geometryRef.current,
+            route,
+            res.data.instructions,
+          );
+          const cp = geometryRef.current.path;
+          if (!cp) return;
+          const nav = useNavStore.getState();
+          nav.setNavigationIdentity(
+            route.navigationId ?? null,
+            route.routeVersion ?? 0,
+          );
+          nav.setInstructions(res.data.instructions, res.data.warnings ?? []);
           useNavStore
             .getState()
             .setRouteTotalM(cp.cumM[cp.cumM.length - 1] ?? null);
@@ -140,7 +153,7 @@ export default function useNavigation() {
               "pts:",
               cp.path.length,
               "waypoints:",
-              waypointsRef.current.map((w) => w.alongM.toFixed(0)),
+              geometryRef.current.waypoints.map((w) => w.alongM.toFixed(0)),
             );
           }
         }
@@ -154,8 +167,8 @@ export default function useNavigation() {
   // ---- Progress: project user onto route → advance step, distance, off-route ----
   useEffect(() => {
     if (!userLocation || navigationSource === "voice") return;
-    const cp = pathRef.current;
-    const wps = waypointsRef.current;
+    const cp = geometryRef.current.path;
+    const wps = geometryRef.current.waypoints;
     if (!cp || cp.path.length === 0 || wps.length === 0) return;
 
     const nav = useNavStore.getState();
@@ -171,10 +184,15 @@ export default function useNavigation() {
       offHitsRef.current += 1;
       if (offHitsRef.current >= OFF_ROUTE_HITS && !nav.isOffRoute) {
         nav.setIsOffRoute(true);
+        confirmOffRouteEpisode(userLocation);
       }
     } else {
       offHitsRef.current = 0;
-      if (nav.isOffRoute) nav.setIsOffRoute(false);
+      if (nav.isOffRoute) {
+        nav.setIsOffRoute(false);
+        nav.setRerouteIdle();
+      }
+      clearOffRouteEpisode();
     }
 
     // Next maneuver = first waypoint still ahead of the user along the route.
@@ -209,22 +227,27 @@ export default function useNavigation() {
     ) {
       if (!nav.arrived) nav.setArrived(true);
     }
-  }, [userLocation, navigationSource]);
+  }, [
+    userLocation,
+    navigationSource,
+    confirmOffRouteEpisode,
+    clearOffRouteEpisode,
+  ]);
 
   // ---- Step-preview camera: when GPS can't anchor the camera (missing or
   // far from the route), track the active maneuver instead so prev/next and
   // auto-advance pan the map along the route like a route preview. ----
   useEffect(() => {
     if (instructions.length === 0) return;
-    const wp = waypointsRef.current[currentStepIndex];
+    const wp = geometryRef.current.waypoints[currentStepIndex];
     useNavStore.getState().setStepCoord(wp?.coord ?? null);
     if (!wp?.coord) return;
     const { map, userLocation } = useMapStore.getState();
     if (!map) return;
-    if (gpsNearRoute(userLocation, pathRef.current)) return; // GPS follow owns the camera
+    if (gpsNearRoute(userLocation, geometryRef.current.path)) return; // GPS follow owns the camera
     // The intro already frames the route start; skip the duplicate first ease.
     if (currentStepIndex === 0 && Date.now() < introUntilRef.current) return;
-    const next = waypointsRef.current[currentStepIndex + 1];
+    const next = geometryRef.current.waypoints[currentStepIndex + 1];
     map.easeTo({
       center: [wp.coord.lng, wp.coord.lat],
       zoom: NAV_ZOOM,
