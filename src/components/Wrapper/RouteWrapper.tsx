@@ -2,18 +2,31 @@ import {
   Bike,
   BusIcon,
   Car,
+  Cone,
   Footprints,
   MapPin,
   TrainFrontIcon,
   TrainFrontTunnelIcon,
   TramFront,
+  TriangleAlert,
 } from "lucide-react";
 import { Fragment, type JSX, useMemo } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { useShallow } from "zustand/react/shallow";
+import { filterIncidentsAlongRoute } from "@/lib/geo";
 import useMapStore from "@/stores/useMapStore";
-import type { RouteLeg, WalkLeg } from "@/types/route";
-import { A11Y_FEATURE_COLOR, getLegColor } from "@/types/route";
+import type {
+  DriveLeg,
+  DriveTrafficSegment,
+  RouteLeg,
+  WalkLeg,
+} from "@/types/route";
+import {
+  A11Y_FEATURE_COLOR,
+  getLegColor,
+  TRAFFIC_LEVEL_COLORS,
+  visibleTrafficSegments,
+} from "@/types/route";
 import Polyline from "../Polyline";
 
 function polylineToPath(
@@ -70,6 +83,98 @@ function A11ySegmentOverlay({ leg, legKey }: { leg: WalkLeg; legKey: string }) {
             lineCap="round"
             lineJoin="round"
           />
+        );
+      })}
+    </>
+  );
+}
+
+function DriveTrafficSegmentOverlay({
+  leg,
+  legKey,
+  segments,
+}: {
+  leg: DriveLeg;
+  legKey: string;
+  segments: DriveTrafficSegment[];
+}) {
+  if (!segments.length) return null;
+
+  return (
+    <>
+      {segments.map((segment, idx) => {
+        const color =
+          TRAFFIC_LEVEL_COLORS[segment.trafficLevel] ??
+          TRAFFIC_LEVEL_COLORS.unknown;
+        const id = `${legKey}-traffic-${segment.trafficLevel}-${segment.fromIndex}-${segment.toIndex}-${idx}`;
+
+        const path = polylineToPath(
+          leg.polyline.slice(segment.fromIndex, segment.toIndex + 1),
+        );
+        if (path.length < 2) return null;
+
+        return (
+          <Polyline
+            key={id}
+            id={id}
+            path={path}
+            strokeColor={color}
+            strokeOpacity={1}
+            strokeWeight={8}
+            lineCap="round"
+            lineJoin="round"
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function DriveIncidentOverlay({
+  leg,
+  legKey,
+}: {
+  leg: DriveLeg;
+  legKey: string;
+}) {
+  const relevantIncidents = filterIncidentsAlongRoute(
+    leg.incidents,
+    leg.polyline,
+    150,
+  );
+  if (!relevantIncidents.length) return null;
+
+  return (
+    <>
+      {relevantIncidents.map((incident, idx) => {
+        const isClosure = incident.severity === "closure";
+        const tooltipText = incident.description
+          ? `${incident.title}：${incident.description}`
+          : incident.title;
+        const id = `${legKey}-incident-${incident.incidentId || idx}`;
+
+        return (
+          <Marker
+            key={id}
+            longitude={incident.location.lng}
+            latitude={incident.location.lat}
+            anchor="center"
+          >
+            <div
+              className={`flex h-5 w-5 items-center justify-center rounded-full border-2 border-white shadow ${
+                isClosure ? "bg-red-600" : "bg-amber-500"
+              }`}
+              role="img"
+              title={tooltipText}
+              aria-label={tooltipText}
+            >
+              {isClosure ? (
+                <TriangleAlert className="h-3 w-3 text-white" aria-hidden />
+              ) : (
+                <Cone className="h-3 w-3 text-white" aria-hidden />
+              )}
+            </div>
+          </Marker>
         );
       })}
     </>
@@ -189,6 +294,7 @@ export default function RouteLine() {
       ].join("-");
       const color = getLegColor(leg);
       const isWalking = leg.type === "WALK";
+      const isDriving = leg.type === "DRIVE" || leg.type === "MOTORCYCLE";
       const legId = `route-leg-${legKey}`;
 
       if (lastLegType !== null && lastLegType !== leg.type && path[0]) {
@@ -228,6 +334,36 @@ export default function RouteLine() {
               lineJoin="round"
             />
             <A11ySegmentOverlay leg={leg} legKey={legId} />
+          </Fragment>
+        );
+      }
+
+      if (isDriving) {
+        const segments = visibleTrafficSegments(
+          leg.trafficSegments,
+          leg.polyline.length,
+        );
+
+        // MapLibre has no z-index: the base line must mount before the
+        // coloured segments so they paint on top of it.
+        return (
+          <Fragment key={`leg-${legKey}`}>
+            <Polyline
+              key={legId}
+              id={legId}
+              path={path}
+              strokeColor={color}
+              strokeOpacity={1}
+              strokeWeight={8}
+              lineCap="round"
+              lineJoin="round"
+            />
+            <DriveTrafficSegmentOverlay
+              leg={leg}
+              legKey={legId}
+              segments={segments}
+            />
+            <DriveIncidentOverlay leg={leg} legKey={legId} />
           </Fragment>
         );
       }

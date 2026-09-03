@@ -183,3 +183,75 @@ export function resolveWaypoints(
     };
   });
 }
+
+/**
+ * Minimum perpendicular distance in meters from a point to a polyline.
+ * Uses local planar equirectangular projection for accurate meter metrics.
+ */
+export function pointToPolylineDistanceM(
+  point: LatLng,
+  polyline: [number, number][],
+): number {
+  if (polyline.length === 0) return Infinity;
+  if (polyline.length === 1) {
+    return haversineMeters(point, {
+      lng: polyline[0][0],
+      lat: polyline[0][1],
+    });
+  }
+
+  const refLat = point.lat;
+  const P = toXY(point, refLat);
+  let minDistance = Infinity;
+
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const A = toXY({ lng: polyline[i][0], lat: polyline[i][1] }, refLat);
+    const B = toXY(
+      { lng: polyline[i + 1][0], lat: polyline[i + 1][1] },
+      refLat,
+    );
+    const abx = B.x - A.x;
+    const aby = B.y - A.y;
+    const apx = P.x - A.x;
+    const apy = P.y - A.y;
+    const lenSq = abx * abx + aby * aby;
+    const t =
+      lenSq > 0 ? Math.max(0, Math.min(1, (apx * abx + apy * aby) / lenSq)) : 0;
+    const cx = A.x + t * abx;
+    const cy = A.y + t * aby;
+    const dx = P.x - cx;
+    const dy = P.y - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < minDistance) {
+      minDistance = dist;
+    }
+  }
+
+  return minDistance;
+}
+
+/**
+ * Filter incidents that lie within `maxDistanceM` of the route polyline.
+ * Guarantees that incidents far away from the actual route (e.g. different cities)
+ * are excluded from both map markers and route detail notices.
+ */
+export function filterIncidentsAlongRoute<
+  T extends { location?: { lat: number; lng: number } },
+>(
+  incidents: T[] | undefined,
+  polyline: [number, number][] | undefined,
+  maxDistanceM = 150,
+): T[] {
+  if (!incidents?.length || !polyline?.length) return [];
+  return incidents.filter((incident) => {
+    if (
+      !incident?.location ||
+      !Number.isFinite(incident.location.lat) ||
+      !Number.isFinite(incident.location.lng)
+    ) {
+      return false;
+    }
+    const dist = pointToPolylineDistanceM(incident.location, polyline);
+    return dist <= maxDistanceM;
+  });
+}

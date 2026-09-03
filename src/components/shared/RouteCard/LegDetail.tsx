@@ -12,6 +12,7 @@ import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
 import { BusLegStops } from "./BusLegStops";
+import { DriveIncidentNotice } from "./DriveIncidentNotice";
 import { DriveStepsList } from "./DriveStepsList";
 import { TransitStops } from "./TransitStops";
 import type { PointLabelContext } from "./utils";
@@ -230,15 +231,37 @@ export function LegDetail({
             {leg.label ?? (leg.type === "DRIVE" ? t("drive") : t("motorcycle"))}{" "}
             {formatDistance(leg.distanceM)}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {t("approxTime", {
-              time: formatDuration(
-                leg.durationInTrafficMin ??
-                  leg.durationMin ??
-                  leg.durationMinutes ??
-                  0,
-              ),
-            })}
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
+            <span>
+              {t("approxTime", {
+                time: formatDuration(
+                  leg.durationInTrafficMin ??
+                    leg.durationMin ??
+                    leg.durationMinutes ??
+                    0,
+                ),
+              })}
+            </span>
+            {leg.trafficLevel === "moderate" && (
+              <span className="text-xs text-amber-500 font-medium">
+                {t("trafficModerate") ?? "（車多緩行）"}
+              </span>
+            )}
+            {leg.trafficLevel === "heavy" && (
+              <span className="text-xs text-red-500 font-medium">
+                {t("trafficHeavy") ?? "（車流壅塞）"}
+              </span>
+            )}
+            {leg.trafficLevel === "severe" && (
+              <span className="text-xs text-red-700 dark:text-red-400 font-medium">
+                {t("trafficSevere") ?? "（嚴重壅塞）"}
+              </span>
+            )}
+            {leg.trafficLevel === "closed" && (
+              <span className="text-xs text-gray-500 font-medium">
+                {t("trafficClosed") ?? "（道路封閉）"}
+              </span>
+            )}
           </p>
           <p className="text-xs text-muted-foreground">
             {[
@@ -248,6 +271,10 @@ export function LegDetail({
               .filter(Boolean)
               .join(" → ")}
           </p>
+          <DriveIncidentNotice
+            incidents={leg.incidents}
+            polyline={leg.polyline}
+          />
           {isSelected && <DriveStepsList steps={leg.steps} />}
         </div>
       );

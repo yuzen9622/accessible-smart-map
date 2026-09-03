@@ -250,6 +250,29 @@ export interface TraLeg {
   alerts?: MatchedAlert[];
 }
 
+export type TrafficLevel =
+  | "light"
+  | "moderate"
+  | "heavy"
+  | "severe"
+  | "closed"
+  | "unknown";
+
+export interface DriveTrafficSegment {
+  fromIndex: number;
+  toIndex: number;
+  trafficLevel: TrafficLevel;
+  congestionLevel: number;
+}
+
+export interface DriveIncident {
+  incidentId: string;
+  title: string;
+  description?: string;
+  severity: "closure" | "advisory";
+  location: { lat: number; lng: number };
+}
+
 export interface DriveLeg {
   type: "DRIVE" | "MOTORCYCLE";
   label?: string;
@@ -259,7 +282,9 @@ export interface DriveLeg {
   durationMinutes?: number;
   durationMin: number;
   durationInTrafficMin?: number;
-  trafficLevel?: "light" | "moderate" | "heavy";
+  trafficLevel?: TrafficLevel;
+  trafficSegments?: DriveTrafficSegment[];
+  incidents?: DriveIncident[];
   summary?: string;
   modeFallback?: "DRIVE";
   departureTime?: string | null;
@@ -791,6 +816,46 @@ export const A11Y_FEATURE_COLOR: Record<A11yFeature, string> = {
   fare_gate: "#7c3aed",
   exit_gate: "#7c3aed",
 };
+
+export const TRAFFIC_LEVEL_COLORS: Record<TrafficLevel, string> = {
+  light: "#22C55E",
+  moderate: "#F59E0B",
+  heavy: "#EF4444",
+  severe: "#991B1B",
+  closed: "#4B5563",
+  unknown: "#3B82F6",
+};
+
+export const TRAFFIC_BASE_COLOR = "#475569";
+
+// "unknown" carries no traffic information, so a segment claiming it must not
+// paint over the base line and imply the road was measured.
+const VALID_TRAFFIC_LEVELS = new Set<TrafficLevel>([
+  "light",
+  "moderate",
+  "heavy",
+  "severe",
+  "closed",
+]);
+
+export function visibleTrafficSegments(
+  segments: DriveTrafficSegment[] | undefined,
+  polylineLength: number,
+): DriveTrafficSegment[] {
+  if (!Array.isArray(segments) || !segments.length) return [];
+  return segments
+    .filter(
+      (s): s is DriveTrafficSegment =>
+        Boolean(s) &&
+        VALID_TRAFFIC_LEVELS.has(s.trafficLevel) &&
+        Number.isInteger(s.fromIndex) &&
+        Number.isInteger(s.toIndex) &&
+        s.fromIndex >= 0 &&
+        s.toIndex < polylineLength &&
+        s.fromIndex < s.toIndex,
+    )
+    .sort((a, b) => a.fromIndex - b.fromIndex);
+}
 
 const LEG_COLORS: Record<string, string> = {
   WALK: "#3b82f6",
