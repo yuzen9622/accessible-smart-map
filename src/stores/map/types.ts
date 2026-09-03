@@ -11,6 +11,7 @@ import type {
 import type { A11yEnum } from "@/types/index";
 import type {
   AccessibleRoute,
+  BusLeg,
   LiveBus,
   MatchedAlert,
   MetroAlertResult,
@@ -124,9 +125,21 @@ export interface SearchSlice {
   setAiResultMarkers: (markers: AiResultMarker[]) => void;
 }
 
+/**
+ * The one bus segment the user has expanded and is therefore tracking live.
+ * `null` means no tracking at all: no vehicle drawn, no polling in flight.
+ */
+export interface ActiveBusLeg {
+  /** `${routeIndex}:${legIndex}:${routeName}:${direction}:${departureStop}` */
+  key: string;
+  leg: BusLeg;
+}
+
 export interface TransitSlice {
   liveBusPositions: LiveBus[];
   setLiveBusPositions: (positions: LiveBus[]) => void;
+  activeBusLeg: ActiveBusLeg | null;
+  setActiveBusLeg: (active: ActiveBusLeg | null) => void;
   nearbyBusStops: (BusStopSearchResult & { distance?: number })[];
   setNearbyBusStops: (
     stops: (BusStopSearchResult & { distance?: number })[],

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { RouteDetailStop } from "@/lib/api/transit";
 import useMapStore from "@/stores/useMapStore";
 import { A11yEnum } from "@/types/index";
-import type { ParkingNearbyItem } from "@/types/route";
+import type { BusLeg, ParkingNearbyItem } from "@/types/route";
 import type { BusStopSearchResult } from "@/types/transit";
 
 describe("useMapStore mobileSheetSnap", () => {
@@ -127,5 +127,58 @@ describe("useMapStore a11y filter state", () => {
     expect(
       useMapStore.getState().selectedA11yTypes.has(A11yEnum.ELEVATOR),
     ).toBe(false);
+  });
+});
+
+describe("useMapStore activeBusLeg state", () => {
+  beforeEach(() => {
+    useMapStore.setState({
+      activeBusLeg: null,
+      liveBusPositions: [],
+    });
+  });
+
+  it("sets activeBusLeg and clears liveBusPositions", () => {
+    useMapStore.setState({
+      liveBusPositions: [
+        {
+          lat: 25.04,
+          lng: 121.51,
+          plateNumb: "EAA-123",
+          speed: 20,
+          direction: 0,
+          isLowFloor: "1",
+          hasLiftOrRamp: "1",
+          gpsTime: "2026-09-03T10:00:00Z",
+          vehicleClass: "1",
+          routeName: "307",
+          city: "Taipei",
+          isTarget: true,
+          estimateTime: 3,
+        },
+      ],
+    });
+
+    const activeLeg = {
+      key: "0:1:307:0:台北車站",
+      leg: {
+        type: "BUS" as const,
+        routeName: "307",
+        departureStop: "台北車站",
+        arrivalStop: "板橋公車站",
+        direction: 0 as const,
+        polyline: [[121.51, 25.04]],
+      } as unknown as BusLeg,
+    };
+
+    useMapStore.getState().setActiveBusLeg(activeLeg);
+    expect(useMapStore.getState().activeBusLeg).toEqual(activeLeg);
+    expect(useMapStore.getState().liveBusPositions).toEqual([]);
+  });
+
+  it("clears activeBusLeg when set to null", () => {
+    useMapStore.getState().setActiveBusLeg(null);
+    expect(useMapStore.getState().activeBusLeg).toBeNull();
+    expect(useMapStore.getState().liveBusPositions).toEqual([]);
   });
 });

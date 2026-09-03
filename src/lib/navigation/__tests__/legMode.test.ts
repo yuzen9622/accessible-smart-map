@@ -5,6 +5,7 @@ import {
   isLegHandoff,
   isVehicleLegType,
   navThresholdsFor,
+  resolveActiveBusLegOrdinal,
   resolveActiveLegType,
   resolveCurrentLegType,
   resolveNavHeading,
@@ -269,5 +270,42 @@ describe("resolveWaypoints with multi-leg fallback steps", () => {
     const wps = resolveWaypoints(instructions, path);
     expect(wps[0].alongM).toBe(0);
     expect(wps[1].alongM).toBeGreaterThan(900);
+  });
+});
+
+describe("resolveActiveBusLegOrdinal", () => {
+  it("returns null when the route has no bus steps", () => {
+    expect(resolveActiveBusLegOrdinal(compositeRoute, 0)).toBeNull();
+    expect(resolveActiveBusLegOrdinal([], 0)).toBeNull();
+  });
+
+  const twoBusRuns: NavInstruction[] = [
+    instruction("WALK", { type: "depart" }), // 0
+    instruction("BUS"), // 1
+    instruction("BUS"), // 2
+    instruction("WALK"), // 3
+    instruction("BUS"), // 4
+    instruction("WALK", { type: "arrive" }), // 5
+  ];
+
+  it("returns the run the current step sits inside", () => {
+    expect(resolveActiveBusLegOrdinal(twoBusRuns, 1)).toBe(0);
+    expect(resolveActiveBusLegOrdinal(twoBusRuns, 2)).toBe(0);
+    expect(resolveActiveBusLegOrdinal(twoBusRuns, 4)).toBe(1);
+  });
+
+  it("looks ahead to the next bus run while still walking", () => {
+    expect(resolveActiveBusLegOrdinal(twoBusRuns, 0)).toBe(0);
+    expect(resolveActiveBusLegOrdinal(twoBusRuns, 3)).toBe(1);
+  });
+
+  it("returns null once every bus run is behind the user", () => {
+    expect(resolveActiveBusLegOrdinal(twoBusRuns, 5)).toBeNull();
+  });
+
+  it("treats a trailing bus run as trackable", () => {
+    const endsOnBus = [instruction("WALK"), instruction("BUS")];
+    expect(resolveActiveBusLegOrdinal(endsOnBus, 0)).toBe(0);
+    expect(resolveActiveBusLegOrdinal(endsOnBus, 1)).toBe(0);
   });
 });

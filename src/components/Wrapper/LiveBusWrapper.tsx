@@ -1,10 +1,14 @@
 "use client";
 
 import { Accessibility, Bus } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { type AnimatedBus, useAnimatedBuses } from "@/hook/useAnimatedBuses";
 import { useLiveBusPositions } from "@/hook/useLiveBusPositions";
+import { resolveActiveBusLegOrdinal } from "@/lib/navigation/legMode";
 import useMapStore from "@/stores/useMapStore";
+import useNavStore from "@/stores/useNavStore";
+import type { BusLeg } from "@/types/route";
 
 function isAccessible(bus: AnimatedBus): boolean {
   return bus.isLowFloor === "是" || bus.hasLiftOrRamp === "是";
@@ -72,49 +76,70 @@ function TargetBusMarker({ bus }: { bus: AnimatedBus }) {
   );
 }
 
-/** Every other vehicle on the route — small, muted, non-interactive. */
-function FleetBusMarker({ bus }: { bus: AnimatedBus }) {
-  const accessible = isAccessible(bus);
-  return (
-    <Marker
-      longitude={bus.lng}
-      latitude={bus.lat}
-      anchor="center"
-      style={{ zIndex: 1 }}
-    >
-      <div
-        title={`${bus.plateNumb}${accessible ? "（無障礙）" : ""} · ${bus.statusLabel ?? ""}`}
-        className={`flex h-6 w-6 items-center justify-center rounded-full border border-white/80 text-white opacity-80 shadow-md ${
-          accessible ? "bg-blue-500" : "bg-slate-400"
-        }`}
-      >
-        {accessible ? (
-          <Accessibility className="h-3.5 w-3.5" />
-        ) : (
-          <Bus className="h-3.5 w-3.5" />
-        )}
-      </div>
-    </Marker>
+/**
+ * While navigating, the user cannot reach the route card to expand a segment,
+ * so the leg they are riding (or heading toward) is tracked for them.
+ */
+function useNavigationBusTracking() {
+  const isNavigating = useMapStore((s) => s.isNavigating);
+  const selectRoute = useMapStore((s) => s.selectRoute);
+  const setActiveBusLeg = useMapStore((s) => s.setActiveBusLeg);
+  const instructions = useNavStore((s) => s.instructions);
+  const currentStepIndex = useNavStore((s) => s.currentStepIndex);
+
+  // Every GPS tick re-runs this effect; writing the same leg again would clear
+  // liveBusPositions and restart polling, making the marker blink.
+  const lastKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Outside navigation the route card owns the tracking decision; only undo
+    // what this effect itself set.
+    if (!isNavigating) {
+      if (lastKeyRef.current !== null) {
+        lastKeyRef.current = null;
+        setActiveBusLeg(null);
+      }
+      return;
+    }
+
+    const busLegs = (selectRoute?.route?.legs ?? []).filter(
+      (leg): leg is BusLeg => leg.type === "BUS",
+    );
+    const ordinal = resolveActiveBusLegOrdinal(instructions, currentStepIndex);
+    const leg = ordinal == null ? undefined : busLegs[ordinal];
+    const nextKey = leg
+      ? `nav:${ordinal}:${leg.routeName}:${leg.direction}:${leg.departureStop}`
+      : null;
+
+    if (nextKey === lastKeyRef.current) return;
+    lastKeyRef.current = nextKey;
+    setActiveBusLeg(nextKey && leg ? { key: nextKey, leg } : null);
+  }, [
+    isNavigating,
+    selectRoute?.route?.legs,
+    instructions,
+    currentStepIndex,
+    setActiveBusLeg,
+  ]);
+
+  useEffect(
+    () => () => {
+      if (lastKeyRef.current !== null) setActiveBusLeg(null);
+    },
+    [setActiveBusLeg],
   );
 }
 
 export default function LiveBusWrapper() {
-  // Starts/owns the 15s polling lifecycle while a bus route is selected.
+  // Starts/owns the 15s polling lifecycle while a bus leg is being tracked.
   useLiveBusPositions();
+  useNavigationBusTracking();
   const liveBusPositions = useMapStore((s) => s.liveBusPositions);
   const buses = useAnimatedBuses(liveBusPositions);
 
-  if (buses.length === 0) return null;
+  // The store already guarantees at most one vehicle; find() is the guard.
+  const bus = buses.find((b) => b.isTarget);
+  if (!bus) return null;
 
-  return (
-    <>
-      {buses.map((bus) =>
-        bus.isTarget ? (
-          <TargetBusMarker key={bus.plateNumb} bus={bus} />
-        ) : (
-          <FleetBusMarker key={bus.plateNumb} bus={bus} />
-        ),
-      )}
-    </>
-  );
+  return <TargetBusMarker bus={bus} />;
 }

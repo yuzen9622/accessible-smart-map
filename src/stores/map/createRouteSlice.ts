@@ -25,15 +25,21 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   selectRoute: null,
   setRouteSelect: (route) => {
     if (!route) {
-      set({ selectRoute: null });
+      set({ selectRoute: null, activeBusLeg: null, liveBusPositions: [] });
       return;
     }
-    set({
+    const prev = get().selectRoute;
+    const next = {
       selectRoute: {
-        ...get().selectRoute,
+        ...prev,
         ...route,
       } as MapStore["selectRoute"],
-    });
+    };
+    if (prev?.index === route.index) {
+      set(next);
+      return;
+    }
+    set({ ...next, activeBusLeg: null, liveBusPositions: [] });
   },
   routeWaypoints: [],
   setRouteWaypoints: (waypoints) => set({ routeWaypoints: waypoints }),

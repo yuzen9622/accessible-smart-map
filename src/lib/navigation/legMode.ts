@@ -167,6 +167,40 @@ export function findLegHandoffIndex(
   return null;
 }
 
+/**
+ * Which bus segment (0-based, in `route.legs` order) the user is riding or is
+ * about to ride, derived from the instruction list alone.
+ *
+ * A route can board the same line twice, so a run of consecutive BUS steps —
+ * not the leg type of one step — identifies a segment. The index inside a run
+ * means "riding it"; a run still ahead means "about to board it". Past the
+ * last run there is nothing left to track, so the answer is null.
+ */
+export function resolveActiveBusLegOrdinal(
+  instructions: readonly NavInstruction[],
+  currentStepIndex: number,
+): number | null {
+  const runs: { start: number; end: number }[] = [];
+  let start: number | null = null;
+  for (let i = 0; i < instructions.length; i++) {
+    const isBus = instructions[i]?.legType === "BUS";
+    if (isBus && start === null) start = i;
+    if (!isBus && start !== null) {
+      runs.push({ start, end: i - 1 });
+      start = null;
+    }
+  }
+  if (start !== null) runs.push({ start, end: instructions.length - 1 });
+
+  const riding = runs.findIndex(
+    (r) => currentStepIndex >= r.start && currentStepIndex <= r.end,
+  );
+  if (riding !== -1) return riding;
+
+  const ahead = runs.findIndex((r) => r.start > currentStepIndex);
+  return ahead === -1 ? null : ahead;
+}
+
 /** True when advancing between these two steps crosses the vehicle/on-foot
  * boundary in either direction — the moment the engine re-frames the camera
  * and drops the heading it smoothed for the previous mode. */

@@ -49,6 +49,7 @@ export default function useComputeRoute() {
     setRouteInfoShow,
     setRouteWaypoints,
     setLiveBusPositions,
+    setActiveBusLeg,
     userLocation,
   } = useMapStore(
     useShallow((s) => ({
@@ -60,6 +61,7 @@ export default function useComputeRoute() {
       setRouteInfoShow: s.setRouteInfoShow,
       setRouteWaypoints: s.setRouteWaypoints,
       setLiveBusPositions: s.setLiveBusPositions,
+      setActiveBusLeg: s.setActiveBusLeg,
       userLocation: s.userLocation,
     })),
   );
@@ -131,6 +133,7 @@ export default function useComputeRoute() {
           setRouteInfoShow(false);
           setRouteSelect(null);
           setRouteWaypoints([]);
+          setActiveBusLeg(null);
           setLiveBusPositions([]);
           toast.error("找不到合適的無障礙路線");
           return false;
@@ -189,6 +192,7 @@ export default function useComputeRoute() {
         setRouteInfoShow(false);
         setRouteSelect(null);
         setRouteWaypoints([]);
+        setActiveBusLeg(null);
         setLiveBusPositions([]);
         console.error("Route planning error:", error);
         // A 422 means the request was understood and genuinely has no answer;
@@ -225,6 +229,7 @@ export default function useComputeRoute() {
       setRouteInfoShow,
       setRouteWaypoints,
       setLiveBusPositions,
+      setActiveBusLeg,
       userLocation,
       t,
     ],

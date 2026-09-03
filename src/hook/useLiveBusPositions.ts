@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { getBusArrival, getLiveBusPositions } from "@/lib/api/transit";
-import { haversineMeters } from "@/lib/geo";
 import useMapStore from "@/stores/useMapStore";
 import type { BusLeg, LiveBus } from "@/types/route";
 
@@ -52,11 +51,16 @@ async function fetchArrival(leg: BusLeg): Promise<ArrivalTarget> {
 /**
  * Decide which live vehicle is "the one the user is about to board".
  *
+ * Requirements:
+ *   - Only vehicles that are CURRENTLY IN SERVICE / DISPATCHED are considered.
+ *   - If no realtime ETA / bus is dispatched (e.g. 尚未發車 / no active vehicle for this departure),
+ *     do NOT pin a generic random vehicle from elsewhere on the route.
+ *
+ * Priority:
  *   1. The plate the arrival (ETA) feed reports as next at the boarding stop —
  *      a 100% precise match whenever it's present in the live feed.
- *   2. Otherwise the plate the route planner pinned (`nearestBus`).
- *   3. Otherwise the live vehicle (same direction) physically closest to the
- *      boarding stop — a best-effort approximation when no plate is known yet.
+ *   2. Otherwise the plate the route planner pinned (`nearestBus`), provided it is active in the live feed.
+ *   3. If arrival feed reports no plate (e.g. 尚未發車 / not yet dispatched), return undefined (no map marker).
  */
 function resolveTargetPlate(
   leg: BusLeg,
@@ -70,24 +74,17 @@ function resolveTargetPlate(
   const planned = leg.nearestBus?.plateNumb;
   if (planned && buses.some((b) => b.plateNumb === planned)) return planned;
 
-  // leg.polyline is [lng, lat][]; index 0 is the boarding (departure) stop.
-  const boarding = leg.polyline?.[0];
-  if (!boarding) return planned;
-  const boardingLatLng = { lng: boarding[0], lat: boarding[1] };
-
-  let best: { plate: string; dist: number } | null = null;
-  for (const bus of buses) {
-    if (bus.direction !== leg.direction) continue;
-    const dist = haversineMeters(boardingLatLng, {
-      lat: bus.lat,
-      lng: bus.lng,
-    });
-    if (!best || dist < best.dist) best = { plate: bus.plateNumb, dist };
-  }
-  return best?.plate ?? planned;
+  // If no plate was assigned by TDX arrival feed or planner, do not randomly pick a bus.
+  return undefined;
 }
 
-/** Fetch every live vehicle on one bus leg and tag the target one. */
+/**
+ * Resolve the single vehicle the user is about to board on this leg.
+ *
+ * Returns an empty array when no plate can be pinned: an unidentifiable bus is
+ * worse than none, because a marker for "some vehicle on this line" reads as
+ * "your vehicle".
+ */
 async function fetchLeg(leg: BusLeg, signal: AbortSignal): Promise<LiveBus[]> {
   // ETA and positions are independent; run them together.
   const [arrival, posRes] = await Promise.all([
@@ -99,66 +96,53 @@ async function fetchLeg(leg: BusLeg, signal: AbortSignal): Promise<LiveBus[]> {
 
   const buses = posRes.data.buses;
   const targetPlate = resolveTargetPlate(leg, buses, arrival.plate);
+  if (!targetPlate) return [];
 
-  return buses.map((bus) => {
-    const target = !!targetPlate && bus.plateNumb === targetPlate;
-    return {
-      ...bus,
+  const target = buses.find((b) => b.plateNumb === targetPlate);
+  if (!target) return [];
+
+  return [
+    {
+      ...target,
       routeName: leg.routeName,
       city: leg.tdxCity ?? "",
-      isTarget: target,
-      estimateTime: target ? arrival.eta : null,
-    };
-  });
+      isTarget: true,
+      estimateTime: arrival.eta,
+    },
+  ];
 }
 
 /**
- * Polls live bus positions every 15s while a route with bus legs is selected,
- * pushing the result (with the target vehicle tagged) into the map store.
+ * Polls the live position of the one bus the user is tracking — the leg they
+ * expanded (`activeBusLeg`) — every 15s, and reports only that vehicle.
+ *
+ * Selecting a route no longer starts anything: with no active leg the hook
+ * registers no timer and no listener, so a freshly planned route costs zero
+ * requests until the user asks for a specific segment.
  *
  * - Fetches through the shared API layer (`END_POINT` config, not a hardcoded
  *   host) so it works in local dev.
- * - Cancels in-flight requests on route change / unmount via AbortController.
- * - Restarts only when the actual bus segments change (stable signature dep),
- *   not on every unrelated `selectRoute` object reallocation.
+ * - Cancels in-flight requests on leg change / unmount via AbortController.
+ * - Restarts only when `activeBusLeg.key` changes, not on every re-render.
  * - Pauses while the tab is hidden and refreshes immediately on return.
- * - Keeps the last good positions on a transient error instead of blanking.
+ * - Keeps the last good position on a transient error instead of blanking.
  */
 export function useLiveBusPositions(): void {
-  const selectRoute = useMapStore((s) => s.selectRoute);
+  const activeBusLeg = useMapStore((s) => s.activeBusLeg);
   const setLiveBusPositions = useMapStore((s) => s.setLiveBusPositions);
 
-  const busLegs = useMemo<BusLeg[]>(() => {
-    const legs = selectRoute?.route?.legs;
-    if (!legs) return [];
-    return legs.filter((leg): leg is BusLeg => leg.type === "BUS");
-  }, [selectRoute?.route?.legs]);
+  // Exposes the freshest leg object to the polling loop without making the
+  // loop restart on every re-render — only the key below does that.
+  const legRef = useRef<BusLeg | null>(activeBusLeg?.leg ?? null);
+  legRef.current = activeBusLeg?.leg ?? null;
 
-  // A stable string fingerprint of the segments we need to track. Polling only
-  // tears down / restarts when this actually changes.
-  const signature = useMemo(
-    () =>
-      busLegs
-        .map(
-          (l) =>
-            `${l.routeName}|${l.tdxCity ?? ""}|${l.direction}|${l.departureStop}`,
-        )
-        .join("~"),
-    [busLegs],
-  );
+  const legKey = activeBusLeg?.key ?? null;
 
-  // Always expose the freshest legs to the polling loop without making the
-  // loop restart on every new array reference — only `signature` does that.
-  const busLegsRef = useRef(busLegs);
-  busLegsRef.current = busLegs;
-
-  // `signature` is the intended restart key: the loop reads the freshest legs
-  // from `busLegsRef`, so the effect must NOT also depend on the `busLegs`
-  // array reference (that would restart polling on every re-render and reset
-  // the 15s timer).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: signature is a deliberate restart trigger
+  // `legKey` is the intended restart key: the loop reads the freshest leg from
+  // `legRef`, so the effect must NOT also depend on the leg object reference.
   useEffect(() => {
-    if (busLegsRef.current.length === 0) {
+    const leg = legRef.current;
+    if (!legKey || !leg) {
       setLiveBusPositions([]);
       return;
     }
@@ -168,27 +152,18 @@ export function useLiveBusPositions(): void {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const refresh = async () => {
-      const legs = busLegsRef.current;
+      const current = legRef.current;
+      if (!current) return;
       controller?.abort();
       controller = new AbortController();
       const signal = controller.signal;
 
       try {
-        const settled = await Promise.allSettled(
-          legs.map((leg) => fetchLeg(leg, signal)),
-        );
+        const buses = await fetchLeg(current, signal);
         if (cancelled || signal.aborted) return;
-
-        const fulfilled = settled.filter(
-          (r): r is PromiseFulfilledResult<LiveBus[]> =>
-            r.status === "fulfilled",
-        );
-        // Every leg failed (network blip): keep the last good positions.
-        if (fulfilled.length === 0) return;
-
-        setLiveBusPositions(fulfilled.flatMap((r) => r.value));
+        setLiveBusPositions(buses);
       } catch {
-        // swallow — transient, next tick retries
+        // Transient failure: keep the last good position, next tick retries.
       }
     };
 
@@ -225,5 +200,5 @@ export function useLiveBusPositions(): void {
       document.removeEventListener("visibilitychange", onVisibility);
       setLiveBusPositions([]);
     };
-  }, [signature, setLiveBusPositions]);
+  }, [legKey, setLiveBusPositions]);
 }
