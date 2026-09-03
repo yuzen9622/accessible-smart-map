@@ -15,6 +15,10 @@ function toNonNegativeNumber(value: unknown): number | null | undefined {
   return Math.max(0, value);
 }
 
+/**
+ * `nav.progress` and `nav.resume_ok` carry the same progress/ETA payload —
+ * resume_ok simply makes every field optional — so both map through here.
+ */
 export function toNavProgressUpdate(
   event: Extract<VoiceNavigationEvent, { type: "nav.progress" }>,
 ): NavProgressUpdate {

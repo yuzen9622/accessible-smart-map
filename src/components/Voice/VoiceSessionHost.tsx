@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
+import useRouteReroute from "@/hook/useRouteReroute";
 import useVoiceSession from "@/hook/useVoiceSession";
 import { haversineMeters } from "@/lib/geo";
 import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
@@ -68,6 +69,8 @@ export default function VoiceSessionHost() {
   } = useVoiceSession();
   const lastSentPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const serverStoppedNavigationRef = useRef(false);
+  // Fallback path when the backend cannot resume the navigation session.
+  const { confirmOffRouteEpisode } = useRouteReroute();
 
   useEffect(() => {
     useVoiceStore.getState().bindSessionActions({
@@ -79,8 +82,10 @@ export default function VoiceSessionHost() {
 
   useEffect(() => {
     useVoiceStore.getState().setStatus(status);
+    // "reconnecting" is deliberately NOT terminal (WP4): the controller sends
+    // nav.resume once the rebuilt session is ready, so the HUD must survive
+    // the gap instead of being torn down and losing the navigation.
     if (
-      status.status === "reconnecting" ||
       status.status === "ended" ||
       status.status === "needs-login" ||
       status.status === "error"
@@ -88,9 +93,8 @@ export default function VoiceSessionHost() {
       const nav = useNavStore.getState();
       const map = useMapStore.getState();
       if (nav.navigationSource === "voice" && map.isNavigating) {
-        // A rebuilt Live session has no navigation-session resumption. Exit
-        // the stale HUD; session.ready will re-arm the route so the user can
-        // ask to start navigation again.
+        // The session is gone for good — exit the stale HUD; a later
+        // session.ready will re-arm the route so the user can ask again.
         nav.setNavigationSource("local");
         serverStoppedNavigationRef.current = true;
         map.setIsNavigating(false);
@@ -149,6 +153,20 @@ export default function VoiceSessionHost() {
     });
     return unsubscribe;
   }, [sendNavigationPosition]);
+
+  // Returning to the foreground: whatever fix arrives next must reach the
+  // server even if the device barely moved, because the backend's last known
+  // position is as old as the time spent backgrounded (WP4).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      lastSentPositionRef.current = null;
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // Any UI path that leaves a backend-owned navigation emits nav.cancel.
   // Server-originated nav.stop changes the source first, so it is not echoed.
@@ -292,6 +310,45 @@ export default function VoiceSessionHost() {
             retryable: navigationEvent.retryable,
           });
           break;
+        case "nav.resume_ok": {
+          const currentNavigationId =
+            map.selectRoute?.route.navigationId ?? nav.navigationId;
+          const currentRouteVersion =
+            map.selectRoute?.route.routeVersion ?? nav.routeVersion;
+          if (
+            nav.arrived ||
+            currentNavigationId === null ||
+            navigationEvent.navigationId !== currentNavigationId ||
+            navigationEvent.routeVersion !== currentRouteVersion
+          ) {
+            break;
+          }
+          // The backend still owns this navigation: hand step advancement
+          // back to it and adopt its authoritative progress snapshot.
+          nav.setNavigationSource("voice");
+          if (navigationEvent.steps && navigationEvent.steps.length > 0) {
+            nav.setInstructions(navigationEvent.steps.map(toNavInstruction));
+          }
+          nav.setCurrentStepIndex(navigationEvent.currentStepIndex);
+          serverStoppedNavigationRef.current = false;
+          // Nothing was forwarded while the socket was down; let the next fix
+          // through regardless of how far the user moved.
+          lastSentPositionRef.current = null;
+          if (!map.isNavigating) map.setIsNavigating(true);
+          break;
+        }
+        case "nav.resume_failed": {
+          if (!map.isNavigating || nav.arrived) break;
+          // Keep the HUD on screen: the local engine takes over turn-by-turn
+          // immediately, and a reroute from the current position rebuilds a
+          // route the backend no longer holds.
+          nav.setNavigationSource("local");
+          lastSentPositionRef.current = null;
+          serverStoppedNavigationRef.current = false;
+          toast.info("連線已恢復，正在重新規劃路線");
+          if (map.userLocation) confirmOffRouteEpisode(map.userLocation);
+          break;
+        }
         case "nav.arrived":
           nav.setArrived(true);
           break;
@@ -318,6 +375,7 @@ export default function VoiceSessionHost() {
     status.status,
     consumeNavigationEvents,
     sendNavigationPosition,
+    confirmOffRouteEpisode,
   ]);
 
   // Leaving the map page (this host unmounting) is a terminal path too.

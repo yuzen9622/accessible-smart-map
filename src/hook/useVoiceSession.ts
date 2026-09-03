@@ -9,6 +9,7 @@ import { createPlayback } from "@/lib/voice/audioPlayback";
 import {
   type VoiceNavigationEvent,
   type VoiceNavigationPosition,
+  type VoiceNavigationResumeState,
   VoiceSessionController,
   type VoiceSocket,
   type VoiceStatus,
@@ -17,6 +18,7 @@ import {
 import { createVoiceBindings } from "@/lib/voice/voiceSessionBindings";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
+import useNavStore from "@/stores/useNavStore";
 import useVoiceStore, {
   type VoiceTranscriptEntry,
 } from "@/stores/useVoiceStore";
@@ -75,6 +77,49 @@ function getUserLocation(): { latitude: number; longitude: number } | null {
   const { lat, lng } = location;
   if (typeof lat !== "number" || typeof lng !== "number") return null;
   return { latitude: lat, longitude: lng };
+}
+
+/**
+ * Snapshot for `nav.resume` after a reconnect (WP4). Only a backend-owned
+ * navigation that is still running can be resumed: the local engine keeps
+ * driving itself, and an arrived/absent navigation has nothing to re-attach
+ * to, so both return `null` and the controller sends no message.
+ */
+function getNavigationResumeState(): VoiceNavigationResumeState | null {
+  const map = useMapStore.getState();
+  const nav = useNavStore.getState();
+  if (!map.isNavigating || nav.navigationSource !== "voice" || nav.arrived) {
+    return null;
+  }
+
+  const route = map.selectRoute?.route;
+  const navigationId = route?.navigationId ?? nav.navigationId;
+  const routeToken = route?.routeToken;
+  if (
+    !navigationId ||
+    typeof routeToken !== "string" ||
+    routeToken.length === 0
+  ) {
+    return null;
+  }
+
+  const location = map.userLocation;
+  const heading = nav.userHeading ?? nav.gpsHeading;
+  return {
+    navigationId,
+    routeVersion: route?.routeVersion ?? nav.routeVersion,
+    routeToken,
+    lastKnownStepIndex: nav.currentStepIndex,
+    ...(location
+      ? {
+          currentPosition: {
+            latitude: location.lat,
+            longitude: location.lng,
+            ...(heading == null ? {} : { heading }),
+          },
+        }
+      : {}),
+  };
 }
 
 export interface UseVoiceSessionResult {
@@ -168,6 +213,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
       onToolEvent: bindings.onToolEvent,
       onNavigationEvent: (event) =>
         setNavigationEvents((pending) => [...pending, event]),
+      getNavigationResumeState,
     });
   }
 

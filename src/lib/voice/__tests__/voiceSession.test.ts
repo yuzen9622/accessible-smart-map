@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type VoiceCapture,
+  type VoiceNavigationResumeState,
   VoiceSessionController,
   type VoiceSessionDeps,
   type VoiceSocket,
@@ -64,6 +65,7 @@ function createHarness(opts?: {
   identity?: string | null;
   token?: string | undefined;
   location?: { latitude: number; longitude: number } | null;
+  resumeState?: VoiceNavigationResumeState | null;
 }) {
   const sockets: FakeSocket[] = [];
   const captureCalls: CaptureCall[] = [];
@@ -74,6 +76,8 @@ function createHarness(opts?: {
   let token: string | undefined = opts?.token ?? "token-1";
   let location: { latitude: number; longitude: number } | null =
     opts?.location ?? null;
+  let resumeState: VoiceNavigationResumeState | null =
+    opts?.resumeState ?? null;
 
   const onStatusChange = vi.fn();
   const onTranscript = vi.fn();
@@ -140,6 +144,7 @@ function createHarness(opts?: {
     onInterrupted,
     onToolEvent,
     onNavigationEvent,
+    getNavigationResumeState: () => resumeState,
   };
 
   const controller = new VoiceSessionController(deps);
@@ -168,6 +173,9 @@ function createHarness(opts?: {
     },
     setLocation: (v: { latitude: number; longitude: number } | null) => {
       location = v;
+    },
+    setResumeState: (v: VoiceNavigationResumeState | null) => {
+      resumeState = v;
     },
     triggerBlocked: () => blockedCb?.(),
     lastStatus: (): VoiceStatus | undefined =>
@@ -755,6 +763,162 @@ describe("VoiceSessionController", () => {
           JSON.parse(message).routeToken === "route-capability",
       ),
     ).toBe(true);
+  });
+
+  /* -------------------- WP4: nav.resume after reconnect ------------------- */
+
+  const RESUME_STATE: VoiceNavigationResumeState = {
+    navigationId: "nav-1",
+    routeVersion: 2,
+    routeToken: "route-capability",
+    lastKnownStepIndex: 3,
+    currentPosition: { latitude: 25.0478, longitude: 121.517, heading: 90 },
+  };
+
+  function sentNavResume(socket: { sent: Array<string | ArrayBuffer> }) {
+    return socket.sent
+      .filter((message): message is string => typeof message === "string")
+      .map((message) => JSON.parse(message))
+      .filter((message) => message.type === "nav.resume");
+  }
+
+  it("WP4: the first session.ready never sends nav.resume", async () => {
+    const h = createHarness({ resumeState: RESUME_STATE });
+    h.controller.setNavigationRoute("route-capability");
+    h.controller.start();
+    await bringToListening(h);
+
+    expect(sentNavResume(h.sockets[0])).toEqual([]);
+  });
+
+  it("WP4: a reconnect's session.ready sends nav.resume with the live snapshot", async () => {
+    const h = createHarness({ resumeState: RESUME_STATE });
+    h.controller.setNavigationRoute("route-capability");
+    h.controller.start();
+    await bringToListening(h);
+
+    h.sockets[0].triggerClose(1006, "");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(h.sockets).toHaveLength(2);
+    h.sockets[1].triggerOpen();
+    h.sockets[1].triggerMessage(readyMessage());
+
+    expect(sentNavResume(h.sockets[1])).toEqual([
+      {
+        type: "nav.resume",
+        navigationId: "nav-1",
+        routeVersion: 2,
+        routeToken: "route-capability",
+        lastKnownStepIndex: 3,
+        currentPosition: { latitude: 25.0478, longitude: 121.517, heading: 90 },
+      },
+    ]);
+    // Route re-arm still precedes the resume request.
+    const types = h.sockets[1].sent
+      .filter((message): message is string => typeof message === "string")
+      .map((message) => JSON.parse(message).type);
+    expect(types.indexOf("nav.setRoute")).toBeLessThan(
+      types.indexOf("nav.resume"),
+    );
+  });
+
+  it("WP4: nav.resume carries no currentPosition when there is no fix", async () => {
+    const h = createHarness({
+      resumeState: {
+        navigationId: "nav-1",
+        routeVersion: 1,
+        routeToken: "route-capability",
+        lastKnownStepIndex: 0,
+      },
+    });
+    h.controller.start();
+    await bringToListening(h);
+    h.sockets[0].triggerClose(4410, "navigation-turn-timeout");
+    await vi.advanceTimersByTimeAsync(1000);
+    h.sockets[1].triggerOpen();
+    h.sockets[1].triggerMessage(readyMessage());
+
+    expect(sentNavResume(h.sockets[1])).toEqual([
+      {
+        type: "nav.resume",
+        navigationId: "nav-1",
+        routeVersion: 1,
+        routeToken: "route-capability",
+        lastKnownStepIndex: 0,
+      },
+    ]);
+  });
+
+  it("WP4: no nav.resume when nothing is navigating on reconnect", async () => {
+    const h = createHarness({ resumeState: RESUME_STATE });
+    h.controller.start();
+    await bringToListening(h);
+
+    h.setResumeState(null); // navigation ended while the socket was down
+    h.sockets[0].triggerClose(1006, "");
+    await vi.advanceTimersByTimeAsync(1000);
+    h.sockets[1].triggerOpen();
+    h.sockets[1].triggerMessage(readyMessage());
+
+    expect(sentNavResume(h.sockets[1])).toEqual([]);
+  });
+
+  it("WP4: a restarted session treats its first ready as a first connect again", async () => {
+    const h = createHarness({ resumeState: RESUME_STATE });
+    h.controller.start();
+    await bringToListening(h);
+    h.sockets[0].triggerClose(1006, "");
+    await vi.advanceTimersByTimeAsync(1000);
+    h.sockets[1].triggerOpen();
+    h.sockets[1].triggerMessage(readyMessage());
+    expect(sentNavResume(h.sockets[1])).toHaveLength(1);
+
+    h.controller.end();
+    h.controller.start();
+    h.sockets[2].triggerOpen();
+    h.sockets[2].triggerMessage(readyMessage());
+    expect(sentNavResume(h.sockets[2])).toEqual([]);
+  });
+
+  it("WP4: nav.resume_ok and nav.resume_failed reach the navigation sink", () => {
+    const h = createHarness();
+    h.controller.start();
+    h.sockets[0].triggerOpen();
+
+    const events = [
+      {
+        type: "nav.resume_ok",
+        navigationId: "nav-1",
+        routeVersion: 2,
+        routeToken: "token-v2",
+        currentStepIndex: 4,
+        totalSteps: 8,
+        onVehicle: false,
+        steps: [
+          {
+            index: 0,
+            instruction: "直行",
+            legType: "WALK",
+            distanceM: 100,
+            isTransit: false,
+          },
+        ],
+      },
+      {
+        type: "nav.resume_failed",
+        navigationId: "nav-1",
+        code: "SNAPSHOT_NOT_FOUND",
+        message: "導航階段已逾期",
+        retryable: false,
+      },
+    ];
+    for (const event of events) {
+      h.sockets[0].triggerMessage(JSON.stringify(event));
+    }
+
+    expect(h.onNavigationEvent.mock.calls.map((call) => call[0])).toEqual(
+      events,
+    );
   });
 
   it("case 24: transcript events with final and utteranceId are passed to onTranscript", async () => {

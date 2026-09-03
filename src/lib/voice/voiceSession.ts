@@ -50,6 +50,30 @@ interface NavCancelMessage {
   type: "nav.cancel";
 }
 
+/**
+ * Client -> server: re-attach to an in-flight backend navigation after the
+ * socket was rebuilt (§6.1 reconnect). Sent right after `session.ready` of a
+ * *reconnect* — never of the first connect, where there is nothing to resume.
+ * The server answers with `nav.resume_ok` or `nav.resume_failed`.
+ */
+interface NavResumeMessage {
+  type: "nav.resume";
+  navigationId: string;
+  routeVersion: number;
+  routeToken: string;
+  lastKnownStepIndex: number;
+  currentPosition?: VoiceNavigationPosition;
+}
+
+/** Snapshot the adapter provides so the controller can build nav.resume. */
+export interface VoiceNavigationResumeState {
+  navigationId: string;
+  routeVersion: number;
+  routeToken: string;
+  lastKnownStepIndex: number;
+  currentPosition?: VoiceNavigationPosition;
+}
+
 /** Server -> client: auth + Gemini connect done, client may now send audio. */
 interface SessionReadyMessage {
   type: "session.ready";
@@ -172,6 +196,28 @@ export type VoiceNavigationEvent =
       navigationId: string;
       previousRouteVersion: number;
       code: string;
+      message: string;
+      retryable: boolean;
+    }
+  | {
+      type: "nav.resume_ok";
+      navigationId: string;
+      routeVersion: number;
+      routeToken: string;
+      currentStepIndex: number;
+      totalSteps: number;
+      onVehicle: boolean;
+      steps: VoiceNavStep[];
+    }
+  | {
+      type: "nav.resume_failed";
+      navigationId: string;
+      code:
+        | "INVALID_REQUEST"
+        | "SNAPSHOT_NOT_FOUND"
+        | "USER_MISMATCH"
+        | "ROUTE_VERSION_MISMATCH"
+        | "ROUTE_EXPIRED";
       message: string;
       retryable: boolean;
     }
@@ -299,6 +345,12 @@ export interface VoiceSessionDeps {
   onInterrupted?(): void;
   onToolEvent(event: VoiceToolEvent): void;
   onNavigationEvent(event: VoiceNavigationEvent): void;
+  /**
+   * Current backend-owned navigation, read synchronously right after a
+   * reconnect's `session.ready`. Returning `null` (not navigating, or the
+   * local engine owns navigation) skips `nav.resume` entirely.
+   */
+  getNavigationResumeState?(): VoiceNavigationResumeState | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -337,6 +389,13 @@ export class VoiceSessionController {
   /** Latest selected HTTP route capability; re-armed after every reconnect. */
   private routeToken: string | null = null;
 
+  /**
+   * True once this session has seen a `session.ready`. Every later ready is
+   * therefore a *reconnect* ready — the only point at which `nav.resume` is
+   * meaningful.
+   */
+  private hasBeenReady = false;
+
   constructor(private readonly deps: VoiceSessionDeps) {}
 
   /* ---------------------------- public API ---------------------------- */
@@ -354,6 +413,7 @@ export class VoiceSessionController {
     this.identityAtStart = identity;
     this.sessionActive = true;
     this.hasRefreshed = false;
+    this.hasBeenReady = false;
     this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
 
     this.playback = this.deps.createPlayback();
@@ -410,7 +470,11 @@ export class VoiceSessionController {
   }
 
   private sendControl(
-    message: NavSetRouteMessage | NavPositionMessage | NavCancelMessage,
+    message:
+      | NavSetRouteMessage
+      | NavPositionMessage
+      | NavCancelMessage
+      | NavResumeMessage,
   ): void {
     if (!this.sessionActive || !this.socket) return;
     if (
@@ -568,6 +632,8 @@ export class VoiceSessionController {
   private dispatchEvent(gen: number, message: ServerEventMessage): void {
     switch (message.type) {
       case "session.ready": {
+        const isReconnect = this.hasBeenReady;
+        this.hasBeenReady = true;
         this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS; // reset backoff on success
         this.setStatus({ status: "ready" });
         if (this.routeToken) {
@@ -576,6 +642,10 @@ export class VoiceSessionController {
             routeToken: this.routeToken,
           });
         }
+        // A rebuilt socket dropped the server-side navigation binding; ask to
+        // re-attach to it before any audio flows, so the assistant keeps
+        // announcing the same navigation instead of starting from scratch.
+        if (isReconnect) this.sendNavigationResume();
         this.startCapture(gen);
         return;
       }
@@ -654,6 +724,8 @@ export class VoiceSessionController {
       case "nav.rerouting":
       case "nav.route_replaced":
       case "nav.reroute_failed":
+      case "nav.resume_ok":
+      case "nav.resume_failed":
       case "nav.error": {
         this.deps.onNavigationEvent(message as VoiceNavigationEvent);
         return;
@@ -664,6 +736,28 @@ export class VoiceSessionController {
           message.type,
         );
     }
+  }
+
+  /**
+   * Build and send `nav.resume` from the adapter's snapshot. Anything
+   * incomplete (no navigation, no route capability) means there is nothing to
+   * resume, so the message is skipped rather than sent half-filled.
+   */
+  private sendNavigationResume(): void {
+    const state = this.deps.getNavigationResumeState?.();
+    if (!state) return;
+    const routeToken = state.routeToken || this.routeToken;
+    if (!state.navigationId || !routeToken) return;
+
+    const message: NavResumeMessage = {
+      type: "nav.resume",
+      navigationId: state.navigationId,
+      routeVersion: state.routeVersion,
+      routeToken,
+      lastKnownStepIndex: state.lastKnownStepIndex,
+    };
+    if (state.currentPosition) message.currentPosition = state.currentPosition;
+    this.sendControl(message);
   }
 
   private startCapture(gen: number): void {
