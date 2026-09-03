@@ -11,6 +11,7 @@ import { useAppTranslation } from "@/i18n/client";
 import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
+import { BusLegStops } from "./BusLegStops";
 import { DriveStepsList } from "./DriveStepsList";
 import { TransitStops } from "./TransitStops";
 import type { PointLabelContext } from "./utils";
@@ -74,6 +75,8 @@ export function LegDetail({
   pointCtx,
   isSelected,
   engine,
+  routeIndex = 0,
+  legIndex = 0,
 }: {
   leg: RouteLeg;
   isFirst: boolean;
@@ -81,6 +84,8 @@ export function LegDetail({
   pointCtx: PointLabelContext;
   isSelected: boolean;
   engine?: AccessibleRoute["engine"];
+  routeIndex?: number;
+  legIndex?: number;
 }) {
   const { t } = useAppTranslation();
   switch (leg.type) {
@@ -131,13 +136,10 @@ export function LegDetail({
             </div>
             <WaitBadge waitInfo={leg.waitInfo} />
           </div>
-          <TransitStops
-            boardName={leg.departureStop}
-            alightName={leg.arrivalStop}
-            intermediateStops={leg.intermediateStops}
-            color={getLegColor(leg)}
-            departureA11y={leg.departureStopA11y}
-            arrivalA11y={leg.arrivalStopA11y}
+          <BusLegStops
+            leg={leg}
+            routeIndex={routeIndex}
+            legIndex={legIndex}
             isSelected={isSelected}
           />
           {leg.nearestBus && (

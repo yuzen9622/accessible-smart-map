@@ -305,6 +305,8 @@ export const RouteCard = memo(function RouteCard({
                       pointCtx={pointCtx}
                       isSelected={isSelected}
                       engine={route.engine}
+                      routeIndex={idx}
+                      legIndex={index}
                     />
                   </div>
                 </div>
