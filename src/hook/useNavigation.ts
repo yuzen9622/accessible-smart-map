@@ -12,6 +12,7 @@ import {
   projectToPath,
   shortestAngleLerp,
 } from "@/lib/geo";
+import { requestForegroundLocationFix } from "@/lib/navigation/foregroundLocation";
 import {
   isVehicleLegType,
   type NavLegType,
@@ -341,6 +342,29 @@ export default function useNavigation() {
       duration: PREVIEW_EASE_MS,
     });
   }, [currentStepIndex, instructions]);
+
+  // ---- Foreground return: the geolocation watch is suspended while the app
+  // is backgrounded, so the stored fix can be minutes old the moment the user
+  // looks at the screen again. Ask for one fresh high-accuracy fix; writing it
+  // to the map store is what re-runs the progress projection and (in voice
+  // navigation) forwards the latest position to the backend. ----
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleVisibilityChange = () => {
+      requestForegroundLocationFix({
+        isVisible: () => document.visibilityState === "visible",
+        geolocation:
+          typeof navigator === "undefined" ? null : navigator.geolocation,
+        onPosition: (location, heading) => {
+          if (heading != null) useNavStore.getState().setGpsHeading(heading);
+          useMapStore.getState().setUserLocation(location);
+        },
+      });
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // ---- 3D/2D toggle: re-pitch the camera in place when the mode changes ----
   const viewMode = useNavStore((s) => s.viewMode);
