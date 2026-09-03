@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "expo-web-to-native": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "skillPath": "plugins/expo/skills/expo-web-to-native/SKILL.md",
+      "computedHash": "91c5a9827989c25d997893216741fcbc5681260848dbc40ca890f03bb68ba451"
+    }
+  }
+}
