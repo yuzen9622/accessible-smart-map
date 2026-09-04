@@ -58,9 +58,34 @@ export function navThresholdsFor(
 }
 
 /**
+ * How close counts as "reached" for maneuver `i`, in meters along the route.
+ *
+ * The leg-type radius is the ceiling, never the answer: it is also capped at
+ * half the distance from the previous maneuver. Without that cap a radius wider
+ * than the gap between two maneuvers reaches back *past* the one before it, so
+ * every maneuver inside one radius counts as reached at once. That is what made
+ * navigation open on a step deep into the route — a driver standing at the
+ * origin had the whole first 60 m of turns swallowed in a single pass, and the
+ * result depended only on position, so re-navigating from the same spot landed
+ * on the same step every time.
+ */
+function reachedRadiusM(
+  instructions: readonly NavInstruction[],
+  waypoints: readonly { alongM: number }[],
+  i: number,
+): number {
+  const { arriveM } = navThresholdsFor(instructions[i]?.legType);
+  const prevAlongM = i > 0 ? waypoints[i - 1].alongM : 0;
+  const gapM = Math.max(0, waypoints[i].alongM - prevAlongM);
+  return Math.min(arriveM, gapM / 2);
+}
+
+/**
  * First maneuver still ahead of the user, using each waypoint's own leg-type
  * threshold — a composite route hits the 60 m driving radius while on the road
- * leg and the 18 m walking radius after the handoff, within one pass.
+ * leg and the 18 m walking radius after the handoff, within one pass. Each
+ * radius is capped so it cannot swallow the maneuver before it (see
+ * `reachedRadiusM`).
  */
 export function selectNextStepIndex(
   instructions: readonly NavInstruction[],
@@ -69,8 +94,11 @@ export function selectNextStepIndex(
 ): number {
   const count = Math.min(instructions.length, waypoints.length);
   for (let i = 0; i < count; i++) {
-    const { arriveM } = navThresholdsFor(instructions[i]?.legType);
-    if (waypoints[i].alongM > alongM + arriveM) return i;
+    if (
+      waypoints[i].alongM >
+      alongM + reachedRadiusM(instructions, waypoints, i)
+    )
+      return i;
   }
   return Math.max(0, count - 1);
 }

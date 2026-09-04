@@ -110,6 +110,69 @@ describe("selectNextStepIndex", () => {
     expect(selectNextStepIndex(compositeRoute, waypoints, 5000)).toBe(3);
   });
 
+  // Regression: a stationary user at the origin used to have every maneuver
+  // inside one arrive radius counted as reached at once, so navigation opened
+  // several steps in. Position alone decided the step, so exiting and
+  // navigating another route from the same spot re-derived the same step and
+  // looked like the old step index had been remembered.
+  it("opens on the first real maneuver when the user is at the route start", () => {
+    const walkRoute = [
+      instruction("WALK", { type: "depart" }),
+      instruction("WALK"),
+      instruction("WALK"),
+      instruction("WALK"),
+    ];
+    // Depart at 0, then turns 8 m and 15 m in — all three inside the 18 m
+    // walking radius — before the route opens up at 120 m.
+    const dense = [
+      { alongM: 0 },
+      { alongM: 8 },
+      { alongM: 15 },
+      { alongM: 120 },
+    ];
+    expect(selectNextStepIndex(walkRoute, dense, 0)).toBe(1);
+  });
+
+  it("never swallows a driving maneuver the user has not passed", () => {
+    const driveRoute = [
+      instruction("DRIVE", { type: "depart" }),
+      instruction("DRIVE"),
+      instruction("DRIVE"),
+      instruction("DRIVE"),
+    ];
+    // 30 m and 55 m are both well inside the 60 m driving radius.
+    const dense = [
+      { alongM: 0 },
+      { alongM: 30 },
+      { alongM: 55 },
+      { alongM: 900 },
+    ];
+    expect(selectNextStepIndex(driveRoute, dense, 0)).toBe(1);
+    expect(selectNextStepIndex(driveRoute, dense, 20)).toBe(2);
+  });
+
+  it("advances monotonically as the user moves through dense maneuvers", () => {
+    const walkRoute = [
+      instruction("WALK", { type: "depart" }),
+      instruction("WALK"),
+      instruction("WALK"),
+      instruction("WALK"),
+    ];
+    const dense = [
+      { alongM: 0 },
+      { alongM: 8 },
+      { alongM: 15 },
+      { alongM: 120 },
+    ];
+    const walked = [0, 2, 4, 6, 8, 10, 12, 15, 40, 80, 119];
+    const seen = walked.map((m) => selectNextStepIndex(walkRoute, dense, m));
+    for (let i = 1; i < seen.length; i++) {
+      expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
+    }
+    expect(seen[0]).toBe(1);
+    expect(seen[seen.length - 1]).toBe(3);
+  });
+
   it("returns 0 with no instructions", () => {
     expect(selectNextStepIndex([], [], 0)).toBe(0);
   });
@@ -270,6 +333,59 @@ describe("resolveWaypoints with multi-leg fallback steps", () => {
     const wps = resolveWaypoints(instructions, path);
     expect(wps[0].alongM).toBe(0);
     expect(wps[1].alongM).toBeGreaterThan(900);
+  });
+
+  // An unanchored instruction used to fall back to the route's last point,
+  // which put it past every later maneuver and broke step selection.
+  it("inherits the previous maneuver point for an unanchored instruction", () => {
+    const leg: RouteLeg = {
+      type: "WALK",
+      from: "A",
+      to: "B",
+      distanceM: 200,
+      minutesEst: 3,
+      polyline: [
+        [121.5, 25.0],
+        [121.501, 25.0],
+        [121.502, 25.0],
+      ],
+      a11yFacilities: [],
+    };
+    const path = buildCumulativePath([leg]);
+    const instructions = [
+      instruction("WALK", { polylineIndex: 0 }),
+      instruction("WALK", { polylineIndex: null }),
+      instruction("WALK", { polylineIndex: 2 }),
+    ];
+
+    const wps = resolveWaypoints(instructions, path);
+    expect(wps[1].alongM).toBe(wps[0].alongM);
+    expect(wps[1].alongM).toBeLessThan(wps[2].alongM);
+  });
+
+  it("keeps the waypoint list non-decreasing when the first index is null", () => {
+    const leg: RouteLeg = {
+      type: "WALK",
+      from: "A",
+      to: "B",
+      distanceM: 200,
+      minutesEst: 3,
+      polyline: [
+        [121.5, 25.0],
+        [121.501, 25.0],
+      ],
+      a11yFacilities: [],
+    };
+    const path = buildCumulativePath([leg]);
+    const wps = resolveWaypoints(
+      [
+        instruction("WALK", { polylineIndex: null }),
+        instruction("WALK", { polylineIndex: 1 }),
+      ],
+      path,
+    );
+    expect(wps[0].alongM).toBe(0);
+    expect(wps[1].alongM).toBeGreaterThan(0);
   });
 });
 

@@ -164,8 +164,14 @@ export interface Waypoint {
 
 /**
  * Map each instruction to its maneuver coordinate + along-route distance via
- * `polylineIndex` (a global index into the concatenated path). Out-of-range or
- * null indices are clamped so the engine always has a usable waypoint.
+ * `polylineIndex` (a global index into the concatenated path). Out-of-range
+ * indices are clamped so the engine always has a usable waypoint.
+ *
+ * A null index means the backend could not anchor that instruction to the
+ * polyline. It inherits the previous instruction's point: the waypoint list
+ * stays non-decreasing, which is what step selection assumes. Clamping it to
+ * the route end instead would place an unanchored instruction past every later
+ * maneuver and make it look like the only step still ahead.
  */
 export function resolveWaypoints(
   instructions: NavInstruction[],
@@ -173,10 +179,11 @@ export function resolveWaypoints(
 ): Waypoint[] {
   if (path.length === 0) return [];
   const last = path.length - 1;
+  let prevIdx = 0;
   return instructions.map((ins) => {
-    let idx = ins.polylineIndex;
-    if (idx == null) idx = last;
+    const idx = ins.polylineIndex ?? prevIdx;
     const ci = Math.max(0, Math.min(last, idx));
+    prevIdx = ci;
     return {
       coord: path[ci] ?? null,
       alongM: cumM[ci] ?? 0,
