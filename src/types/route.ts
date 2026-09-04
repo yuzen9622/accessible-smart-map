@@ -540,7 +540,7 @@ export interface NavInstructionsData {
 }
 
 export interface NavInstructionsRequest {
-  route: AccessibleRoute;
+  routeToken: string;
   userHeading?: number;
   language?: string;
 }

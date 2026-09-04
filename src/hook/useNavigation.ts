@@ -172,9 +172,13 @@ export default function useNavigation() {
   // ---- Load instructions when navigation starts (passthrough legs only) ----
   useEffect(() => {
     if (!route || navigationSource === "voice") return;
+    // The instructions endpoint is keyed by routeToken only; without it there
+    // is nothing to ask for.
+    const routeToken = route.routeToken;
+    if (!routeToken) return;
     let cancelled = false;
     getRouteInstructions({
-      route: route,
+      routeToken,
       userHeading: useNavStore.getState().userHeading ?? undefined,
       language: lang,
     })
