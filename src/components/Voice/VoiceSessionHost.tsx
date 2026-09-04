@@ -2,9 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import useRouteReroute from "@/hook/useRouteReroute";
 import useVoiceSession from "@/hook/useVoiceSession";
 import { haversineMeters } from "@/lib/geo";
+import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
+import {
+  startNavigation,
+  stopNavigation,
+} from "@/lib/navigation/navigationLifecycle";
 import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
 import { toNavProgressUpdate } from "@/lib/voice/navProgress";
 import type { VoiceNavigationEvent } from "@/lib/voice/voiceSession";
@@ -69,8 +73,6 @@ export default function VoiceSessionHost() {
   } = useVoiceSession();
   const lastSentPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const serverStoppedNavigationRef = useRef(false);
-  // Fallback path when the backend cannot resume the navigation session.
-  const { confirmOffRouteEpisode } = useRouteReroute();
 
   useEffect(() => {
     useVoiceStore.getState().bindSessionActions({
@@ -97,7 +99,7 @@ export default function VoiceSessionHost() {
         // session.ready will re-arm the route so the user can ask again.
         nav.setNavigationSource("local");
         serverStoppedNavigationRef.current = true;
-        map.setIsNavigating(false);
+        stopNavigation();
       }
     }
   }, [status]);
@@ -227,7 +229,7 @@ export default function VoiceSessionHost() {
           nav.setVoiceEnabled(false);
           lastSentPositionRef.current = null;
           serverStoppedNavigationRef.current = false;
-          map.setIsNavigating(true);
+          startNavigation();
           if (map.userLocation) {
             const heading = nav.userHeading ?? nav.gpsHeading;
             lastSentPositionRef.current = map.userLocation;
@@ -280,6 +282,7 @@ export default function VoiceSessionHost() {
             type: "nav.rerouting",
             navigationId: navigationEvent.navigationId,
             previousRouteVersion: navigationEvent.previousRouteVersion,
+            reason: navigationEvent.reason,
           });
           break;
         case "nav.route_replaced": {
@@ -297,6 +300,7 @@ export default function VoiceSessionHost() {
               instructions,
               warnings: navigationEvent.warnings,
               currentStepIndex: navigationEvent.currentStepIndex,
+              reason: navigationEvent.reason,
             },
           });
           break;
@@ -311,15 +315,12 @@ export default function VoiceSessionHost() {
           });
           break;
         case "nav.resume_ok": {
-          const currentNavigationId =
-            map.selectRoute?.route.navigationId ?? nav.navigationId;
-          const currentRouteVersion =
-            map.selectRoute?.route.routeVersion ?? nav.routeVersion;
           if (
+            !map.isNavigating ||
             nav.arrived ||
-            currentNavigationId === null ||
-            navigationEvent.navigationId !== currentNavigationId ||
-            navigationEvent.routeVersion !== currentRouteVersion
+            !nav.navigationId ||
+            navigationEvent.navigationId !== nav.navigationId ||
+            navigationEvent.routeVersion !== nav.routeVersion
           ) {
             break;
           }
@@ -334,7 +335,6 @@ export default function VoiceSessionHost() {
           // Nothing was forwarded while the socket was down; let the next fix
           // through regardless of how far the user moved.
           lastSentPositionRef.current = null;
-          if (!map.isNavigating) map.setIsNavigating(true);
           break;
         }
         case "nav.resume_failed": {
@@ -346,7 +346,17 @@ export default function VoiceSessionHost() {
           lastSentPositionRef.current = null;
           serverStoppedNavigationRef.current = false;
           toast.info("連線已恢復，正在重新規劃路線");
-          if (map.userLocation) confirmOffRouteEpisode(map.userLocation);
+          if (map.userLocation) {
+            void localRerouteCoordinator.triggerAutoReroute(map.userLocation);
+          }
+          break;
+        }
+        case "nav.advisory": {
+          nav.pushAdvisories(navigationEvent.advisories);
+          const critical = navigationEvent.advisories.find(
+            (a) => a.severity === "critical",
+          );
+          if (critical) toast.warning(critical.title);
           break;
         }
         case "nav.arrived":
@@ -359,12 +369,12 @@ export default function VoiceSessionHost() {
             nav.setArrived(true);
           } else if (map.isNavigating) {
             nav.setNavigationSource("local");
-            map.setIsNavigating(false);
+            stopNavigation();
           }
           break;
         case "nav.error":
           nav.setNavigationSource("local");
-          if (map.isNavigating) map.setIsNavigating(false);
+          if (map.isNavigating) stopNavigation();
           toast.error(navigationEvent.message);
           break;
       }
@@ -375,7 +385,6 @@ export default function VoiceSessionHost() {
     status.status,
     consumeNavigationEvents,
     sendNavigationPosition,
-    confirmOffRouteEpisode,
   ]);
 
   // Leaving the map page (this host unmounting) is a terminal path too.

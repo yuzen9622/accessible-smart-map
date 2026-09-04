@@ -67,12 +67,14 @@ export async function getAccessibleRoute(request: AccessibleRouteRequest) {
 
 export async function rerouteAccessibleRoute(
   request: AccessibleRouteRerouteRequest,
+  signal?: AbortSignal,
 ) {
   const response = await fetchRequest(
     `${END_POINT}/api/v1/a11y/accessible-route/reroute`,
     {
       method: "POST",
       body: request,
+      signal,
     },
   );
   return response as ApiResponse<AccessibleRouteRerouteData>;

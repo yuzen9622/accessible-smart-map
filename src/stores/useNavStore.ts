@@ -1,7 +1,14 @@
 "use client";
 import { create } from "zustand";
+import type {
+  VoiceNavAdvisory,
+  VoiceRerouteReason,
+} from "@/lib/voice/voiceSession";
 import type { LatLng } from "@/types";
 import type { NavInstruction } from "@/types/route";
+
+export type NavAdvisory = VoiceNavAdvisory;
+export type NavRerouteReason = VoiceRerouteReason;
 
 export type HeadingSource = "compass" | "gps" | null;
 export type CompassPermission = "unknown" | "granted" | "denied";
@@ -48,7 +55,10 @@ interface NavState {
   rerouteStatus: RerouteStatus;
   rerouteError: string | null;
   rerouteRetryable: boolean;
-  rerouteRetryNonce: number;
+  /** 目前尚未關閉的主動警報，最新在前，上限 ADVISORY_MAX 則。 */
+  advisories: NavAdvisory[];
+  /** 最近一次改道的原因，供 HUD 顯示明確說明。 */
+  lastRerouteReason: NavRerouteReason | null;
   arrived: boolean;
   compassPermission: CompassPermission;
   /** Timestamp of the last manual step change; brief lock against auto-advance. */
@@ -102,7 +112,10 @@ interface NavAction {
   setReroutePending: () => void;
   setRerouteIdle: () => void;
   setRerouteError: (message: string, retryable?: boolean) => void;
-  requestRerouteRetry: () => void;
+  pushAdvisories: (advisories: NavAdvisory[]) => void;
+  dismissAdvisory: (advisoryId: string) => void;
+  clearAdvisories: () => void;
+  setLastRerouteReason: (reason: NavRerouteReason | null) => void;
   setArrived: (v: boolean) => void;
   setCompassPermission: (p: CompassPermission) => void;
   setFollowPaused: (v: boolean) => void;
@@ -117,6 +130,8 @@ interface NavAction {
 }
 
 type NavStore = NavState & NavAction;
+
+const ADVISORY_MAX = 3;
 
 const initialState: NavState = {
   navigationSource: "local",
@@ -133,7 +148,8 @@ const initialState: NavState = {
   rerouteStatus: "idle",
   rerouteError: null,
   rerouteRetryable: false,
-  rerouteRetryNonce: 0,
+  advisories: [],
+  lastRerouteReason: null,
   arrived: false,
   compassPermission: "unknown",
   lastManualTs: 0,
@@ -165,6 +181,8 @@ const useNavStore = create<NavStore>((set) => ({
       rerouteStatus: "idle",
       rerouteError: null,
       rerouteRetryable: false,
+      advisories: [],
+      lastRerouteReason: null,
       remainingDurationSec: null,
       estimatedArrivalAt: null,
       etaSource: null,
@@ -202,13 +220,28 @@ const useNavStore = create<NavStore>((set) => ({
     }),
   setRerouteError: (rerouteError, rerouteRetryable = true) =>
     set({ rerouteStatus: "error", rerouteError, rerouteRetryable }),
-  requestRerouteRetry: () =>
-    set((state) => ({ rerouteRetryNonce: state.rerouteRetryNonce + 1 })),
+  pushAdvisories: (incoming) =>
+    set((state) => {
+      const byId = new Map(state.advisories.map((a) => [a.advisoryId, a]));
+      for (const a of incoming) byId.set(a.advisoryId, a);
+      return {
+        advisories: [...byId.values()]
+          .sort((l, r) => r.issuedAt.localeCompare(l.issuedAt))
+          .slice(0, ADVISORY_MAX),
+      };
+    }),
+  dismissAdvisory: (advisoryId) =>
+    set((state) => ({
+      advisories: state.advisories.filter((a) => a.advisoryId !== advisoryId),
+    })),
+  clearAdvisories: () => set({ advisories: [] }),
+  setLastRerouteReason: (lastRerouteReason) => set({ lastRerouteReason }),
   setArrived: (arrived) =>
     set(() => ({
       arrived,
       ...(arrived
         ? {
+            advisories: [],
             remainingM: 0,
             distanceToNextM: 0,
             remainingDurationSec: 0,

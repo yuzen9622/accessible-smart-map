@@ -741,6 +741,54 @@ describe("VoiceSessionController", () => {
     );
   });
 
+  it("WP5: forwards nav.advisory and the reroute reason without warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const h = createHarness();
+    h.controller.start();
+    h.sockets[0].triggerOpen();
+
+    const events = [
+      {
+        type: "nav.advisory",
+        navigationId: "nav-1",
+        routeVersion: 2,
+        advisories: [
+          {
+            advisoryId: "facility:station-1",
+            category: "facility",
+            severity: "critical",
+            action: "reroute_applied",
+            title: "電梯維修中",
+            speech: "前方站體電梯維修中，已為你改道",
+            rerouteReason: "FACILITY_OUTAGE",
+            issuedAt: "2026-09-04T00:00:00.000Z",
+          },
+        ],
+      },
+      {
+        type: "nav.route_replaced",
+        navigationId: "nav-1",
+        previousRouteVersion: 1,
+        routeVersion: 2,
+        routeToken: "route-v2-token",
+        route: { routeId: "route-v2" },
+        steps: [],
+        warnings: [],
+        currentStepIndex: 0,
+        reason: "FACILITY_OUTAGE",
+      },
+    ];
+
+    for (const event of events) {
+      h.sockets[0].triggerMessage(JSON.stringify(event));
+    }
+
+    expect(h.onNavigationEvent.mock.calls.map((call) => call[0])).toEqual(
+      events,
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("4410 rebuilds the live session and re-arms the route after ready", async () => {
     const h = createHarness();
     h.controller.setNavigationRoute("route-capability");

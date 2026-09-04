@@ -545,7 +545,12 @@ export interface NavInstructionsRequest {
   language?: string;
 }
 
-export type RerouteReason = "OFF_ROUTE" | "MANUAL";
+export type RerouteReason =
+  | "OFF_ROUTE"
+  | "FACILITY_OUTAGE"
+  | "CONFIRMED_HAZARD"
+  | "TRANSIT_DISRUPTION"
+  | "MANUAL";
 
 export interface AccessibleRouteRerouteRequest {
   routeToken: string;

@@ -10,6 +10,7 @@ import {
   Square,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,8 +25,10 @@ import {
   isVehicleLegType,
   resolveActiveLegType,
 } from "@/lib/navigation/legMode";
+import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
+import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
 import useMapStore from "@/stores/useMapStore";
-import useNavStore from "@/stores/useNavStore";
+import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
 import {
   formatDistance,
@@ -71,6 +74,14 @@ const FACILITY_LABEL_KEY: Record<SlimOsmA11y["category"], string> = {
   wheelchair_accessible: "facility",
 };
 
+const REROUTE_REASON_KEY: Record<NavRerouteReason, string> = {
+  OFF_ROUTE: "rerouteReasonOffRoute",
+  FACILITY_OUTAGE: "rerouteReasonFacilityOutage",
+  CONFIRMED_HAZARD: "rerouteReasonHazard",
+  TRANSIT_DISRUPTION: "rerouteReasonTransitDisruption",
+  MANUAL: "rerouteReasonManual",
+};
+
 /**
  * Map-first navigation chrome, per the approved redesign: a Google-Maps-style
  * top instruction banner with a "then" preview, accessibility-aware proximity
@@ -78,10 +89,9 @@ const FACILITY_LABEL_KEY: Record<SlimOsmA11y["category"], string> = {
  */
 export default function NavigationHUD() {
   const { t, i18n } = useAppTranslation();
-  const { selectRoute, setIsNavigating, userLocation } = useMapStore(
+  const { selectRoute, userLocation } = useMapStore(
     useShallow((s) => ({
       selectRoute: s.selectRoute,
-      setIsNavigating: s.setIsNavigating,
       userLocation: s.userLocation,
     })),
   );
@@ -101,11 +111,13 @@ export default function NavigationHUD() {
   const rerouteStatus = useNavStore((s) => s.rerouteStatus);
   const rerouteError = useNavStore((s) => s.rerouteError);
   const rerouteRetryable = useNavStore((s) => s.rerouteRetryable);
-  const requestRerouteRetry = useNavStore((s) => s.requestRerouteRetry);
   const stepListOpen = useNavStore((s) => s.stepListOpen);
   const setStepListOpen = useNavStore((s) => s.setStepListOpen);
   const setVoiceEnabled = useNavStore((s) => s.setVoiceEnabled);
   const warnings = useNavStore((s) => s.warnings);
+  const advisories = useNavStore((s) => s.advisories);
+  const dismissAdvisory = useNavStore((s) => s.dismissAdvisory);
+  const lastRerouteReason = useNavStore((s) => s.lastRerouteReason);
 
   const route = selectRoute?.route;
 
@@ -340,7 +352,7 @@ export default function NavigationHUD() {
             </div>
             <button
               type="button"
-              onClick={() => setIsNavigating(false)}
+              onClick={stopNavigation}
               className="shrink-0 bg-white/20 hover:bg-white/30 rounded-full px-5 py-2.5 min-h-[44px] flex items-center text-sm font-semibold transition-colors"
             >
               {t("endNav")}
@@ -418,7 +430,9 @@ export default function NavigationHUD() {
             <p className="flex-1 text-sm font-semibold">
               {rerouteError ??
                 (rerouteStatus === "pending"
-                  ? t("recalculate")
+                  ? lastRerouteReason
+                    ? t(REROUTE_REASON_KEY[lastRerouteReason])
+                    : t("recalculate")
                   : t("offRoute"))}
             </p>
             {navigationSource === "local" &&
@@ -426,7 +440,18 @@ export default function NavigationHUD() {
                 <button
                   type="button"
                   disabled={rerouteStatus === "pending"}
-                  onClick={requestRerouteRetry}
+                  onClick={() => {
+                    if (rerouteStatus === "error") {
+                      void localRerouteCoordinator.retry(
+                        userLocation ?? undefined,
+                      );
+                    } else {
+                      void localRerouteCoordinator.triggerManualReroute(
+                        "MANUAL",
+                        userLocation ?? undefined,
+                      );
+                    }
+                  }}
                   className="shrink-0 flex items-center gap-1.5 bg-white/25 hover:bg-white/35 rounded-full px-4 py-2.5 min-h-[44px] text-sm font-semibold transition-colors disabled:opacity-60"
                 >
                   <RefreshCw
@@ -442,6 +467,75 @@ export default function NavigationHUD() {
 
         {/* Recalculate overlay — shows what's being weighed while recalculating */}
         <RecalculateOverlay context={recalcContext} visible={recalcOverlay} />
+
+        {/* Proactive advisories (facility / transit / hazard) */}
+        {!arrived &&
+          advisories.map((advisory) => (
+            <div
+              key={advisory.advisoryId}
+              role={advisory.severity === "info" ? "status" : "alert"}
+              className={`flex items-start gap-3 p-3 rounded-2xl shadow-lg text-white ${
+                advisory.severity === "critical"
+                  ? "bg-red-600/95"
+                  : advisory.severity === "warning"
+                    ? "bg-amber-500/95"
+                    : "bg-slate-600/95"
+              }`}
+            >
+              <AlertPulseIcon />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">{advisory.title}</p>
+                {advisory.detail && (
+                  <p className="text-xs opacity-90 mt-0.5">{advisory.detail}</p>
+                )}
+                <span className="sr-only">{advisory.speech}</span>
+                {advisory.action === "reroute_suggested" && (
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      disabled={isRecalcBusy || rerouteStatus === "pending"}
+                      onClick={() => {
+                        dismissAdvisory(advisory.advisoryId);
+                        if (navigationSource === "local") {
+                          void localRerouteCoordinator.triggerManualReroute(
+                            advisory.rerouteReason ?? "MANUAL",
+                            userLocation ?? undefined,
+                          );
+                        } else {
+                          handleRecalculate();
+                        }
+                      }}
+                      className="bg-white/25 hover:bg-white/35 rounded-full px-4 py-2.5 min-h-[44px] text-sm font-semibold transition-colors disabled:opacity-60"
+                    >
+                      {t("viewAlternative")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => dismissAdvisory(advisory.advisoryId)}
+                      className="bg-white/10 hover:bg-white/20 rounded-full px-4 py-2.5 min-h-[44px] text-sm font-semibold transition-colors"
+                    >
+                      {t("keepRoute")}
+                    </button>
+                  </div>
+                )}
+                {advisory.action === "reroute_applied" && (
+                  <p className="text-xs font-medium mt-1">
+                    {t("rerouteApplied")}
+                  </p>
+                )}
+              </div>
+              {advisory.action === "none" && (
+                <button
+                  type="button"
+                  aria-label={t("dismiss")}
+                  onClick={() => dismissAdvisory(advisory.advisoryId)}
+                  className="shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full hover:bg-white/20 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
 
         {/* Step Unavailable Warnings */}
         {!arrived &&
@@ -563,7 +657,7 @@ export default function NavigationHUD() {
             </button>
             <button
               type="button"
-              onClick={() => setIsNavigating(false)}
+              onClick={stopNavigation}
               aria-label={t("endNav")}
               className="flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white rounded-full h-12 w-12 sm:w-auto sm:px-6 text-sm font-bold transition-colors shadow-lg"
             >

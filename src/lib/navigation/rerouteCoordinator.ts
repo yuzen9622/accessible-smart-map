@@ -1,5 +1,5 @@
 import useMapStore from "@/stores/useMapStore";
-import useNavStore from "@/stores/useNavStore";
+import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type {
   AccessibleRoute,
   AccessibleRouteRerouteData,
@@ -15,6 +15,7 @@ export interface RouteReplacement {
   instructions: NavInstruction[];
   warnings: string[];
   currentStepIndex: 0;
+  reason?: NavRerouteReason;
 }
 
 export type VoiceRerouteCoordinatorEvent =
@@ -22,6 +23,7 @@ export type VoiceRerouteCoordinatorEvent =
       type: "nav.rerouting";
       navigationId: string;
       previousRouteVersion: number;
+      reason?: NavRerouteReason;
     }
   | { type: "nav.route_replaced"; replacement: RouteReplacement }
   | {
@@ -110,6 +112,8 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
     rerouteError: null,
     rerouteRetryable: false,
   });
+  nav.setLastRerouteReason(replacement.reason ?? null);
+  nav.clearAdvisories();
   return true;
 }
 
@@ -137,6 +141,7 @@ export function handleVoiceRerouteEvent(
         return false;
       }
       nav.setReroutePending();
+      nav.setLastRerouteReason(event.reason ?? null);
       return null;
     case "nav.route_replaced":
       if (

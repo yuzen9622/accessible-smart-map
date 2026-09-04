@@ -10,6 +10,7 @@ import {
 import dynamic from "next/dynamic";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
+import { startNavigation } from "@/lib/navigation/navigationLifecycle";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import LoadingDrawer from "../shared/LoadingDrawer";
@@ -44,7 +45,6 @@ export default function RouteContent() {
     setRouteInfoShow,
     setSheetMode,
     selectRoute,
-    setIsNavigating,
     activeRailPanel,
     setActiveRailPanel,
     metroAlerts,
@@ -57,7 +57,6 @@ export default function RouteContent() {
       setRouteInfoShow: s.setRouteInfoShow,
       setSheetMode: s.setSheetMode,
       selectRoute: s.selectRoute,
-      setIsNavigating: s.setIsNavigating,
       activeRailPanel: s.activeRailPanel,
       setActiveRailPanel: s.setActiveRailPanel,
       metroAlerts: s.metroAlerts,
@@ -100,7 +99,7 @@ export default function RouteContent() {
     } else {
       useNavStore.getState().setCompassPermission("granted");
     }
-    setIsNavigating(true);
+    startNavigation();
   };
 
   if (!computeRoutes) {

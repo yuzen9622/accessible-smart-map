@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Navigation } from "lucide-react";
 import { useAppTranslation } from "@/i18n/client";
+import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
 import useMapStore from "@/stores/useMapStore";
 import { Button } from "../ui/button";
 import {
@@ -49,7 +50,10 @@ export default function ExitNavDialog() {
           <Button
             variant="destructive"
             className="flex-1 rounded-xl h-11 gap-1.5"
-            onClick={confirmNavExit}
+            onClick={() => {
+              stopNavigation();
+              confirmNavExit();
+            }}
           >
             <AlertTriangle className="h-4 w-4" />
             {t("exitNavConfirm")}

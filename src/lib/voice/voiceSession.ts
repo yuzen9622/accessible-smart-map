@@ -133,6 +133,27 @@ export interface VoiceNavStep {
   bearing?: number | null;
 }
 
+export type VoiceRerouteReason =
+  | "OFF_ROUTE"
+  | "FACILITY_OUTAGE"
+  | "CONFIRMED_HAZARD"
+  | "TRANSIT_DISRUPTION"
+  | "MANUAL";
+
+export interface VoiceNavAdvisory {
+  advisoryId: string;
+  category: "facility" | "transit_alert" | "hazard" | "traffic";
+  severity: "info" | "warning" | "critical";
+  action: "none" | "reroute_suggested" | "reroute_applied";
+  title: string;
+  detail?: string;
+  speech: string;
+  rerouteReason?: VoiceRerouteReason;
+  location?: { latitude: number; longitude: number };
+  distanceAheadM?: number;
+  issuedAt: string;
+}
+
 export type VoiceNavigationEvent =
   | {
       type: "nav.start";
@@ -177,6 +198,7 @@ export type VoiceNavigationEvent =
       navigationId: string;
       previousRouteVersion: number;
       clientRequestId: string;
+      reason?: VoiceRerouteReason;
     }
   | ({
       type: "nav.route_replaced";
@@ -187,6 +209,7 @@ export type VoiceNavigationEvent =
       route: AccessibleRoute;
       warnings: string[];
       currentStepIndex: 0;
+      reason?: VoiceRerouteReason;
     } & (
       | { instructions: NavInstruction[]; steps?: never }
       | { steps: VoiceNavStep[]; instructions?: never }
@@ -220,6 +243,12 @@ export type VoiceNavigationEvent =
         | "ROUTE_EXPIRED";
       message: string;
       retryable: boolean;
+    }
+  | {
+      type: "nav.advisory";
+      navigationId: string;
+      routeVersion: number;
+      advisories: VoiceNavAdvisory[];
     }
   | {
       type: "nav.error";
@@ -724,6 +753,7 @@ export class VoiceSessionController {
       case "nav.rerouting":
       case "nav.route_replaced":
       case "nav.reroute_failed":
+      case "nav.advisory":
       case "nav.resume_ok":
       case "nav.resume_failed":
       case "nav.error": {

@@ -241,8 +241,8 @@ export default function useNavigation() {
     // Off-route: require a few consecutive far samples before flagging.
     if (proj.perpDistM > thresholds.offRouteM) {
       offHitsRef.current += 1;
-      if (offHitsRef.current >= OFF_ROUTE_HITS && !nav.isOffRoute) {
-        nav.setIsOffRoute(true);
+      if (offHitsRef.current >= OFF_ROUTE_HITS) {
+        if (!nav.isOffRoute) nav.setIsOffRoute(true);
         confirmOffRouteEpisode(userLocation);
       }
     } else {
@@ -500,12 +500,5 @@ export default function useNavigation() {
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, []);
-
-  // ---- Reset runtime state when navigation ends (controller unmounts) ----
-  useEffect(() => {
-    return () => {
-      useNavStore.getState().reset();
-    };
   }, []);
 }
