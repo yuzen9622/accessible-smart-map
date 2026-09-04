@@ -7,12 +7,19 @@ services:
       args:
         - NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID}
         - NEXT_PUBLIC_END_POINT=${NEXT_PUBLIC_END_POINT}
+
     container_name: taipei-accessible-web
     restart: always
+
     ports:
       - "127.0.0.1:3000:3000"
+
     environment:
       - NODE_ENV=production
+
+    networks:
+      - shared
+
     healthcheck:
       test:
         [
@@ -30,10 +37,19 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: frontend-cloudflare-tunnel
     restart: always
-    # 使用 Cloudflare Tunnel Token 啟動
-    # 您需要在同目錄的 .env 檔案中設定 TUNNEL_TOKEN=你的Token
+
     command: tunnel --no-autoupdate run
+
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+
     depends_on:
       - web
+
+    networks:
+      - shared
+
+networks:
+  shared:
+    external: true
+    name: accessible-shared
