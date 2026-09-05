@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
+import { VisualViewportSync } from "@/components/layout/VisualViewportSync";
 import CoachMarks from "@/components/Onboarding/CoachMarks";
 import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
 import SkipNavLink from "@/components/shared/SkipNavLink";
@@ -173,7 +174,11 @@ export default function ClientLayout({
   }
 
   return (
-    <div className="w-full h-dvh flex flex-col">
+    <div
+      className="w-full flex flex-col"
+      style={{ height: "var(--vvh, 100dvh)" }}
+    >
+      <VisualViewportSync />
       <SkipNavLink />
       <main id="main-map" className="flex-1 relative" aria-label="Map">
         {children}

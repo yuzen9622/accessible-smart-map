@@ -20,6 +20,29 @@
     @apply bg-background text-foreground font-sans;
     pointer-events: auto;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* iOS Safari/WKWebView 對 computed font-size < 16px 的表單控件會在 focus 時
+     自動放大整個 viewport。用 pointer: coarse 而非 max-width 判斷，因為 iPad 與
+     iPhone 橫向（最寬 932px）同樣會 auto-zoom，用寬度判斷會漏掉。
+     需要 !important：Tailwind v4 的 utility layer 優先度高於 base layer，否則會被
+     元件上的 text-sm 蓋掉。這也是為什麼元件端刻意保留 text-sm —— 觸控裝置一律由
+     這條規則接管成 16px，text-sm 只在桌機生效。 */
+  @media (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="file"]
+      ):not([type="color"]),
+    textarea,
+    select {
+      /* biome-ignore lint/complexity/noImportantStyles: Tailwind v4 的 utility layer
+         優先度高於 base layer，不用 !important 會被元件上的 text-sm 蓋掉，
+         auto-zoom 就修不掉。 */
+      font-size: 16px !important;
+    }
+  }
 }
 
 .material-symbols-outlined {
