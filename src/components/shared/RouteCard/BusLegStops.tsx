@@ -101,6 +101,7 @@ export function BusLegStops({
         isStopsOpen={isOpen}
         onStopsOpenChange={handleOpenChange}
         targetPlate={targetBus?.plateNumb}
+        liveEtaMinutes={targetBus?.estimateTime}
       />
     </div>
   );

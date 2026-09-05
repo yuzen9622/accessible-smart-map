@@ -1,46 +1,49 @@
 import type { BusLegEtaStatus } from "@/hook/useBusLegStopEtas";
 import { useAppTranslation } from "@/i18n/client";
-import type { BusLegStopRow, EtaTone } from "@/lib/transit/busLegStops";
-import { resolveEtaLabel } from "@/lib/transit/busLegStops";
+import type { BusLegStopRow } from "@/lib/transit/busLegStops";
 import { cn } from "@/lib/utils";
 import type { IntermediateStop, SlimOsmA11y } from "@/types/route";
 import { A11yStationIcons } from "./A11yStationIcons";
 import { IntermediateStops } from "./IntermediateStops";
 
-function BoardAlightEtaBadge({
-  row,
+function EndpointTime({
+  scheduledTime,
+  liveEtaMinutes,
   t,
 }: {
-  row: BusLegStopRow;
+  scheduledTime?: string;
+  liveEtaMinutes?: number | null;
   t: (key: string, options?: Record<string, string | number>) => string;
 }) {
-  const { key, params, tone, kind } = resolveEtaLabel(row);
+  const hasLiveEta = typeof liveEtaMinutes === "number" && liveEtaMinutes >= 0;
 
-  // Not "no service" — we simply have not heard back yet. A status word here is
-  // what made a scheduled 18:15 departure read as 「尚未發車」.
-  if (kind === "pending" || !key) {
+  if (!hasLiveEta) {
+    if (!scheduledTime) return null;
     return (
-      <span
-        aria-hidden
-        className="inline-block h-4 w-11 rounded-full bg-muted animate-pulse motion-reduce:animate-none shrink-0 ml-auto"
-      />
+      <span className="ml-auto shrink-0 text-muted-foreground tabular-nums">
+        {t("busPlannedAt", { time: scheduledTime })}
+      </span>
     );
   }
 
-  const labelText = t(key, params);
-
-  const toneClasses: Record<EtaTone, string> = {
-    arriving: "text-red-600 dark:text-red-400 bg-red-500/10 font-bold",
-    soon: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 font-medium",
-    normal: "text-muted-foreground bg-muted/60",
-    muted: "text-muted-foreground/70 bg-transparent",
-  };
+  const key =
+    liveEtaMinutes === 0
+      ? "busRealtimeArriving"
+      : liveEtaMinutes < 3
+        ? "busRealtimeSoon"
+        : "busRealtimeMinutes";
+  const labelText = t(key, { count: liveEtaMinutes });
 
   return (
     <span
+      aria-live="polite"
       className={cn(
         "text-[11px] px-1.5 py-0.5 rounded-full tabular-nums shrink-0 select-none ml-auto",
-        toneClasses[tone],
+        liveEtaMinutes < 3
+          ? "text-red-600 dark:text-red-400 bg-red-500/10 font-bold"
+          : liveEtaMinutes < 10
+            ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 font-medium"
+            : "text-muted-foreground bg-muted/60",
       )}
     >
       <span
@@ -68,6 +71,7 @@ export function TransitStops({
   isStopsOpen,
   onStopsOpenChange,
   targetPlate,
+  liveEtaMinutes,
 }: {
   boardName?: string;
   alightName?: string;
@@ -83,11 +87,11 @@ export function TransitStops({
   isStopsOpen?: boolean;
   onStopsOpenChange?: (open: boolean) => void;
   targetPlate?: string;
+  /** ETA tied to the exact vehicle named by the boarding-stop arrival feed. */
+  liveEtaMinutes?: number | null;
 }) {
   const { t } = useAppTranslation();
 
-  const boardRow = rows && rows.length > 0 ? rows[0] : undefined;
-  const alightRow = rows && rows.length > 1 ? rows[rows.length - 1] : undefined;
   const intermediateRows =
     rows && rows.length > 2 ? rows.slice(1, -1) : undefined;
 
@@ -99,12 +103,11 @@ export function TransitStops({
           {t("labelColon")}
         </span>
         <span className="font-medium">{boardName}</span>
-        {boardTime && (
-          <span className="text-muted-foreground">{boardTime}</span>
-        )}
-        {boardRow && isStopsOpen && (
-          <BoardAlightEtaBadge row={boardRow} t={t} />
-        )}
+        <EndpointTime
+          scheduledTime={boardTime}
+          liveEtaMinutes={isStopsOpen ? liveEtaMinutes : undefined}
+          t={t}
+        />
       </div>
       {isSelected && (
         <A11yStationIcons
@@ -127,12 +130,7 @@ export function TransitStops({
           {t("labelColon")}
         </span>
         <span className="font-medium">{alightName}</span>
-        {alightTime && (
-          <span className="text-muted-foreground">{alightTime}</span>
-        )}
-        {alightRow && isStopsOpen && (
-          <BoardAlightEtaBadge row={alightRow} t={t} />
-        )}
+        <EndpointTime scheduledTime={alightTime} t={t} />
       </div>
       {isSelected && (
         <A11yStationIcons
