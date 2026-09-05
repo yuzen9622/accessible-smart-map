@@ -175,13 +175,7 @@ export default function RouteContent() {
         </div>
       )}
 
-      {/* System-level & transit operating alerts (present only when announcements exist) */}
-      {(metroAlerts || transitAlerts) && (
-        <TransitAlertsBanner
-          metroAlerts={metroAlerts}
-          transitAlerts={transitAlerts}
-        />
-      )}
+    
 
       {/* Route Cards */}
       <div className="space-y-3">
