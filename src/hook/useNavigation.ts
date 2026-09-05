@@ -37,17 +37,22 @@ import useRouteReroute from "./useRouteReroute";
 // maneuver and off-route radius than a pedestrian.
 const OFF_ROUTE_HITS = 3; // consecutive off-route samples before flagging
 const MANUAL_LOCK_MS = 8000; // honor a manual step change for this long
-const CAMERA_THROTTLE_MS = 350;
-const HEADING_WRITE_MS = 200;
+const HEADING_WRITE_MS = 80;
 const COMPASS_FRESH_MS = 1500;
+const COMPASS_MIN_DELTA_DEG = 1;
 const NAV_PITCH = 60;
-const NAV_ZOOM = 17.5;
-const NAV_ZOOM_VEHICLE = 16.5; // a car needs more road ahead in frame
+const NAV_ZOOM = 18.3;
+const NAV_ZOOM_VEHICLE = 17.3; // a car needs more road ahead in frame
 const HANDOFF_EASE_MS = 900; // drive → walk camera re-frame
-const SMOOTH_FACTOR = 0.25;
 const INTRO_EASE_MS = 1200; // nav-start camera animation
 const PREVIEW_EASE_MS = 800; // step-preview camera animation
 const FOLLOW_GPS_MAX_M = 500; // beyond this from the route, GPS stops driving the camera
+const HEADING_TAU_MS = 320;
+const CENTER_TAU_MS = 260;
+const CAMERA_DEAD_ZONE_DEG = 0.15;
+const CAMERA_DEAD_ZONE_M = 0.15;
+
+type CameraState = LatLng & { bearing: number };
 
 /** GPS may anchor the camera only when the fix is reasonably close to the route. */
 function gpsNearRoute(loc: LatLng | null, cp: CumulativePath | null): boolean {
@@ -63,6 +68,14 @@ function navPitch(): number {
 /** Camera zoom for the mode the given step belongs to. */
 function navZoomForLeg(isVehicle: boolean): number {
   return isVehicle ? NAV_ZOOM_VEHICLE : NAV_ZOOM;
+}
+
+function smoothingFactor(dtMs: number, tauMs: number): number {
+  return 1 - Math.exp(-dtMs / tauMs);
+}
+
+function angularDistanceDeg(a: number, b: number): number {
+  return Math.abs(((b - a + 540) % 360) - 180);
 }
 
 /** True on iOS 13+, where DeviceOrientation needs an explicit permission grant. */
@@ -99,14 +112,15 @@ export default function useNavigation() {
   const offHitsRef = useRef(0);
   // While the intro animation runs, the follow/preview cameras stay hands-off.
   const introUntilRef = useRef(0);
-  // Same, for the drive → walk handoff ease: the 350 ms follow tick would
-  // otherwise interrupt it mid-flight and snap the zoom.
+  // Same, for the drive → walk handoff ease: the follow loop would otherwise
+  // interrupt it mid-flight and snap the zoom.
   const cameraHoldUntilRef = useRef(0);
 
-  // Heading working state (kept in refs; written to the store throttled).
+  // Heading working state, kept in refs between camera frames.
   const compassRef = useRef<number | null>(null);
   const compassTsRef = useRef(0);
   const smoothRef = useRef<number | null>(null);
+  const camRef = useRef<CameraState | null>(null);
   const lastLegTypeRef = useRef<NavLegType | null>(null);
 
   useEffect(() => observeLocalNavigationGeometry(geometryRef.current), []);
@@ -122,6 +136,7 @@ export default function useNavigation() {
     smoothRef.current = null;
     compassRef.current = null;
     compassTsRef.current = 0;
+    camRef.current = null;
 
     const nav = useNavStore.getState();
     if (nav.isOffRoute) {
@@ -159,11 +174,13 @@ export default function useNavigation() {
         : (cp.path[0] ?? userLocation);
       if (!map || !anchor) return;
       introUntilRef.current = Date.now() + INTRO_EASE_MS;
+      camRef.current = null;
       map.flyTo({
         center: [anchor.lng, anchor.lat],
         zoom: navZoomForLeg(isVehicleLegType(route.legs[0]?.type)),
         pitch: navPitch(),
         duration: INTRO_EASE_MS,
+        essential: true,
       });
     });
     return () => cancelAnimationFrame(id);
@@ -338,7 +355,9 @@ export default function useNavigation() {
     const next = geometryRef.current.waypoints[currentStepIndex + 1];
     map.easeTo({
       center: [wp.coord.lng, wp.coord.lat],
-      zoom: NAV_ZOOM,
+      zoom: navZoomForLeg(
+        isVehicleLegType(resolveActiveLegType(instructions, currentStepIndex)),
+      ),
       pitch: navPitch(),
       bearing: next?.coord
         ? bearingDeg(wp.coord, next.coord)
@@ -397,7 +416,12 @@ export default function useNavigation() {
         h = normalizeDeg(360 - e.alpha); // alpha is counterclockwise from north
       }
       if (h != null) {
-        compassRef.current = h;
+        if (
+          compassRef.current == null ||
+          angularDistanceDeg(compassRef.current, h) >= COMPASS_MIN_DELTA_DEG
+        ) {
+          compassRef.current = h;
+        }
         compassTsRef.current = Date.now();
       }
     };
@@ -421,22 +445,35 @@ export default function useNavigation() {
     };
   }, []);
 
-  // ---- Camera + heading loop: follow user, rotate to heading (throttled) ----
+  // ---- Camera + heading loop: follow user, rotate to heading continuously ----
   useEffect(() => {
     if (typeof window === "undefined") return;
     let rafId = 0;
-    let lastCamTs = 0;
+    let lastFrameTs: number | null = null;
     let lastHeadingTs = 0;
 
-    const tick = () => {
+    const tick = (timestamp: number) => {
       rafId = requestAnimationFrame(tick);
       // Stop touching the camera the instant navigation ends (before unmount).
-      if (!useMapStore.getState().isNavigating) return;
+      if (!useMapStore.getState().isNavigating) {
+        lastFrameTs = null;
+        camRef.current = null;
+        return;
+      }
+
+      const dtMs = Math.min(
+        Math.max(lastFrameTs == null ? 0 : timestamp - lastFrameTs, 0),
+        100,
+      );
+      lastFrameTs = timestamp;
 
       const now = Date.now();
       const map = useMapStore.getState().map;
       const loc = useMapStore.getState().userLocation;
-      if (!map) return;
+      if (!map) {
+        camRef.current = null;
+        return;
+      }
 
       // Resolve heading. Walking: a fresh compass wins. Driving: GPS
       // course-over-ground wins — a cradled phone's compass points wherever
@@ -472,34 +509,87 @@ export default function useNavigation() {
         smoothed = shortestAngleLerp(
           smoothRef.current ?? raw,
           raw,
-          SMOOTH_FACTOR,
+          smoothingFactor(dtMs, HEADING_TAU_MS),
         );
         smoothRef.current = smoothed;
-        if (now - lastHeadingTs > HEADING_WRITE_MS) {
-          useNavStore.getState().setUserHeading(Math.round(smoothed), source);
-          lastHeadingTs = now;
-        }
       }
+      const writeHeading = (immediate = false) => {
+        if (
+          raw == null ||
+          smoothed == null ||
+          (!immediate && now - lastHeadingTs <= HEADING_WRITE_MS)
+        ) {
+          return;
+        }
+        useNavStore
+          .getState()
+          .setUserHeading(Math.round(smoothed * 10) / 10, source);
+        lastHeadingTs = now;
+      };
 
       // Let the user inspect the map freely after a drag; the resume
       // button (NavigationController) re-enables follow.
-      if (useNavStore.getState().followPaused) return;
-
-      // Don't interrupt the handoff ease mid-flight.
-      if (now < cameraHoldUntilRef.current) return;
-
-      if (loc && now - lastCamTs > CAMERA_THROTTLE_MS) {
-        // 3D: heading-up tilted follow. 2D: flat north-up plane, still
-        // centered on the user.
-        const is3D = useMapStore.getState().is3D;
-        map.easeTo({
-          center: [loc.lng, loc.lat],
-          bearing: is3D ? (smoothed != null ? smoothed : map.getBearing()) : 0,
-          pitch: is3D ? NAV_PITCH : 0,
-          duration: CAMERA_THROTTLE_MS,
-        });
-        lastCamTs = now;
+      if (useNavStore.getState().followPaused) {
+        writeHeading();
+        camRef.current = null;
+        return;
       }
+
+      // Don't interrupt the intro or handoff ease mid-flight. Clearing the
+      // smoothed state means follow resumes from the camera's real endpoint.
+      if (
+        now < introUntilRef.current ||
+        now < cameraHoldUntilRef.current ||
+        map.isEasing()
+      ) {
+        writeHeading();
+        camRef.current = null;
+        return;
+      }
+
+      if (!loc) {
+        writeHeading();
+        camRef.current = null;
+        return;
+      }
+
+      // 3D: heading-up tilted follow. 2D: flat north-up plane, still centered
+      // on the user. jumpTo receives the already-smoothed state, avoiding a
+      // new ease-in-out animation every frame.
+      const currentCenter = map.getCenter();
+      const currentCamera = camRef.current ?? {
+        lng: currentCenter.lng,
+        lat: currentCenter.lat,
+        bearing: map.getBearing(),
+      };
+      const is3D = useMapStore.getState().is3D;
+      const targetBearing = is3D ? (smoothed ?? currentCamera.bearing) : 0;
+      const nextCamera: CameraState = {
+        lng:
+          currentCamera.lng +
+          (loc.lng - currentCamera.lng) * smoothingFactor(dtMs, CENTER_TAU_MS),
+        lat:
+          currentCamera.lat +
+          (loc.lat - currentCamera.lat) * smoothingFactor(dtMs, CENTER_TAU_MS),
+        bearing: targetBearing,
+      };
+
+      if (
+        haversineMeters(currentCamera, loc) < CAMERA_DEAD_ZONE_M &&
+        angularDistanceDeg(currentCamera.bearing, targetBearing) <
+          CAMERA_DEAD_ZONE_DEG
+      ) {
+        writeHeading();
+        return;
+      }
+
+      map.jumpTo({
+        center: [nextCamera.lng, nextCamera.lat],
+        bearing: targetBearing,
+        pitch: is3D ? NAV_PITCH : 0,
+      });
+      camRef.current = nextCamera;
+      writeHeading(true);
     };
 
     rafId = requestAnimationFrame(tick);
