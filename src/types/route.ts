@@ -157,6 +157,15 @@ export interface WalkLeg {
 export interface BusLeg {
   type: "BUS";
   routeName: string;
+  /**
+   * The exact run the planner chose. TDX publishes a line as several
+   * sub-routes (99 / 99延, 6268 / 6268F …) that share a name but not a stop
+   * list, so this — not `routeName` — identifies the ride when asking for
+   * arrivals, positions or stop sequences.
+   */
+  subRouteUid?: string;
+  /** Display name of {@link subRouteUid}, and the name TDX queries expect. */
+  subRouteName?: string;
   departureStop: string;
   arrivalStop: string;
   departureStopId?: string;
@@ -936,7 +945,17 @@ export interface LiveBus {
   waitInfo?: WaitInfo;
   stopsAway?: number;
   isTarget?: boolean;
+  /** Which sub-route this vehicle is running — a line mixes several. */
+  subRouteUid?: string;
+  subRouteName?: string;
+  /**
+   * Minutes until this exact vehicle reaches {@link etaStopName}. Only ever set
+   * when the ETA and the plate come from the same arrival record — a number
+   * borrowed from another vehicle is worse than no number.
+   */
   estimateTime?: number | null;
+  /** The stop {@link estimateTime} counts down to (the leg's boarding stop). */
+  etaStopName?: string;
 }
 
 export interface LiveBusPositionsData {

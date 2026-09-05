@@ -5,7 +5,7 @@ import {
   buildStopRows,
   fallbackStopRows,
   resolveCurrentStopSeq,
-  sliceLegStops,
+  resolveLegStops,
 } from "@/lib/transit/busLegStops";
 import useMapStore from "@/stores/useMapStore";
 import type { BusLeg } from "@/types/route";
@@ -36,7 +36,14 @@ export function BusLegStops({
     setActiveBusLeg(open ? { key, leg } : null);
   };
 
-  const { stops, status } = useBusLegStopEtas(leg, isOpen);
+  // Selected is enough to warm the ETAs; only expanding starts the poll. The
+  // stop list is therefore already populated on the first render after the
+  // user opens it, instead of showing placeholder rows for a beat.
+  const { directions, status } = useBusLegStopEtas(
+    leg,
+    isSelected || isOpen,
+    isOpen,
+  );
   const targetBus = Array.isArray(liveBusPositions)
     ? (liveBusPositions.find((b) => b.isTarget) ?? null)
     : null;
@@ -44,16 +51,18 @@ export function BusLegStops({
   const rows = useMemo(() => {
     if (!isOpen) return undefined;
 
-    if (stops && stops.length > 0) {
-      const sliced = sliceLegStops(stops, leg.departureStop, leg.arrivalStop);
-      if (sliced && sliced.length > 0) {
-        const currentSeq = resolveCurrentStopSeq(sliced, targetBus);
-        return buildStopRows(sliced, currentSeq);
-      }
+    const sliced = resolveLegStops(directions ?? undefined, leg);
+    if (sliced && sliced.length > 0) {
+      const currentSeq = resolveCurrentStopSeq(sliced, targetBus);
+      return buildStopRows(sliced, currentSeq);
     }
 
-    return fallbackStopRows(leg);
-  }, [isOpen, stops, leg, targetBus]);
+    // No ETAs to attach: placeholders while the lookup runs, "no information"
+    // once it has settled — never a service status we cannot back up.
+    return fallbackStopRows(leg, {
+      pending: status === "idle" || status === "loading",
+    });
+  }, [isOpen, directions, leg, targetBus, status]);
 
   const currentStopName = rows?.find((r) => r.state === "current")?.name;
 

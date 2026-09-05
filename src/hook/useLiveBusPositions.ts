@@ -1,9 +1,37 @@
 import { useEffect, useRef } from "react";
+import type { RouteDetailStop } from "@/lib/api/transit";
 import { getBusArrival, getLiveBusPositions } from "@/lib/api/transit";
+import {
+  resolveCurrentStopSeq,
+  resolveLegRide,
+} from "@/lib/transit/busLegStops";
+import { fetchRouteDetailCached } from "@/lib/transit/busRouteDetailCache";
 import useMapStore from "@/stores/useMapStore";
 import type { BusLeg, LiveBus } from "@/types/route";
 
 const POLL_INTERVAL_MS = 15_000;
+
+/**
+ * The name TDX answers to for this ride. A line's sub-routes (99 / 99延) have
+ * separate stop lists and separate vehicles, and the planner tells us which one
+ * it booked — querying the parent name returns both mixed together.
+ */
+function tdxRouteName(leg: BusLeg): string {
+  return leg.subRouteName ?? leg.routeName;
+}
+
+/**
+ * Whether a record belongs to the run this leg rides.
+ *
+ * Kept as a second line of defence behind {@link tdxRouteName}: a parent-name
+ * query still answers with every sub-route, and a 99延 vehicle serves stops the
+ * 99 rider never reaches. Records carrying no sub-route are accepted — a
+ * backend that cannot say is not evidence of a mismatch.
+ */
+function onLegSubRoute(leg: BusLeg, subRouteUid?: string): boolean {
+  if (!leg.subRouteUid || !subRouteUid) return true;
+  return leg.subRouteUid === subRouteUid;
+}
 
 interface ArrivalTarget {
   /** Plate of the next bus at the boarding stop, if TDX has dispatched one. */
@@ -19,12 +47,15 @@ interface ArrivalTarget {
  * arrival tells us both *when* the next bus comes and *which plate* it is —
  * the single most reliable way to pin "the bus you're about to board".
  */
-async function fetchArrival(leg: BusLeg): Promise<ArrivalTarget> {
+async function fetchArrival(
+  leg: BusLeg,
+  direction: 0 | 1,
+): Promise<ArrivalTarget> {
   try {
     const res = await getBusArrival(
-      leg.routeName,
+      tdxRouteName(leg),
       leg.departureStop,
-      leg.direction,
+      direction,
       leg.tdxCity,
     );
     if (!res.ok || !res.data?.arrivals) return { eta: null };
@@ -32,7 +63,8 @@ async function fetchArrival(leg: BusLeg): Promise<ArrivalTarget> {
     const next = res.data.arrivals
       .filter(
         (a) =>
-          a.direction === leg.direction &&
+          onLegSubRoute(leg, a.subRouteUid) &&
+          a.direction === direction &&
           typeof a.estimateMinutes === "number",
       )
       .sort(
@@ -51,30 +83,26 @@ async function fetchArrival(leg: BusLeg): Promise<ArrivalTarget> {
 /**
  * Decide which live vehicle is "the one the user is about to board".
  *
- * Requirements:
- *   - Only vehicles that are CURRENTLY IN SERVICE / DISPATCHED are considered.
- *   - If no realtime ETA / bus is dispatched (e.g. 尚未發車 / no active vehicle for this departure),
- *     do NOT pin a generic random vehicle from elsewhere on the route.
+ * The only trustworthy signal is the arrival feed at the *boarding stop*: a
+ * vehicle it names is, by definition, still on its way to where the user waits.
  *
- * Priority:
- *   1. The plate the arrival (ETA) feed reports as next at the boarding stop —
- *      a 100% precise match whenever it's present in the live feed.
- *   2. Otherwise the plate the route planner pinned (`nearestBus`), provided it is active in the live feed.
- *   3. If arrival feed reports no plate (e.g. 尚未發車 / not yet dispatched), return undefined (no map marker).
+ * `leg.nearestBus` used to be a fallback, but it is a snapshot taken when the
+ * route was planned — minutes or an hour before departure. Pinning it made the
+ * map track a vehicle running the line *now* rather than the trip the user
+ * plans to take, which then marked every stop it had already served as 已過站
+ * and hid their scheduled times. A vehicle that has already left the boarding
+ * stop cannot be the one the user boards.
+ *
+ * Returns undefined when no vehicle is dispatched for this trip yet: no marker
+ * is better than a marker for someone else's bus.
  */
 function resolveTargetPlate(
-  leg: BusLeg,
   buses: LiveBus[],
   arrivalPlate?: string,
 ): string | undefined {
   if (arrivalPlate && buses.some((b) => b.plateNumb === arrivalPlate)) {
     return arrivalPlate;
   }
-
-  const planned = leg.nearestBus?.plateNumb;
-  if (planned && buses.some((b) => b.plateNumb === planned)) return planned;
-
-  // If no plate was assigned by TDX arrival feed or planner, do not randomly pick a bus.
   return undefined;
 }
 
@@ -85,22 +113,48 @@ function resolveTargetPlate(
  * worse than none, because a marker for "some vehicle on this line" reads as
  * "your vehicle".
  */
-async function fetchLeg(leg: BusLeg, signal: AbortSignal): Promise<LiveBus[]> {
+export async function fetchLeg(
+  leg: BusLeg,
+  signal: AbortSignal,
+): Promise<LiveBus[]> {
+  // Resolve the published run before asking TDX anything. `leg.direction` on
+  // its own has pointed at the opposite direction of a line, which pinned a
+  // vehicle heading away from the user and showed its arrival time for a
+  // journey they were not taking. The route-detail payload is already warmed
+  // by the stop list, so this is normally a cache read.
+  const city = leg.tdxCity ?? leg.cityCode ?? "";
+  const directions = city
+    ? await fetchRouteDetailCached(tdxRouteName(leg), city)
+    : null;
+  const ride = resolveLegRide(directions ?? undefined, leg);
+  const direction = ride?.direction ?? leg.direction;
+
   // ETA and positions are independent; run them together.
   const [arrival, posRes] = await Promise.all([
-    fetchArrival(leg),
-    getLiveBusPositions(leg.routeName, leg.tdxCity, leg.direction, signal),
+    fetchArrival(leg, direction),
+    getLiveBusPositions(tdxRouteName(leg), leg.tdxCity, direction, signal),
   ]);
 
   if (!posRes.ok || !posRes.data?.buses?.length) return [];
 
-  const buses = posRes.data.buses;
-  const targetPlate = resolveTargetPlate(leg, buses, arrival.plate);
+  const buses = posRes.data.buses.filter((b) =>
+    onLegSubRoute(leg, b.subRouteUid),
+  );
+  const targetPlate = resolveTargetPlate(buses, arrival.plate);
   if (!targetPlate) return [];
 
   const target = buses.find((b) => b.plateNumb === targetPlate);
   if (!target) return [];
 
+  // Last guard: a vehicle already past the boarding stop cannot be the one the
+  // user boards, whatever the feeds say. Without this, a stale or mislabelled
+  // record shows "已過站" all down the stop list next to a countdown to that
+  // same boarding stop — two claims that cannot both be true.
+  if (ride && hasPassedBoardingStop(ride.stops, target)) return [];
+
+  // `targetPlate` can only be the plate the arrival record named, so the ETA
+  // below describes this very vehicle — one bus's plate must never sit beside
+  // another bus's countdown.
   return [
     {
       ...target,
@@ -108,8 +162,25 @@ async function fetchLeg(leg: BusLeg, signal: AbortSignal): Promise<LiveBus[]> {
       city: leg.tdxCity ?? "",
       isTarget: true,
       estimateTime: arrival.eta,
+      etaStopName: leg.departureStop,
     },
   ];
+}
+
+/**
+ * True when the vehicle can be placed on the ride *beyond* its first stop.
+ *
+ * Only decides when the vehicle is close enough to a stop to be located at all;
+ * between stops `resolveCurrentStopSeq` returns null and we keep tracking.
+ */
+function hasPassedBoardingStop(
+  stops: RouteDetailStop[],
+  bus: { lat: number; lng: number },
+): boolean {
+  const seq = resolveCurrentStopSeq(stops, bus);
+  if (seq == null) return false;
+  const board = stops[0]?.seq;
+  return board != null && seq > board;
 }
 
 /**

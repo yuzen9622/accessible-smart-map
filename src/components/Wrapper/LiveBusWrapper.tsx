@@ -14,11 +14,16 @@ function isAccessible(bus: AnimatedBus): boolean {
   return bus.isLowFloor === "是" || bus.hasLiftOrRamp === "是";
 }
 
+/**
+ * A bare "約 17 分" is unreadable — seventeen minutes until what? The countdown
+ * is always to the leg's boarding stop, so the label says which stop.
+ */
 function etaLabel(bus: AnimatedBus): string {
   const eta = bus.estimateTime;
+  const stop = bus.etaStopName;
   if (typeof eta !== "number") return "你的車";
-  if (eta <= 1) return "即將進站";
-  return `約 ${eta} 分`;
+  if (eta <= 1) return stop ? `即將進 ${stop}` : "即將進站";
+  return stop ? `${stop} 約 ${eta} 分` : `約 ${eta} 分`;
 }
 
 /** The vehicle the user is about to board — large, pulsing, labelled. */

@@ -99,6 +99,9 @@ export interface BusArrivalItem {
    * Absent until a bus is assigned; the backend strips TDX's "-1" sentinel.
    */
   plateNumb?: string;
+  /** Which sub-route this arrival belongs to — a line's feed mixes several. */
+  subRouteUid?: string;
+  subRouteName?: string;
 }
 
 /**
@@ -194,6 +197,9 @@ export interface RouteDetailStop {
 export interface RouteDetailDirection {
   direction: 0 | 1;
   stops: RouteDetailStop[];
+  /** Identifies which sub-route these stops belong to (99 vs 99延). */
+  subRouteUid?: string;
+  subRouteName?: string;
 }
 
 export async function getBusRouteDetail(routeName: string, city: string) {

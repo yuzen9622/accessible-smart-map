@@ -12,10 +12,22 @@ function BoardAlightEtaBadge({
   t,
 }: {
   row: BusLegStopRow;
-  t: (key: string, options?: Record<string, unknown>) => string;
+  t: (key: string, options?: Record<string, string | number>) => string;
 }) {
-  const { key, tone, count } = resolveEtaLabel(row);
-  const labelText = count !== undefined ? t(key, { count }) : t(key);
+  const { key, params, tone, kind } = resolveEtaLabel(row);
+
+  // Not "no service" — we simply have not heard back yet. A status word here is
+  // what made a scheduled 18:15 departure read as 「尚未發車」.
+  if (kind === "pending" || !key) {
+    return (
+      <span
+        aria-hidden
+        className="inline-block h-4 w-11 rounded-full bg-muted animate-pulse motion-reduce:animate-none shrink-0 ml-auto"
+      />
+    );
+  }
+
+  const labelText = t(key, params);
 
   const toneClasses: Record<EtaTone, string> = {
     arriving: "text-red-600 dark:text-red-400 bg-red-500/10 font-bold",
