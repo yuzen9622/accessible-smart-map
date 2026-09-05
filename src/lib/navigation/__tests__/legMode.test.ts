@@ -296,8 +296,8 @@ describe("resolveCurrentLegType", () => {
   });
 });
 
-describe("resolveWaypoints with multi-leg fallback steps", () => {
-  it("resolves global waypoints along the cumulative path", () => {
+describe("resolveWaypoints with per-leg and fallback steps", () => {
+  it("resolves per-leg waypoints along the cumulative path", () => {
     const driveLeg: RouteLeg = {
       type: "DRIVE",
       from: "A",
@@ -324,10 +324,10 @@ describe("resolveWaypoints with multi-leg fallback steps", () => {
     const legs = [driveLeg, walkLeg];
     const path = buildCumulativePath(legs);
 
-    // Global concatenated path indices: drive at 0, walk at 1 (leg 1 start)
+    // Each index is local to its source leg.
     const instructions = [
-      instruction("DRIVE", { polylineIndex: 0 }),
-      instruction("WALK", { polylineIndex: 1 }),
+      instruction("DRIVE", { legIndex: 0, polylineIndex: 0 }),
+      instruction("WALK", { legIndex: 1, polylineIndex: 0 }),
     ];
 
     const wps = resolveWaypoints(instructions, path);
@@ -353,9 +353,9 @@ describe("resolveWaypoints with multi-leg fallback steps", () => {
     };
     const path = buildCumulativePath([leg]);
     const instructions = [
-      instruction("WALK", { polylineIndex: 0 }),
-      instruction("WALK", { polylineIndex: null }),
-      instruction("WALK", { polylineIndex: 2 }),
+      instruction("WALK", { legIndex: 0, polylineIndex: 0 }),
+      instruction("WALK", { legIndex: 0, polylineIndex: null }),
+      instruction("WALK", { legIndex: 0, polylineIndex: 2 }),
     ];
 
     const wps = resolveWaypoints(instructions, path);
@@ -379,13 +379,181 @@ describe("resolveWaypoints with multi-leg fallback steps", () => {
     const path = buildCumulativePath([leg]);
     const wps = resolveWaypoints(
       [
-        instruction("WALK", { polylineIndex: null }),
-        instruction("WALK", { polylineIndex: 1 }),
+        instruction("WALK", { legIndex: 0, polylineIndex: null }),
+        instruction("WALK", { legIndex: 0, polylineIndex: 1 }),
       ],
       path,
     );
     expect(wps[0].alongM).toBe(0);
     expect(wps[1].alongM).toBeGreaterThan(0);
+  });
+
+  it("uses legacy global indices and null inheritance without legIndex", () => {
+    const driveLeg: RouteLeg = {
+      type: "DRIVE",
+      from: "A",
+      to: "B",
+      distanceM: 1000,
+      durationMin: 2,
+      polyline: [
+        [121.5, 25.0],
+        [121.51, 25.0],
+      ],
+    };
+    const walkLeg: RouteLeg = {
+      type: "WALK",
+      from: "B",
+      to: "C",
+      distanceM: 200,
+      minutesEst: 3,
+      polyline: [
+        [121.51, 25.0],
+        [121.512, 25.0],
+      ],
+      a11yFacilities: [],
+    };
+    const path = buildCumulativePath([driveLeg, walkLeg]);
+    const wps = resolveWaypoints(
+      [
+        instruction("WALK", { polylineIndex: null }),
+        instruction("WALK", { polylineIndex: 2 }),
+        instruction("WALK", { polylineIndex: null }),
+      ],
+      path,
+    );
+
+    expect(wps[0].alongM).toBe(0);
+    expect(wps[1].coord).toEqual(path.path[2]);
+    expect(wps[2].alongM).toBe(wps[1].alongM);
+  });
+
+  it("anchors a final walking arrival to the third leg's true endpoint", () => {
+    const firstWalkLeg: RouteLeg = {
+      type: "WALK",
+      from: "A",
+      to: "TRA station",
+      distanceM: 200,
+      minutesEst: 3,
+      polyline: [
+        [121.5, 25.0],
+        [121.501, 25.0],
+        [121.502, 25.0],
+      ],
+      a11yFacilities: [],
+    };
+    const traLeg: RouteLeg = {
+      type: "TRA",
+      trainNo: "3248",
+      trainTypeName: "Local",
+      departureStation: "TRA station",
+      arrivalStation: "Destination station",
+      departureStationUID: "TRA-A",
+      arrivalStationUID: "TRA-B",
+      departureTime: "10:00",
+      arrivalTime: "10:10",
+      rideMinutes: 10,
+      waitInfo: { time: null, source: "unavailable" },
+      estimatedWaitMinutes: 0,
+      polyline: [
+        [121.502, 25.0],
+        [121.51, 25.0],
+        [121.52, 25.0],
+      ],
+      departureStationA11y: [],
+      arrivalStationA11y: [],
+      facilityHighlights: [],
+    };
+    const finalWalkLeg: RouteLeg = {
+      type: "WALK",
+      from: "Destination station",
+      to: "C",
+      distanceM: 200,
+      minutesEst: 3,
+      polyline: [
+        [121.52, 25.0],
+        [121.521, 25.0],
+        [121.522, 25.0],
+      ],
+      a11yFacilities: [],
+    };
+    const path = buildCumulativePath([firstWalkLeg, traLeg, finalWalkLeg]);
+    const wps = resolveWaypoints(
+      [
+        instruction("WALK", {
+          type: "depart",
+          legIndex: 0,
+          polylineIndex: 0,
+        }),
+        instruction("WALK", { legIndex: 2, polylineIndex: 0 }),
+        instruction("WALK", {
+          type: "arrive",
+          legIndex: 2,
+          polylineIndex: null,
+        }),
+      ],
+      path,
+    );
+    const finalWaypoint = wps[wps.length - 1];
+    const firstWalkLength = path.cumM[firstWalkLeg.polyline.length - 1] ?? 0;
+
+    expect(finalWaypoint.coord).toEqual({ lat: 25.0, lng: 121.522 });
+    expect(finalWaypoint.alongM).toBeGreaterThan(firstWalkLength);
+  });
+
+  it("anchors transit board and alight instructions to their leg endpoints", () => {
+    const firstWalkLeg: RouteLeg = {
+      type: "WALK",
+      from: "A",
+      to: "TRA station",
+      distanceM: 100,
+      minutesEst: 2,
+      polyline: [
+        [121.5, 25.0],
+        [121.501, 25.0],
+      ],
+      a11yFacilities: [],
+    };
+    const traLeg: RouteLeg = {
+      type: "TRA",
+      trainNo: "3248",
+      trainTypeName: "Local",
+      departureStation: "TRA station",
+      arrivalStation: "Destination station",
+      departureStationUID: "TRA-A",
+      arrivalStationUID: "TRA-B",
+      departureTime: "10:00",
+      arrivalTime: "10:10",
+      rideMinutes: 10,
+      waitInfo: { time: null, source: "unavailable" },
+      estimatedWaitMinutes: 0,
+      polyline: [
+        [121.501, 25.0],
+        [121.51, 25.0],
+        [121.52, 25.0],
+      ],
+      departureStationA11y: [],
+      arrivalStationA11y: [],
+      facilityHighlights: [],
+    };
+    const path = buildCumulativePath([firstWalkLeg, traLeg]);
+    const wps = resolveWaypoints(
+      [
+        instruction("TRA", {
+          type: "transit_board",
+          legIndex: 1,
+          polylineIndex: null,
+        }),
+        instruction("TRA", {
+          type: "transit_alight",
+          legIndex: 1,
+          polylineIndex: null,
+        }),
+      ],
+      path,
+    );
+
+    expect(wps[0].coord).toEqual({ lat: 25.0, lng: 121.501 });
+    expect(wps[1].coord).toEqual({ lat: 25.0, lng: 121.52 });
   });
 });
 

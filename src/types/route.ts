@@ -473,6 +473,9 @@ export interface NavInstruction {
   distanceM: number | null;
   streetName: string | null;
   legType: "WALK" | "BUS" | "METRO" | "THSR" | "TRA" | "DRIVE" | "MOTORCYCLE";
+  /** Source index in route.legs; absent for legacy and voice instructions. */
+  legIndex?: number;
+  /** Index in this instruction's own leg.polyline, not the concatenated route path. */
   polylineIndex: number | null;
 }
 

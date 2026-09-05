@@ -59,26 +59,32 @@ export interface CumulativePath {
   path: LatLng[];
   /** cumM[i] = distance in meters from the path start to point i. */
   cumM: number[];
+  /** Per-leg ranges in path, aligned to route.legs; empty legs have count 0. */
+  legRanges: { start: number; count: number }[];
 }
 
 /**
  * Concatenate every leg's polyline (in order) into a single LatLng path and
- * its cumulative-distance array. Points are appended verbatim — this mirrors
- * the backend's global `polylineIndex` (instructions carry no per-leg index).
+ * its cumulative-distance array. Points are appended verbatim, while legRanges
+ * retain the offsets needed to resolve each instruction's per-leg polyline index.
  */
 export function buildCumulativePath(legs: RouteLeg[]): CumulativePath {
   const path: LatLng[] = [];
+  const legRanges: { start: number; count: number }[] = [];
   for (const leg of legs) {
-    if (!leg.polyline?.length) continue;
-    for (const [lng, lat] of leg.polyline) {
-      path.push({ lat, lng });
+    const start = path.length;
+    if (leg.polyline?.length) {
+      for (const [lng, lat] of leg.polyline) {
+        path.push({ lat, lng });
+      }
     }
+    legRanges.push({ start, count: path.length - start });
   }
   const cumM: number[] = new Array(path.length).fill(0);
   for (let i = 1; i < path.length; i++) {
     cumM[i] = cumM[i - 1] + haversineMeters(path[i - 1], path[i]);
   }
-  return { path, cumM };
+  return { path, cumM, legRanges };
 }
 
 export interface Projection {
@@ -164,25 +170,46 @@ export interface Waypoint {
 
 /**
  * Map each instruction to its maneuver coordinate + along-route distance via
- * `polylineIndex` (a global index into the concatenated path). Out-of-range
- * indices are clamped so the engine always has a usable waypoint.
+ * its leg-local `polylineIndex` and `legIndex`. Out-of-range indices are
+ * clamped inside the source leg so the engine always has a usable waypoint.
  *
- * A null index means the backend could not anchor that instruction to the
- * polyline. It inherits the previous instruction's point: the waypoint list
- * stays non-decreasing, which is what step selection assumes. Clamping it to
- * the route end instead would place an unanchored instruction past every later
- * maneuver and make it look like the only step still ahead.
+ * A null index on a transit board instruction anchors to that leg's start;
+ * transit alight and arrival instructions anchor to its end. Other null indices
+ * inherit the previous point. Legacy or voice instructions without a usable
+ * legIndex retain the old global-index fallback. The waypoint list stays
+ * non-decreasing, which is what step selection assumes.
  */
 export function resolveWaypoints(
   instructions: NavInstruction[],
-  { path, cumM }: CumulativePath,
+  { path, cumM, legRanges }: CumulativePath,
 ): Waypoint[] {
   if (path.length === 0) return [];
   const last = path.length - 1;
   let prevIdx = 0;
   return instructions.map((ins) => {
-    const idx = ins.polylineIndex ?? prevIdx;
-    const ci = Math.max(0, Math.min(last, idx));
+    const range = ins.legIndex == null ? undefined : legRanges[ins.legIndex];
+    let idx: number;
+
+    if (range && range.count > 0) {
+      if (ins.polylineIndex != null) {
+        const legIdx = Math.max(
+          0,
+          Math.min(range.count - 1, ins.polylineIndex),
+        );
+        idx = range.start + legIdx;
+      } else if (ins.type === "transit_board") {
+        idx = range.start;
+      } else if (ins.type === "transit_alight" || ins.type === "arrive") {
+        idx = range.start + range.count - 1;
+      } else {
+        idx = prevIdx;
+      }
+    } else {
+      const fallbackIdx = ins.polylineIndex ?? prevIdx;
+      idx = Math.max(0, Math.min(last, fallbackIdx));
+    }
+
+    const ci = Math.max(idx, prevIdx);
     prevIdx = ci;
     return {
       coord: path[ci] ?? null,
