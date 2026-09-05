@@ -35,6 +35,8 @@ import {
   type HazardReport,
   type SlimOsmA11y,
 } from "@/types/route";
+import { NumberTicker } from "@/components/motion/number-ticker";
+import { NavDistanceTicker } from "./NavDistanceTicker";
 import {
   TriangleAlertIcon,
   type TriangleAlertIconHandle,
@@ -360,28 +362,50 @@ export default function NavigationHUD() {
           </motion.div>
         ) : (
           <div className="bg-slate-900 dark:ring-1 dark:ring-white/10 text-white rounded-2xl shadow-2xl overflow-hidden">
-            <div className="flex items-center gap-5 px-6 py-6">
-              <div className="h-[4.5rem] w-[4.5rem] rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
-                <StepIcon className="h-11 w-11" />
+            <div className="flex items-center gap-3.5 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6">
+              <div className="h-14 w-14 sm:h-[4.5rem] sm:w-[4.5rem] rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
+                <StepIcon className="h-8 w-8 sm:h-11 sm:w-11" />
               </div>
               <div className="flex-1 min-w-0">
                 {distanceToNextM != null && (
                   <p
-                    className="text-5xl font-black leading-none mb-2 tabular-nums tracking-tight"
+                    className="font-black leading-none mb-2 tabular-nums tracking-tight whitespace-nowrap"
+                    style={{ fontSize: "clamp(2rem, 11vw, 3rem)" }}
                     aria-hidden="true"
                   >
-                    {formatDistance(distanceToNextM)}
+                    <NavDistanceTicker
+                      meters={distanceToNextM}
+                      blur={true}
+                      duration={0.8}
+                      unitClassName="text-[0.6em] ml-1 font-bold text-white/80"
+                    />
                   </p>
                 )}
                 <p
                   aria-live="assertive"
                   aria-atomic="true"
-                  className="text-base font-medium leading-snug text-white/90 line-clamp-2"
+                  className="text-[15px] sm:text-base font-medium leading-snug text-white/90 line-clamp-2"
                 >
                   {step?.text ?? t("preparingNav")}
                 </p>
+                <div className="flex sm:hidden items-center gap-2 mt-1.5">
+                  {isVehicleLeg && (
+                    <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
+                      <ModeIcon className="h-3.5 w-3.5 shrink-0" />
+                      {modeLabel}
+                    </span>
+                  )}
+                  {instructions.length > 0 && (
+                    <span className="text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
+                      {t("stepOf", {
+                        current: currentStep + 1,
+                        total: instructions.length,
+                      })}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="shrink-0 flex flex-col items-end gap-1.5">
+              <div className="hidden sm:flex shrink-0 flex-col items-end gap-1.5">
                 {isVehicleLeg && (
                   <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
                     <ModeIcon className="h-3.5 w-3.5 shrink-0" />
@@ -603,14 +627,36 @@ export default function NavigationHUD() {
       <div className="absolute bottom-3 left-3 right-3 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 lg:w-[560px] xl:w-[640px] z-40">
         <div className="bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl px-5 py-4 flex items-center gap-4">
           <div className="flex-1 min-w-0 lg:flex-none">
-            <p className="text-3xl font-black leading-tight text-green-600 dark:text-green-400 tabular-nums truncate">
-              {remainMinutes != null
-                ? t("minutesLeft", { count: remainMinutes })
-                : "…"}
+            <p className="text-3xl font-black leading-tight text-green-600 dark:text-green-400 tabular-nums truncate flex items-baseline gap-1">
+              {remainMinutes != null ? (
+                <>
+                  <NumberTicker
+                    value={remainMinutes}
+                    blur={true}
+                    duration={0.5}
+                    startOnView={false}
+                  />
+                  <span className="text-xl font-bold">
+                    {i18n.language === "zh-TW" ? "分" : "min"}
+                  </span>
+                </>
+              ) : (
+                "…"
+              )}
             </p>
-            <p className="text-sm text-muted-foreground truncate tabular-nums mt-0.5">
-              {remainingM != null && `${formatDistance(remainingM)} · `}
-              {etaText && t("etaArrive", { time: etaText })}
+            <p className="text-sm text-muted-foreground truncate tabular-nums mt-0.5 flex items-center gap-1">
+              {remainingM != null && (
+                <>
+                  <NavDistanceTicker
+                    meters={remainingM}
+                    blur={true}
+                    duration={0.5}
+                    unitClassName="text-xs"
+                  />
+                  <span>·</span>
+                </>
+              )}
+              {etaText && <span>{t("etaArrive", { time: etaText })}</span>}
             </p>
           </div>
 
