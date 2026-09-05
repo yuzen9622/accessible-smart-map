@@ -15,7 +15,6 @@ import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import LoadingDrawer from "../shared/LoadingDrawer";
 import { RouteCard } from "../shared/RouteCard";
-import { TransitAlertsBanner } from "../shared/TransitAlerts";
 import { Button } from "../ui/button";
 import {
   EnvironmentSkeleton,
@@ -47,8 +46,6 @@ export default function RouteContent() {
     selectRoute,
     activeRailPanel,
     setActiveRailPanel,
-    metroAlerts,
-    transitAlerts,
   } = useMapStore(
     useShallow((s) => ({
       computeRoutes: s.computeRoutes,
@@ -59,8 +56,6 @@ export default function RouteContent() {
       selectRoute: s.selectRoute,
       activeRailPanel: s.activeRailPanel,
       setActiveRailPanel: s.setActiveRailPanel,
-      metroAlerts: s.metroAlerts,
-      transitAlerts: s.transitAlerts,
     })),
   );
 
@@ -174,8 +169,6 @@ export default function RouteContent() {
           </button>
         </div>
       )}
-
-    
 
       {/* Route Cards */}
       <div className="space-y-3">
