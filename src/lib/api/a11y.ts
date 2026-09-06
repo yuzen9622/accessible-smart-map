@@ -158,12 +158,25 @@ export async function getMyHazardReports() {
   return response as ApiResponse<HazardReport[]>;
 }
 
-export async function confirmHazardReport(id: string, confirm: boolean) {
+export async function confirmHazardReport(
+  id: string,
+  action: "confirm" | "deny",
+) {
+  const token = await getAccessToken();
   const response = await fetchRequest(
     `${END_POINT}/api/v1/a11y/reports/${id}/confirm`,
-    { method: "POST", body: { confirm } },
+    {
+      method: "POST",
+      body: { action },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
   );
-  return response as ApiResponse<unknown>;
+  return response as ApiResponse<{
+    reportId: string;
+    action: "confirm" | "deny";
+    confirmCount: number;
+    denyCount: number;
+  }>;
 }
 
 export async function getNearbyWelfare(
