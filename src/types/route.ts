@@ -598,19 +598,31 @@ export interface HazardGeoPoint {
   coordinates: [number, number];
 }
 
+export type HazardSeverity = "blocking" | "difficult" | "minor";
+
 export interface HazardReport {
   _id: string;
-  reporterId: string;
+  reporterId?: string;
   hazardType: "obstacle" | "construction" | "data_error";
+  severity?: HazardSeverity;
+  expectedUntil?: string | null;
   reportedLocation: HazardGeoPoint;
   description?: string;
   photoUrl?: string;
   status: "pending" | "verified" | "rejected" | "expired";
   exifValidation?: {
-    gpsMatch: boolean;
-    timeRecent: boolean;
-    distanceM: number;
-    minutesAgo: number;
+    timestampFresh?: boolean;
+    gpsPresent?: boolean;
+    gpsMatchesClaimed?: boolean;
+    gpsMatch?: boolean;
+    timeRecent?: boolean;
+    distanceM?: number;
+    minutesAgo?: number;
+  };
+  aiVerification?: {
+    verdict: "verified" | "suspicious" | "rejected" | "skipped";
+    confidence: number;
+    reason: string;
   };
   aiAnalysis?: {
     confidence: number;
@@ -620,6 +632,7 @@ export interface HazardReport {
   confirmCount?: number;
   denyCount?: number;
   createdAt?: string;
+  expiredAt?: string;
   updatedAt?: string;
 }
 

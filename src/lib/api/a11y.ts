@@ -15,6 +15,7 @@ import type {
   AccessibleRouteRerouteRequest,
   EnvironmentData,
   HazardReport,
+  HazardSeverity,
   NavInstructionsData,
   NavInstructionsRequest,
   OsmPlaceDetail,
@@ -96,6 +97,16 @@ export async function getOsmPlaceDetail(osmId: string, signal?: AbortSignal) {
   return response as ApiResponse<OsmPlaceDetail | OsmPlaceDetail[]>;
 }
 
+export interface CreateHazardReportData {
+  report?: HazardReport;
+  merged?: boolean;
+  _id?: string;
+  hazardType?: string;
+  severity?: HazardSeverity;
+  latitude?: number;
+  longitude?: number;
+}
+
 export async function createHazardReport(formData: FormData) {
   const token = await getAccessToken();
   const response = await fetch(`${END_POINT}/api/v1/a11y/reports`, {
@@ -106,10 +117,10 @@ export async function createHazardReport(formData: FormData) {
   });
 
   const hasBody = response.status !== 204 && response.status !== 205;
-  let data: ApiResponse<HazardReport>;
+  let data: ApiResponse<CreateHazardReportData>;
   if (hasBody) {
     try {
-      data = (await response.json()) as ApiResponse<HazardReport>;
+      data = (await response.json()) as ApiResponse<CreateHazardReportData>;
     } catch {
       throw new ApiError(
         response.statusText || "Failed to submit hazard report",
@@ -122,7 +133,7 @@ export async function createHazardReport(formData: FormData) {
       status: response.ok ? "success" : "error",
       code: response.status,
       message: response.statusText,
-    } as ApiResponse<HazardReport>;
+    } as ApiResponse<CreateHazardReportData>;
   }
 
   const isSuccess = data.ok === true || data.success === true;

@@ -51,6 +51,6 @@ export const createA11ySlice: MapSliceCreator<A11ySlice> = (set, get) => ({
     }
     set({ selectedParking: item });
   },
-  pendingReportContext: "",
+  pendingReportContext: null,
   setPendingReportContext: (context) => set({ pendingReportContext: context }),
 });

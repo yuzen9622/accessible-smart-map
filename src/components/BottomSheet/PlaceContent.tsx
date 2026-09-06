@@ -631,13 +631,14 @@ export default function PlaceContent() {
                     className="self-start text-xs font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-300"
                     onClick={() => {
                       const placeName = isPlace && place ? place.name : "";
-                      setPendingReportContext(
-                        t("a11yReportPrefill", {
+                      setPendingReportContext({
+                        description: t("a11yReportPrefill", {
                           defaultValue: "{{facility}}：{{place}}",
                           facility: item.label,
                           place: placeName,
                         }),
-                      );
+                        location: placePosition ?? userLocation,
+                      });
                       // sheetMode stays "place" (a MODE_PANELS value) after
                       // opening from a place detail page, and BottomSheet
                       // renders by sheetMode over activeRailPanel whenever a

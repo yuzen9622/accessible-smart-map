@@ -66,6 +66,7 @@ describe("createHazardReport", () => {
 
     const formData = new FormData();
     formData.append("hazardType", "obstacle");
+    formData.append("severity", "difficult");
     formData.append("latitude", "25.03396");
     formData.append("longitude", "121.56447");
 

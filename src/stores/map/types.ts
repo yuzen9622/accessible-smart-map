@@ -45,6 +45,11 @@ export type RailPanel =
   // rail, so it's absent from RAIL_ITEMS/RAIL_MORE_ITEMS/RAIL_CONTENT_PANELS.
   | "explanation";
 
+export interface HazardReportContext {
+  description: string;
+  location: LatLng | null;
+}
+
 export interface MapInstanceSlice {
   map: maplibregl.Map | null;
   setMap: (map: maplibregl.Map) => void;
@@ -188,10 +193,10 @@ export interface A11ySlice {
   selectedParking: ParkingNearbyItem | null;
   setSelectedParking: (item: ParkingNearbyItem | null) => void;
   /** Set when an unconfirmed a11y checklist item's "我知道 → 回報" link opens
-   * the hazard report panel; `HazardReportPanel` consumes it as the initial
-   * description so the report already names which facility it's about. */
-  pendingReportContext: string;
-  setPendingReportContext: (context: string) => void;
+   * the hazard report panel; `HazardReportPanel` consumes it once so both the
+   * pre-filled description and selected place survive the panel handoff. */
+  pendingReportContext: HazardReportContext | null;
+  setPendingReportContext: (context: HazardReportContext | null) => void;
 }
 
 export interface SheetSlice {

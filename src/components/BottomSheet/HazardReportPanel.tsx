@@ -19,6 +19,7 @@ import { reverseGeocode } from "@/lib/api/placeSearch";
 import { haversineMeters } from "@/lib/geo";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
+import type { HazardSeverity } from "@/types/route";
 import { Button } from "../ui/button";
 
 export const MAX_REPORT_PHOTO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -26,7 +27,6 @@ export const ALLOWED_REPORT_PHOTO_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/gif",
   "image/heic",
   "image/heif",
 ];
@@ -37,10 +37,7 @@ export function validateHazardPhoto(file: {
 }):
   | { valid: true }
   | { valid: false; error: "IMAGE_TOO_LARGE" | "INVALID_IMAGE_TYPE" } {
-  if (
-    !ALLOWED_REPORT_PHOTO_TYPES.includes(file.type) &&
-    !file.type.startsWith("image/")
-  ) {
+  if (!ALLOWED_REPORT_PHOTO_TYPES.includes(file.type)) {
     return { valid: false, error: "INVALID_IMAGE_TYPE" };
   }
   if (file.size > MAX_REPORT_PHOTO_SIZE_BYTES) {
@@ -59,6 +56,36 @@ const HAZARD_TYPES = [
   { value: "data_error" as const, Icon: AlertTriangle, color: "text-red-500" },
 ];
 
+const SEVERITIES: Array<{
+  value: HazardSeverity;
+  labelKey: string;
+  dotColor: string;
+  activeBorder: string;
+  activeBg: string;
+}> = [
+  {
+    value: "minor",
+    labelKey: "severityMinor",
+    dotColor: "bg-amber-400",
+    activeBorder: "border-amber-500/50",
+    activeBg: "bg-amber-500/10",
+  },
+  {
+    value: "difficult",
+    labelKey: "severityDifficult",
+    dotColor: "bg-orange-500",
+    activeBorder: "border-orange-500/50",
+    activeBg: "bg-orange-500/10",
+  },
+  {
+    value: "blocking",
+    labelKey: "severityBlocking",
+    dotColor: "bg-red-500",
+    activeBorder: "border-red-500/50",
+    activeBg: "bg-red-500/10",
+  },
+];
+
 export default function HazardReportPanel({
   onClose,
   hideHeader,
@@ -68,6 +95,7 @@ export default function HazardReportPanel({
 }) {
   const { t, i18n } = useAppTranslation();
   const hazardTypeLabelId = useId();
+  const severityLabelId = useId();
   const descriptionId = useId();
   const { userLocation, pendingReportContext, setPendingReportContext } =
     useMapStore(
@@ -86,20 +114,22 @@ export default function HazardReportPanel({
 
   const [hazardType, setHazardType] = useState<
     "obstacle" | "construction" | "data_error"
-  >("obstacle");
-  const [description, setDescription] = useState("");
+  >(pendingReportContext ? "data_error" : "obstacle");
+  const [severity, setSeverity] = useState<HazardSeverity>("difficult");
+  const [description, setDescription] = useState(
+    pendingReportContext?.description ?? "",
+  );
+  const [reportContext] = useState(pendingReportContext);
+  const reportLocation = reportContext?.location ?? userLocation;
 
   // A place detail's "我知道 → 回報" link on an unconfirmed a11y item hands
-  // off a pre-filled description this way — consumed once on mount (not a
-  // live subscription) so a later unrelated report doesn't inherit stale
-  // context.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only, see above
+  // off a pre-filled description and target location this way. Snapshot it
+  // above before clearing the store so GPS updates cannot replace the chosen
+  // place while this report remains open.
   useEffect(() => {
-    if (!pendingReportContext) return;
-    setDescription(pendingReportContext);
-    setHazardType("data_error");
-    setPendingReportContext("");
-  }, []);
+    if (!reportContext) return;
+    setPendingReportContext(null);
+  }, [reportContext, setPendingReportContext]);
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -111,27 +141,31 @@ export default function HazardReportPanel({
   // Nominatim call MapControlsWrapper's share dialog already makes) and
   // show that as the primary line, coordinates demoted to a secondary line.
   //
-  // `userLocation` is a fresh object on every GPS fix (watchPosition can tick
+  // `reportLocation` is a fresh object on every GPS fix for generic reports
+  // (watchPosition can tick
   // roughly once a second), so re-querying on every change would hammer
   // Nominatim's public instance well past its ~1 req/sec usage policy and
   // risk getting the origin rate-limited. Only re-query once the user has
   // actually moved a meaningful distance.
   const lastQueriedRef = useRef<{ lat: number; lng: number } | null>(null);
   useEffect(() => {
-    if (!userLocation) return;
+    if (!reportLocation) return;
     const last = lastQueriedRef.current;
     if (last) {
-      const moved = haversineMeters(last, userLocation);
+      const moved = haversineMeters(last, reportLocation);
       if (moved < 30) return;
     }
-    lastQueriedRef.current = { lat: userLocation.lat, lng: userLocation.lng };
+    lastQueriedRef.current = {
+      lat: reportLocation.lat,
+      lng: reportLocation.lng,
+    };
     const controller = new AbortController();
     const lang = i18n.language === "zh-TW" ? "zh-TW" : "en";
     setAddressFailed(false);
     reverseGeocode(
       {
-        lat: userLocation.lat,
-        lng: userLocation.lng,
+        lat: reportLocation.lat,
+        lng: reportLocation.lng,
         lang,
         zoom: 16,
       },
@@ -157,7 +191,7 @@ export default function HazardReportPanel({
         setAddressFailed(true);
       });
     return () => controller.abort();
-  }, [userLocation, i18n.language]);
+  }, [reportLocation, i18n.language]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,7 +201,9 @@ export default function HazardReportPanel({
     const validation = validateHazardPhoto(file);
     if (!validation.valid) {
       if (validation.error === "INVALID_IMAGE_TYPE") {
-        toast.error(t("invalidImageType", "僅支援 JPG、PNG、WebP 等圖片格式"));
+        toast.error(
+          t("invalidImageType", "僅支援 JPG、PNG、WebP、HEIC 或 HEIF 格式照片"),
+        );
       } else if (validation.error === "IMAGE_TOO_LARGE") {
         toast.error(t("imageTooLarge", "圖片大小不能超過 5MB"));
       }
@@ -182,8 +218,13 @@ export default function HazardReportPanel({
   };
 
   const handleSubmit = useCallback(async () => {
-    if (!userLocation) {
-      toast.error("無法取得您的位置");
+    if (!reportLocation) {
+      toast.error(t("locationRequired", "無法取得您的位置"));
+      return;
+    }
+    if (!photo) {
+      toast.error(t("photoRequired", "請拍攝或上傳現場照片"));
+      fileRef.current?.click();
       return;
     }
 
@@ -191,24 +232,52 @@ export default function HazardReportPanel({
     try {
       const formData = new FormData();
       formData.append("hazardType", hazardType);
-      formData.append("latitude", String(userLocation.lat));
-      formData.append("longitude", String(userLocation.lng));
-      if (description) formData.append("description", description);
-      if (photo) formData.append("photo", photo);
+      formData.append("severity", severity);
+      formData.append("latitude", String(reportLocation.lat));
+      formData.append("longitude", String(reportLocation.lng));
+      if (description.trim())
+        formData.append("description", description.trim());
+      formData.append("photo", photo);
 
       const res = await createHazardReport(formData);
       if (res.ok) {
         toast.success(t("reportSuccess"));
         onClose();
       } else {
-        toast.error(t("reportFailed"));
+        toast.error(res.message || t("reportFailed"));
       }
-    } catch {
-      toast.error(t("reportFailed"));
+    } catch (err: unknown) {
+      const apiError = err as {
+        code?: number;
+        message?: string;
+        reason?: string;
+      };
+      const reason = apiError?.reason;
+      if (reason === "PHOTO_REQUIRED") {
+        toast.error(t("photoRequired", "請拍攝或上傳現場照片"));
+      } else if (reason === "INVALID_PHOTO_TYPE") {
+        toast.error(
+          t("invalidImageType", "僅支援 JPG、PNG、WebP、HEIC 或 HEIF 格式照片"),
+        );
+      } else if (reason === "PHOTO_TOO_LARGE") {
+        toast.error(t("imageTooLarge", "圖片大小不能超過 5MB"));
+      } else if (reason === "EXIF_TOO_OLD") {
+        toast.error(
+          t("exifTooOld", "照片拍攝時間過久，請上傳 10 分鐘內現場拍攝之照片"),
+        );
+      } else if (reason === "EXIF_GPS_MISMATCH") {
+        toast.error(
+          t("exifGpsMismatch", "照片拍攝地點與目前位置不符（超過 50 公尺）"),
+        );
+      } else if (reason === "RATE_LIMITED" || apiError?.code === 429) {
+        toast.error(t("reportRateLimited", "回報提交過於頻繁，請稍後再試"));
+      } else {
+        toast.error(apiError?.message || t("reportFailed"));
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, [hazardType, description, photo, userLocation, t, onClose]);
+  }, [hazardType, severity, description, photo, reportLocation, t, onClose]);
 
   return (
     <div className="space-y-4">
@@ -248,7 +317,7 @@ export default function HazardReportPanel({
       {/* Location — readable address first (so the user can actually
           confirm this is the right spot), raw coordinates demoted to a
           secondary line rather than being the only thing shown. */}
-      {userLocation && (
+      {reportLocation && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 px-3 py-2 rounded-lg">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
           <div className="min-w-0">
@@ -259,7 +328,7 @@ export default function HazardReportPanel({
                   : t("locating", "定位中…"))}
             </p>
             <p className="tabular-nums">
-              {userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}
+              {reportLocation.lat.toFixed(5)}, {reportLocation.lng.toFixed(5)}
             </p>
           </div>
         </div>
@@ -295,6 +364,36 @@ export default function HazardReportPanel({
         </div>
       </div>
 
+      {/* Severity */}
+      <div>
+        <span
+          id={severityLabelId}
+          className="text-sm font-medium text-muted-foreground mb-2 block"
+        >
+          {t("hazardSeverity", "嚴重程度")}
+        </span>
+        <div className="grid grid-cols-3 gap-2">
+          {SEVERITIES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              aria-pressed={severity === s.value}
+              onClick={() => setSeverity(s.value)}
+              className={`flex flex-col items-center justify-center p-2.5 rounded-xl text-xs font-medium transition-all border ${
+                severity === s.value
+                  ? `${s.activeBorder} ${s.activeBg} text-foreground font-semibold`
+                  : "border-transparent bg-muted/40 text-muted-foreground hover:bg-muted/60"
+              }`}
+            >
+              <span
+                className={`inline-block w-2 h-2 rounded-full mb-1.5 ${s.dotColor}`}
+              />
+              <span>{t(s.labelKey)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Description */}
       <div>
         <label
@@ -315,10 +414,16 @@ export default function HazardReportPanel({
 
       {/* Photo */}
       <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium text-muted-foreground">
+            {t("hazardPhoto", "現場照片")}
+            <span className="text-destructive ml-1">*</span>
+          </span>
+        </div>
         <input
           ref={fileRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,image/*"
+          accept={ALLOWED_REPORT_PHOTO_TYPES.join(",")}
           capture="environment"
           onChange={handlePhoto}
           className="hidden"
