@@ -18,15 +18,18 @@ import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { NumberTicker } from "@/components/motion/number-ticker";
 import useComputeRoute from "@/hook/useComputeRoute";
+import useNavigationAudio from "@/hook/useNavigationAudio";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
+import { selectAdvisoryAnnouncement } from "@/lib/navigation/advisorySpeech";
 import {
   findLegHandoffIndex,
   isVehicleLegType,
   resolveActiveLegType,
 } from "@/lib/navigation/legMode";
 import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
+import { shouldSpeakLocally } from "@/lib/navigation/navigationAudio";
 import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
@@ -115,11 +118,16 @@ export default function NavigationHUD() {
   const rerouteRetryable = useNavStore((s) => s.rerouteRetryable);
   const stepListOpen = useNavStore((s) => s.stepListOpen);
   const setStepListOpen = useNavStore((s) => s.setStepListOpen);
-  const setVoiceEnabled = useNavStore((s) => s.setVoiceEnabled);
   const warnings = useNavStore((s) => s.warnings);
   const advisories = useNavStore((s) => s.advisories);
   const dismissAdvisory = useNavStore((s) => s.dismissAdvisory);
   const lastRerouteReason = useNavStore((s) => s.lastRerouteReason);
+
+  const {
+    geminiOwnsSpeech: isGeminiNavSpeechLive,
+    isAudioActive,
+    toggleAudio,
+  } = useNavigationAudio();
 
   const route = selectRoute?.route;
 
@@ -165,19 +173,20 @@ export default function NavigationHUD() {
 
   const speak = useCallback(
     (text: string) => {
-      if (
-        navigationSource === "voice" ||
-        !useNavStore.getState().voiceEnabled ||
-        !synthRef.current
-      )
-        return;
+      // Read the toggle fresh: speak() is called from effects that may fire
+      // after the user flipped it.
+      const maySpeak = shouldSpeakLocally({
+        geminiOwnsSpeech: isGeminiNavSpeechLive,
+        localVoiceEnabled: useNavStore.getState().voiceEnabled,
+      });
+      if (!maySpeak || !synthRef.current) return;
       synthRef.current.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = i18n.language === "zh-TW" ? "zh-TW" : "en-US";
       utter.rate = 0.9;
       synthRef.current.speak(utter);
     },
-    [i18n.language, navigationSource],
+    [i18n.language, isGeminiNavSpeechLive],
   );
 
   useEffect(() => {
@@ -189,9 +198,20 @@ export default function NavigationHUD() {
     if (arrived) speak(t("arrivedDesc"));
   }, [arrived, speak, t]);
 
+  const spokenAdvisoryKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!voiceEnabled) synthRef.current?.cancel();
-  }, [voiceEnabled]);
+    const { keysToRemember, speech } = selectAdvisoryAnnouncement(
+      advisories,
+      spokenAdvisoryKeysRef.current,
+      { arrived },
+    );
+    for (const key of keysToRemember) spokenAdvisoryKeysRef.current.add(key);
+    if (speech) speak(speech);
+  }, [advisories, arrived, speak]);
+
+  useEffect(() => {
+    if (isGeminiNavSpeechLive || !voiceEnabled) synthRef.current?.cancel();
+  }, [isGeminiNavSpeechLive, voiceEnabled]);
 
   // ---- Upcoming accessible facility (from the route's own walk-leg data) ----
   const routeFacilities = useMemo(() => {
@@ -673,16 +693,16 @@ export default function NavigationHUD() {
           <div className="flex items-center gap-2.5 shrink-0">
             <button
               type="button"
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
-              aria-label={voiceEnabled ? t("voiceOff") : t("voiceOn")}
-              aria-pressed={voiceEnabled}
+              onClick={toggleAudio}
+              aria-label={isAudioActive ? t("voiceOff") : t("voiceOn")}
+              aria-pressed={isAudioActive}
               className={`h-11 w-11 rounded-full flex items-center justify-center transition-colors ${
-                voiceEnabled
+                isAudioActive
                   ? "bg-primary/10 text-primary"
                   : "bg-muted/60 text-muted-foreground hover:bg-muted"
               }`}
             >
-              {voiceEnabled ? (
+              {isAudioActive ? (
                 <Volume2 className="h-5 w-5" />
               ) : (
                 <VolumeX className="h-5 w-5" />

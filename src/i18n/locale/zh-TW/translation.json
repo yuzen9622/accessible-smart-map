@@ -269,6 +269,8 @@
   "starLabel2": "通行困難",
   "starLabel1": "不建議此路線",
   "starAriaLabel": "通行評級 {{filled}} 星，共 5 星",
+  "voiceAssistantLostNavContinues": "語音助理已中斷，導航繼續進行",
+  "voiceReconnectedRerouting": "連線已恢復，正在重新規劃路線",
   "voiceNav": "語音導航",
   "voiceNavOn": "語音導航已開啟",
   "voiceNavOff": "語音導航已關閉",

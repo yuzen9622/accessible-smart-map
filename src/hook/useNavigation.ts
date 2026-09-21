@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppTranslation } from "@/i18n/client";
 import { getRouteInstructions } from "@/lib/api/a11y";
 import {
@@ -30,6 +30,7 @@ import {
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type HeadingSource } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
+import type { NavInstruction } from "@/types/route";
 import useRouteReroute from "./useRouteReroute";
 
 // Tuning constants for the turn-by-turn engine. The distance thresholds are
@@ -53,6 +54,47 @@ const CAMERA_DEAD_ZONE_DEG = 0.15;
 const CAMERA_DEAD_ZONE_M = 0.15;
 
 type CameraState = LatLng & { bearing: number };
+
+/**
+ * Steps handed over by the voice backend carry no `polylineIndex`, so every
+ * waypoint would resolve to the route origin. Spreading them evenly along
+ * their own leg keeps next-step selection and arrival detection usable when
+ * the instructions endpoint never answers.
+ */
+export function withSyntheticPolylineIndices(
+  instructions: NavInstruction[],
+  { path, legRanges }: CumulativePath,
+): NavInstruction[] {
+  if (instructions.length === 0 || path.length === 0) return instructions;
+  if (instructions.some((ins) => ins.polylineIndex != null))
+    return instructions;
+
+  const positionsByLeg = new Map<number, number[]>();
+  instructions.forEach((ins, index) => {
+    const legIndex = ins.legIndex ?? -1;
+    const positions = positionsByLeg.get(legIndex);
+    if (positions) positions.push(index);
+    else positionsByLeg.set(legIndex, [index]);
+  });
+
+  const resolved = new Array<number>(instructions.length).fill(0);
+  for (const [legIndex, positions] of positionsByLeg) {
+    const range = legIndex >= 0 ? legRanges[legIndex] : undefined;
+    // A resolvable leg range makes polylineIndex leg-relative; otherwise it is
+    // an index into the whole concatenated path.
+    const count = range && range.count > 0 ? range.count : path.length;
+    positions.forEach((instructionIndex, position) => {
+      const fraction =
+        positions.length === 1 ? 1 : position / (positions.length - 1);
+      resolved[instructionIndex] = Math.round(fraction * (count - 1));
+    });
+  }
+
+  return instructions.map((ins, index) => ({
+    ...ins,
+    polylineIndex: resolved[index],
+  }));
+}
 
 /** GPS may anchor the camera only when the fix is reasonably close to the route. */
 function gpsNearRoute(loc: LatLng | null, cp: CumulativePath | null): boolean {
@@ -80,12 +122,13 @@ function angularDistanceDeg(a: number, b: number): number {
 
 /** True on iOS 13+, where DeviceOrientation needs an explicit permission grant. */
 function compassNeedsPermission(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof (
-      DeviceOrientationEvent as unknown as { requestPermission?: unknown }
-    )?.requestPermission === "function"
-  );
+  if (typeof window === "undefined") return false;
+  // SAFETY: requestPermission is an iOS-only extension missing from the DOM
+  // typings; the typeof check below is what proves it exists at runtime.
+  const ctor = DeviceOrientationEvent as unknown as {
+    requestPermission?: unknown;
+  };
+  return typeof ctor?.requestPermission === "function";
 }
 
 /**
@@ -122,6 +165,10 @@ export default function useNavigation() {
   const smoothRef = useRef<number | null>(null);
   const camRef = useRef<CameraState | null>(null);
   const lastLegTypeRef = useRef<NavLegType | null>(null);
+  const previousNavigationSourceRef = useRef(navigationSource);
+  // Bumped whenever a takeover swaps the geometry (carried steps first, exact
+  // instructions after), so projection re-runs without waiting for a GPS fix.
+  const [geometryEpoch, setGeometryEpoch] = useState(0);
 
   useEffect(() => observeLocalNavigationGeometry(geometryRef.current), []);
 
@@ -188,12 +235,57 @@ export default function useNavigation() {
 
   // ---- Load instructions when navigation starts (passthrough legs only) ----
   useEffect(() => {
+    const tookOverFromVoice = previousNavigationSourceRef.current === "voice";
+    previousNavigationSourceRef.current = navigationSource;
     if (!route || navigationSource === "voice") return;
+    let cancelled = false;
+
+    /**
+     * Steps carried over from the voice backend have no `polylineIndex`, so
+     * every waypoint would collapse onto the route origin. Spread them along
+     * their own leg *immediately*, before the exact instructions are asked
+     * for: turn-by-turn then keeps running on approximate distances instead
+     * of freezing for as long as the request takes (or forever, if it never
+     * answers).
+     */
+    const applyCarriedInstructions = () => {
+      const nav = useNavStore.getState();
+      const cp = buildCumulativePath(route.legs);
+      const patched = withSyntheticPolylineIndices(nav.instructions, cp);
+      if (patched !== nav.instructions) {
+        const carriedAdvisories = nav.advisories;
+        const carriedStepIndex = nav.currentStepIndex;
+        nav.setNavigationIdentity(
+          route.navigationId ?? null,
+          route.routeVersion ?? 0,
+        );
+        nav.setInstructions(patched, nav.warnings);
+        const restored = useNavStore.getState();
+        restored.setCurrentStepIndex(
+          Math.max(0, Math.min(carriedStepIndex, patched.length - 1)),
+        );
+        if (carriedAdvisories.length > 0) {
+          restored.pushAdvisories(carriedAdvisories);
+        }
+      }
+      replaceNavigationGeometryRuntime(
+        geometryRef.current,
+        route,
+        useNavStore.getState().instructions,
+      );
+      useNavStore.getState().setRouteTotalM(cp.cumM.at(-1) ?? null);
+      // The geometry settles outside React state, so projection has to be
+      // kicked explicitly instead of waiting for the next GPS fix.
+      setGeometryEpoch((epoch) => epoch + 1);
+    };
+
+    if (tookOverFromVoice) applyCarriedInstructions();
+
     // The instructions endpoint is keyed by routeToken only; without it there
-    // is nothing to ask for.
+    // is nothing to ask for, so a takeover runs on what it carried.
     const routeToken = route.routeToken;
     if (!routeToken) return;
-    let cancelled = false;
+
     getRouteInstructions({
       routeToken,
       userHeading: useNavStore.getState().userHeading ?? undefined,
@@ -201,34 +293,43 @@ export default function useNavigation() {
     })
       .then((res) => {
         if (cancelled) return;
-        if (res.ok && res.data?.instructions) {
-          replaceNavigationGeometryRuntime(
-            geometryRef.current,
-            route,
-            res.data.instructions,
+        if (!res.ok || !res.data?.instructions) return;
+        replaceNavigationGeometryRuntime(
+          geometryRef.current,
+          route,
+          res.data.instructions,
+        );
+        const cp = geometryRef.current.path;
+        if (!cp) return;
+        const nav = useNavStore.getState();
+        nav.setNavigationIdentity(
+          route.navigationId ?? null,
+          route.routeVersion ?? 0,
+        );
+        // setInstructions clears advisories because a replaced route
+        // invalidates them — but taking over a live navigation from the
+        // voice backend is not a route change, so the alerts must survive.
+        const carriedAdvisories = tookOverFromVoice ? nav.advisories : [];
+        nav.setInstructions(res.data.instructions, res.data.warnings ?? []);
+        if (carriedAdvisories.length > 0) {
+          useNavStore.getState().pushAdvisories(carriedAdvisories);
+        }
+        useNavStore
+          .getState()
+          .setRouteTotalM(cp.cumM[cp.cumM.length - 1] ?? null);
+        // Upgrading from the synthetic geometry: re-project at once so the
+        // approximate distances are corrected without waiting for a fix.
+        if (tookOverFromVoice) setGeometryEpoch((epoch) => epoch + 1);
+        if (process.env.NODE_ENV !== "production") {
+          // Verify polylineIndex → coordinate mapping against real data.
+          console.debug(
+            "[nav] instructions loaded",
+            res.data.instructions.length,
+            "pts:",
+            cp.path.length,
+            "waypoints:",
+            geometryRef.current.waypoints.map((w) => w.alongM.toFixed(0)),
           );
-          const cp = geometryRef.current.path;
-          if (!cp) return;
-          const nav = useNavStore.getState();
-          nav.setNavigationIdentity(
-            route.navigationId ?? null,
-            route.routeVersion ?? 0,
-          );
-          nav.setInstructions(res.data.instructions, res.data.warnings ?? []);
-          useNavStore
-            .getState()
-            .setRouteTotalM(cp.cumM[cp.cumM.length - 1] ?? null);
-          if (process.env.NODE_ENV !== "production") {
-            // Verify polylineIndex → coordinate mapping against real data.
-            console.debug(
-              "[nav] instructions loaded",
-              res.data.instructions.length,
-              "pts:",
-              cp.path.length,
-              "waypoints:",
-              geometryRef.current.waypoints.map((w) => w.alongM.toFixed(0)),
-            );
-          }
         }
       })
       .catch(() => {});
@@ -243,6 +344,10 @@ export default function useNavigation() {
     const cp = geometryRef.current.path;
     const wps = geometryRef.current.waypoints;
     if (!cp || cp.path.length === 0 || wps.length === 0) return;
+
+    // A re-run trigger only: the takeover's geometry settles outside React
+    // state, so projection has to be kicked explicitly when it changes.
+    void geometryEpoch;
 
     const nav = useNavStore.getState();
     const proj = projectToPath(userLocation, cp.path, cp.cumM);
@@ -333,6 +438,7 @@ export default function useNavigation() {
   }, [
     userLocation,
     navigationSource,
+    geometryEpoch,
     confirmOffRouteEpisode,
     clearOffRouteEpisode,
     applyLegHandoff,
@@ -408,6 +514,8 @@ export default function useNavigation() {
 
     const handler = (e: DeviceOrientationEvent) => {
       let h: number | null = null;
+      // SAFETY: webkitCompassHeading is an iOS-only extension absent from the
+      // DOM typings; the runtime check below covers every other browser.
       const webkit = (e as unknown as { webkitCompassHeading?: number })
         .webkitCompassHeading;
       if (typeof webkit === "number" && !Number.isNaN(webkit)) {

@@ -125,6 +125,7 @@ function createHarness(opts?: {
     onBlocked: vi.fn((cb: () => void) => {
       blockedCb = cb;
     }),
+    setMuted: vi.fn(),
   };
   const createPlayback = vi.fn(() => playback);
 
@@ -1029,5 +1030,40 @@ describe("VoiceSessionController", () => {
 
     h.sockets[0].triggerMessage(JSON.stringify({ type: "turn.complete" }));
     expect(h.onTurnComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("case 27: setMuted silences the speaker and discards microphone frames", async () => {
+    const h = createHarness();
+    h.controller.start();
+    await bringToListening(h);
+
+    const frame1 = new ArrayBuffer(10);
+    h.captureCalls[0].onFrame(frame1);
+    expect(h.sockets[0].sent).toContain(frame1);
+
+    h.controller.setMuted(true);
+    expect(h.playback.setMuted).toHaveBeenLastCalledWith(true);
+
+    // Muted: the uplink drops the frame instead of sending it.
+    const frame2 = new ArrayBuffer(10);
+    h.captureCalls[0].onFrame(frame2);
+    expect(h.sockets[0].sent).not.toContain(frame2);
+
+    h.controller.setMuted(false);
+    expect(h.playback.setMuted).toHaveBeenLastCalledWith(false);
+    const frame3 = new ArrayBuffer(10);
+    h.captureCalls[0].onFrame(frame3);
+    expect(h.sockets[0].sent).toContain(frame3);
+
+    // A terminated session drops the flag: the next session starts audible
+    // instead of inheriting a mute nobody can see.
+    h.controller.setMuted(true);
+    h.controller.end();
+    h.controller.start();
+    await bringToListening(h, 1);
+
+    const frame4 = new ArrayBuffer(10);
+    h.captureCalls.at(-1)?.onFrame(frame4);
+    expect(h.sockets[1].sent).toContain(frame4);
   });
 });

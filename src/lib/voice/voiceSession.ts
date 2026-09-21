@@ -256,6 +256,66 @@ export type VoiceNavigationEvent =
       message: string;
     };
 
+/**
+ * Deliberately narrower than isVoiceSessionActive: connecting/reconnecting/
+ * error/needs-login keep a session object alive but emit no audio, so local
+ * TTS must take over. playback-blocked stays live because its audio is already
+ * buffered and plays on resume — speaking locally would duplicate it.
+ */
+export function isVoiceSpeechChannelLive(status: VoiceStatusName): boolean {
+  return (
+    status === "ready" ||
+    status === "listening" ||
+    status === "model-speaking" ||
+    status === "playback-blocked"
+  );
+}
+
+/**
+ * nav.advisory is a pure UI alert that never touches the navigation state
+ * machine, so a degraded voice transport must not swallow it. Every other
+ * event mutates navigation identity/step/route and keeps the drop behaviour.
+ */
+export function requiresLiveVoiceSession(
+  type: VoiceNavigationEvent["type"],
+): boolean {
+  return type !== "nav.advisory";
+}
+
+export function filterApplicableNavigationEvents(
+  events: VoiceNavigationEvent[],
+  status: VoiceStatusName,
+): VoiceNavigationEvent[] {
+  if (isVoiceSpeechChannelLive(status)) return events;
+  return events.filter((event) => !requiresLiveVoiceSession(event.type));
+}
+
+/** The navigation an inbound advisory has to match to be shown. */
+export interface AdvisoryTarget {
+  isNavigating: boolean;
+  arrived: boolean;
+  navigationId: string | null;
+  routeVersion: number;
+}
+
+/**
+ * Fail closed: without a known identity to compare against there is no way
+ * to tell a stale advisory from a current one, and injecting it would attach
+ * the previous navigation's hazards to whatever route is running now.
+ */
+export function shouldAcceptAdvisoryEvent(
+  event: Extract<VoiceNavigationEvent, { type: "nav.advisory" }>,
+  target: AdvisoryTarget,
+): boolean {
+  return (
+    target.isNavigating &&
+    !target.arrived &&
+    target.navigationId !== null &&
+    event.navigationId === target.navigationId &&
+    event.routeVersion === target.routeVersion
+  );
+}
+
 type ServerEventMessage =
   | SessionReadyMessage
   | TranscriptMessage
@@ -312,6 +372,7 @@ export interface VoicePlayback {
   dispose(): void;
   resume(): Promise<boolean>;
   onBlocked(cb: () => void): void;
+  setMuted?(muted: boolean): void;
 }
 
 export interface VoiceCapture {
@@ -415,6 +476,7 @@ export class VoiceSessionController {
   private playback: VoicePlayback | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
+  private muted = false;
   /** Latest selected HTTP route capability; re-armed after every reconnect. */
   private routeToken: string | null = null;
 
@@ -443,6 +505,7 @@ export class VoiceSessionController {
     this.sessionActive = true;
     this.hasRefreshed = false;
     this.hasBeenReady = false;
+    this.muted = false;
     this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
 
     this.playback = this.deps.createPlayback();
@@ -458,6 +521,11 @@ export class VoiceSessionController {
   end(): void {
     if (!this.sessionActive) return;
     this.terminate({ status: "ended" }, /* sendEndMessage */ true);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    this.playback?.setMuted?.(muted);
   }
 
   resumePlayback(): void {
@@ -540,6 +608,7 @@ export class VoiceSessionController {
   private terminate(status: VoiceStatus, sendEndMessage = false): void {
     this.generation += 1;
     this.sessionActive = false;
+    this.muted = false;
     this.clearReconnectTimer();
     this.stopCapture();
 
@@ -815,6 +884,7 @@ export class VoiceSessionController {
 
   private sendAudio(gen: number, frame: ArrayBuffer): void {
     if (gen !== this.generation) return; // stale capture, discarded
+    if (this.muted) return; // muted: discard microphone frames
     // §6: never send binary before `ready` — only listening/model-speaking
     // are reachable post-ready states in which uplink audio is valid.
     if (

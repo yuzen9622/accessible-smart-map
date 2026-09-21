@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import useIsDesktop from "@/hook/useIsDesktop";
+import useNavigationAudio from "@/hook/useNavigationAudio";
 import usePin from "@/hook/usePin";
 import { useAppTranslation } from "@/i18n/client";
 import { getEnvironmentInfo } from "@/lib/api/a11y";
@@ -251,15 +252,13 @@ export default function MapControlsWrapper() {
   }, [userLocation, t]);
 
   // --- Voice / Recenter Navigation mode controls ---
-  const voiceEnabled = useNavStore((s) => s.voiceEnabled);
-  const setVoiceEnabled = useNavStore((s) => s.setVoiceEnabled);
   const setFollowPaused = useNavStore((s) => s.setFollowPaused);
+  const { isAudioActive, toggleAudio } = useNavigationAudio();
 
   const toggleVoice = useCallback(() => {
-    const next = !voiceEnabled;
-    setVoiceEnabled(next);
-    toast.success(next ? t("voiceNavOn") : t("voiceNavOff"));
-  }, [voiceEnabled, setVoiceEnabled, t]);
+    const nextActive = toggleAudio();
+    toast.success(nextActive ? t("voiceNavOn") : t("voiceNavOff"));
+  }, [toggleAudio, t]);
 
   const recenterNav = useCallback(() => {
     setFollowPaused(false);
@@ -418,15 +417,15 @@ export default function MapControlsWrapper() {
                 size="icon"
                 onClick={toggleVoice}
                 aria-label={t("voiceNav")}
-                aria-pressed={voiceEnabled}
+                aria-pressed={isAudioActive}
                 className={cn(
                   "rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:shadow-xl transition-all",
-                  voiceEnabled
+                  isAudioActive
                     ? "bg-primary text-primary-foreground border-primary/50"
                     : "text-muted-foreground hover:bg-muted",
                 )}
               >
-                {voiceEnabled ? (
+                {isAudioActive ? (
                   <Volume2 className="h-5 w-5" />
                 ) : (
                   <VolumeXIcon size={20} />

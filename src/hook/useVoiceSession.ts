@@ -134,6 +134,7 @@ export interface UseVoiceSessionResult {
   sendNavigationPosition: (position: VoiceNavigationPosition) => void;
   cancelNavigation: () => void;
   consumeNavigationEvents: (count: number) => void;
+  setMuted: (muted: boolean) => void;
 }
 
 /**
@@ -277,6 +278,16 @@ export default function useVoiceSession(): UseVoiceSessionResult {
     controllerRef.current?.cancelNavigation();
   }, []);
 
+  const setMuted = useCallback(
+    (muted: boolean) => {
+      controllerRef.current?.setMuted(muted);
+      // The recording dot reads `micLevel`, which is fed by capture frames the
+      // controller now drops: gate it here or a muted mic keeps pulsing.
+      bindings.setMuted(muted);
+    },
+    [bindings],
+  );
+
   const consumeNavigationEvents = useCallback((count: number) => {
     setNavigationEvents((pending) => pending.slice(count));
   }, []);
@@ -293,5 +304,6 @@ export default function useVoiceSession(): UseVoiceSessionResult {
     sendNavigationPosition,
     cancelNavigation,
     consumeNavigationEvents,
+    setMuted,
   };
 }

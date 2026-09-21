@@ -116,6 +116,39 @@ describe("voiceSessionBindings", () => {
     expect(order).toEqual(["level", "forward"]);
   });
 
+  it("a muted session stops feeding micLevel, but still forwards the frame", () => {
+    // The controller drops muted frames upstream; the recording dot reads
+    // micLevel, so leaving it running showed a live mic nobody was hearing.
+    bindings.onStatusChange({ status: "listening" });
+    const forward = vi.fn<(frame: ArrayBuffer) => void>();
+    const handler = bindings.wrapCaptureFrame(forward);
+
+    bindings.setMuted(true);
+    expect(sinks.setMicLevel).toHaveBeenLastCalledWith(0);
+    sinks.setMicLevel.mockClear();
+
+    const frame = new ArrayBuffer(4);
+    handler(frame);
+    expect(sinks.setMicLevel).not.toHaveBeenCalled();
+    expect(forward).toHaveBeenCalledTimes(1);
+    expect(forward.mock.calls[0][0]).toBe(frame);
+
+    bindings.setMuted(false);
+    handler(new ArrayBuffer(4));
+    expect(sinks.setMicLevel).toHaveBeenCalledTimes(1);
+  });
+
+  it("reset() clears a mute left over from the previous session", () => {
+    bindings.onStatusChange({ status: "listening" });
+    bindings.setMuted(true);
+    bindings.reset();
+    bindings.onStatusChange({ status: "listening" });
+    sinks.setMicLevel.mockClear();
+
+    bindings.wrapCaptureFrame(vi.fn())(new ArrayBuffer(4));
+    expect(sinks.setMicLevel).toHaveBeenCalledTimes(1);
+  });
+
   it("suggestion #2: a frame arriving after a transition to a non-active status (e.g. playback-blocked) does not call setMicLevel, but the frame is still forwarded unchanged", () => {
     bindings.onStatusChange({ status: "listening" });
     const forward = vi.fn<(frame: ArrayBuffer) => void>();

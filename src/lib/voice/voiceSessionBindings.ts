@@ -53,6 +53,12 @@ export interface VoiceBindings {
   wrapCaptureFrame(
     forward: (frame: ArrayBuffer) => void,
   ): (frame: ArrayBuffer) => void;
+  /**
+   * Mirrors the controller's mute flag. Muting discards the microphone
+   * uplink, so the recording dot must stop reacting to input too — otherwise
+   * the UI keeps showing a live mic that is no longer being heard.
+   */
+  setMuted(muted: boolean): void;
   /** `startSession` calls this instead of clearing transcripts itself. */
   reset(): void;
   /** Unmount cleanup: zeroes the mic level. */
@@ -62,6 +68,7 @@ export interface VoiceBindings {
 export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   let agg: AggState = emptyAggState();
   let currentStatus: VoiceStatusName = "idle";
+  let muted = false;
 
   function onTranscript(transcript: TranscriptFragment): void {
     agg = appendFragment(agg, transcript);
@@ -123,14 +130,20 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
       // playback-blocked). Forward the frame either way, but don't let a
       // late frame repopulate `micLevel` once `onStatusChange` has already
       // zeroed it for a non-active status.
-      if (!isMicActiveStatus(currentStatus)) return;
+      if (muted || !isMicActiveStatus(currentStatus)) return;
       sinks.setMicLevel(level);
     });
+  }
+
+  function setMuted(nextMuted: boolean): void {
+    muted = nextMuted;
+    if (muted) sinks.setMicLevel(0);
   }
 
   function reset(): void {
     agg = emptyAggState();
     currentStatus = "idle";
+    muted = false;
     sinks.publishTranscripts([]);
   }
 
@@ -146,6 +159,7 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
     onStatusChange,
     onToolEvent,
     wrapCaptureFrame,
+    setMuted,
     reset,
     dispose,
   };

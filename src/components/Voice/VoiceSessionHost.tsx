@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import useVoiceSession from "@/hook/useVoiceSession";
+import { useAppTranslation } from "@/i18n/client";
 import { haversineMeters } from "@/lib/geo";
 import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
 import {
@@ -11,7 +12,12 @@ import {
 } from "@/lib/navigation/navigationLifecycle";
 import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
 import { toNavProgressUpdate } from "@/lib/voice/navProgress";
-import type { VoiceNavigationEvent } from "@/lib/voice/voiceSession";
+import { handleNavigationExit } from "@/lib/voice/voiceNavigationExit";
+import {
+  filterApplicableNavigationEvents,
+  shouldAcceptAdvisoryEvent,
+  type VoiceNavigationEvent,
+} from "@/lib/voice/voiceSession";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import useVoiceStore from "@/stores/useVoiceStore";
@@ -58,6 +64,7 @@ function toNavInstruction(
  * existing map/navigation stores.
  */
 export default function VoiceSessionHost() {
+  const { t } = useAppTranslation();
   const {
     status,
     transcripts,
@@ -70,6 +77,7 @@ export default function VoiceSessionHost() {
     sendNavigationPosition,
     cancelNavigation,
     consumeNavigationEvents,
+    setMuted,
   } = useVoiceSession();
   const lastSentPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const serverStoppedNavigationRef = useRef(false);
@@ -79,8 +87,9 @@ export default function VoiceSessionHost() {
       start: startSession,
       end: endSession,
       resumePlayback,
+      setMuted,
     });
-  }, [startSession, endSession, resumePlayback]);
+  }, [startSession, endSession, resumePlayback, setMuted]);
 
   useEffect(() => {
     useVoiceStore.getState().setStatus(status);
@@ -95,14 +104,16 @@ export default function VoiceSessionHost() {
       const nav = useNavStore.getState();
       const map = useMapStore.getState();
       if (nav.navigationSource === "voice" && map.isNavigating) {
-        // The session is gone for good — exit the stale HUD; a later
-        // session.ready will re-arm the route so the user can ask again.
+        // Losing the voice transport must not end the navigation: hand
+        // turn-by-turn back to the local engine (the same takeover the
+        // nav.resume_failed branch performs) so the HUD and its alerts live on.
         nav.setNavigationSource("local");
-        serverStoppedNavigationRef.current = true;
-        stopNavigation();
+        lastSentPositionRef.current = null;
+        serverStoppedNavigationRef.current = false;
+        toast.info(t("voiceAssistantLostNavContinues"));
       }
     }
-  }, [status]);
+  }, [status, t]);
 
   useEffect(() => {
     useVoiceStore.getState().setTranscripts(transcripts);
@@ -170,19 +181,23 @@ export default function VoiceSessionHost() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  // Any UI path that leaves a backend-owned navigation emits nav.cancel.
-  // Server-originated nav.stop changes the source first, so it is not echoed.
+  // Leaving a navigation (from any path) cancels a backend-owned session and
+  // releases the mute; the rule itself lives in `handleNavigationExit`.
   useEffect(() => {
     const unsubscribe = useMapStore.subscribe((state, previous) => {
       if (previous.isNavigating && !state.isNavigating) {
         const nav = useNavStore.getState();
-        if (
-          nav.navigationSource === "voice" &&
-          !serverStoppedNavigationRef.current
-        ) {
-          cancelNavigation();
-        }
-        nav.setNavigationSource("local");
+        handleNavigationExit(
+          {
+            navigationSource: nav.navigationSource,
+            serverStopped: serverStoppedNavigationRef.current,
+          },
+          {
+            cancelNavigation,
+            setNavigationSource: nav.setNavigationSource,
+            setMuted: useVoiceStore.getState().setMuted,
+          },
+        );
         lastSentPositionRef.current = null;
         serverStoppedNavigationRef.current = false;
       }
@@ -192,17 +207,14 @@ export default function VoiceSessionHost() {
 
   useEffect(() => {
     if (navigationEvents.length === 0) return;
-    const canApplyNavigationEvent =
-      status.status === "ready" ||
-      status.status === "listening" ||
-      status.status === "model-speaking" ||
-      status.status === "playback-blocked";
-    if (!canApplyNavigationEvent) {
-      consumeNavigationEvents(navigationEvents.length);
-      return;
-    }
+    // Navigation alerts are transport-independent: a degraded voice session
+    // must never swallow them (removing this filter silently drops alerts).
+    const applicableEvents = filterApplicableNavigationEvents(
+      navigationEvents,
+      status.status,
+    );
 
-    for (const navigationEvent of navigationEvents) {
+    for (const navigationEvent of applicableEvents) {
       const map = useMapStore.getState();
       const nav = useNavStore.getState();
 
@@ -345,13 +357,22 @@ export default function VoiceSessionHost() {
           nav.setNavigationSource("local");
           lastSentPositionRef.current = null;
           serverStoppedNavigationRef.current = false;
-          toast.info("連線已恢復，正在重新規劃路線");
+          toast.info(t("voiceReconnectedRerouting"));
           if (map.userLocation) {
             void localRerouteCoordinator.triggerAutoReroute(map.userLocation);
           }
           break;
         }
         case "nav.advisory": {
+          const accepted = shouldAcceptAdvisoryEvent(navigationEvent, {
+            isNavigating: map.isNavigating,
+            arrived: nav.arrived,
+            navigationId:
+              map.selectRoute?.route.navigationId ?? nav.navigationId,
+            routeVersion:
+              map.selectRoute?.route.routeVersion ?? nav.routeVersion,
+          });
+          if (!accepted) break;
           nav.pushAdvisories(navigationEvent.advisories);
           const critical = navigationEvent.advisories.find(
             (a) => a.severity === "critical",
@@ -385,6 +406,7 @@ export default function VoiceSessionHost() {
     status.status,
     consumeNavigationEvents,
     sendNavigationPosition,
+    t,
   ]);
 
   // Leaving the map page (this host unmounting) is a terminal path too.

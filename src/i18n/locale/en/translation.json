@@ -268,6 +268,8 @@
   "starLabel2": "Difficult passage",
   "starLabel1": "Not recommended",
   "starAriaLabel": "Accessibility rating: {{filled}} out of 5 stars",
+  "voiceAssistantLostNavContinues": "Voice assistant disconnected — navigation continues",
+  "voiceReconnectedRerouting": "Connection restored — recalculating the route",
   "voiceNav": "Voice Navigation",
   "voiceNavOn": "Voice navigation enabled",
   "voiceNavOff": "Voice navigation disabled",

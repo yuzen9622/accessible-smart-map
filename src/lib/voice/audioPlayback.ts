@@ -25,6 +25,7 @@ export interface Playback {
   dispose(): void;
   resume(): Promise<boolean>;
   onBlocked(cb: () => void): void;
+  setMuted(muted: boolean): void;
 }
 
 const OUT_RATE = 24000;
@@ -43,6 +44,7 @@ export function createPlayback(
   let context: AudioContext | null = null;
   let playHead = 0;
   let disposed = false;
+  let muted = false;
   let blockedCallback: (() => void) | null = null;
 
   const notifyIfBlocked = (ctx: AudioContext): void => {
@@ -70,7 +72,7 @@ export function createPlayback(
   };
 
   const play = (frame: ArrayBuffer): void => {
-    if (disposed) return;
+    if (disposed || muted) return;
     const ctx = ensureContext();
     const view = new Int16Array(frame);
     const floatData = new Float32Array(view.length);
@@ -121,5 +123,12 @@ export function createPlayback(
     blockedCallback = cb;
   };
 
-  return { play, clear, dispose, resume, onBlocked };
+  const setMuted = (nextMuted: boolean): void => {
+    muted = nextMuted;
+    if (muted) {
+      clear();
+    }
+  };
+
+  return { play, clear, dispose, resume, onBlocked, setMuted };
 }

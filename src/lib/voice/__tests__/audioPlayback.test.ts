@@ -247,3 +247,30 @@ describe("createPlayback — dispose()", () => {
     expect(ctx.close).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("createPlayback — setMuted()", () => {
+  it("when muted, play() does not schedule audio, and setMuted(true) clears active context", () => {
+    const ctx = new FakeAudioContext();
+    const playback = createPlayback(makeDeps(ctx));
+
+    playback.play(int16Frame([1, 2]));
+    expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
+
+    playback.setMuted(true);
+    // setMuted(true) calls clear(), closing active context
+    expect(ctx.close).toHaveBeenCalledTimes(1);
+
+    // Further play calls while muted do not schedule
+    playback.play(int16Frame([3, 4]));
+    expect(ctx.createBufferSource).toHaveBeenCalledTimes(1);
+
+    // Unmuting allows scheduling new audio
+    playback.setMuted(false);
+
+    const ctx2 = new FakeAudioContext();
+    const playback2 = createPlayback(makeDeps(ctx2));
+    playback2.setMuted(false);
+    playback2.play(int16Frame([5, 6]));
+    expect(ctx2.createBufferSource).toHaveBeenCalledTimes(1);
+  });
+});

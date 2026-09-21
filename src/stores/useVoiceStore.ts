@@ -42,6 +42,7 @@ interface VoiceSessionActions {
   start: () => void;
   end: () => void;
   resumePlayback: () => void;
+  setMuted?: (muted: boolean) => void;
 }
 
 interface VoiceState {
@@ -56,6 +57,11 @@ interface VoiceState {
    * selector, so this does not trigger the hook/Host mirroring re-renders.
    */
   micLevel: number;
+  /**
+   * Whether the live Gemini Voice audio output (and microphone uplink)
+   * is muted. Toggled via the navigation HUD / controls speaker button.
+   */
+  isMuted: boolean;
 }
 
 interface VoiceActions {
@@ -64,6 +70,8 @@ interface VoiceActions {
   setActiveTool: (tool: VoiceToolEvent | null) => void;
   setViewMode: (mode: VoiceViewMode) => void;
   setMicLevel: (level: number) => void;
+  setMuted: (muted: boolean) => void;
+  toggleMute: () => void;
   /**
    * Bound exactly once, by the always-mounted `VoiceSessionHost`, to the
    * real controller-backed functions returned by `useVoiceSession` (plan
@@ -82,24 +90,57 @@ interface VoiceActions {
 type VoiceStore = VoiceState & VoiceActions;
 
 const noop = () => {};
+let boundSetMuted: ((muted: boolean) => void) | null = null;
 
-const useVoiceStore = create<VoiceStore>((set) => ({
+const useVoiceStore = create<VoiceStore>((set, get) => ({
   status: { status: "idle" },
   transcripts: [],
   activeTool: null,
   viewMode: "panel",
   micLevel: 0,
-  setStatus: (status) => set({ status }),
+  isMuted: false,
+  setStatus: (status) => {
+    // Every terminal status drops the controller's mute flag, so the store has
+    // to clear its mirror for all of them or the speaker button reopens on a
+    // stale `isMuted`.
+    if (
+      status.status === "idle" ||
+      status.status === "ended" ||
+      status.status === "error" ||
+      status.status === "needs-login"
+    ) {
+      set({ status, isMuted: false });
+    } else {
+      set({ status });
+    }
+  },
   setTranscripts: (transcripts) => set({ transcripts }),
   setActiveTool: (activeTool) => set({ activeTool }),
   setViewMode: (viewMode) => set({ viewMode }),
   setMicLevel: (micLevel) => set({ micLevel }),
-  bindSessionActions: (actions) =>
+  setMuted: (isMuted) => {
+    set({ isMuted });
+    boundSetMuted?.(isMuted);
+  },
+  toggleMute: () => {
+    const next = !get().isMuted;
+    set({ isMuted: next });
+    boundSetMuted?.(next);
+  },
+  bindSessionActions: (actions) => {
+    boundSetMuted = actions.setMuted ?? null;
     set({
-      startSession: actions.start,
-      endSession: actions.end,
+      startSession: () => {
+        set({ isMuted: false });
+        actions.start();
+      },
+      endSession: () => {
+        set({ isMuted: false });
+        actions.end();
+      },
       resumePlayback: actions.resumePlayback,
-    }),
+    });
+  },
   // Before VoiceSessionHost mounts and binds the real actions, calls are
   // harmless no-ops rather than crashes.
   startSession: noop,
