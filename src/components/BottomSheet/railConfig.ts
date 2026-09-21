@@ -95,11 +95,9 @@ export const MODE_PANELS_WITH_OWN_HEADER = new Set([
 ]);
 
 // Rail panels that render their own content component. "search" and "none"
-// both fall through to HomeContent, and "route" is only ever a leftover from
-// RoutePreviewHydrator (the rail routes it through sheetMode="plan" instead),
-// so none of those three count as "a sub-panel is showing". RailPanelOrHome
-// reads the same set, so "is a panel open" can never disagree with what's
-// actually rendered.
+// both fall through to HomeContent, so neither counts as "a sub-panel is
+// showing". RailPanelOrHome reads the same set, so "is a panel open" can never
+// disagree with what's actually rendered.
 export const RAIL_CONTENT_PANELS = new Set<RailPanel>([
   "a11y",
   "bus",

@@ -45,9 +45,7 @@ export default function BottomSheet() {
     activeRailPanel,
     setActiveRailPanel,
     setSheetMode,
-    setComputeRoutes,
-    setRouteA11y,
-    setRouteSelect,
+    endRouteSession,
     setInfoShow,
     setSearchPlace,
     isNavigating,
@@ -64,11 +62,9 @@ export default function BottomSheet() {
       activeRailPanel: s.activeRailPanel,
       setActiveRailPanel: s.setActiveRailPanel,
       setSheetMode: s.setSheetMode,
-      setComputeRoutes: s.setComputeRoutes,
-      setRouteA11y: s.setRouteA11y,
+      endRouteSession: s.endRouteSession,
       chatOpen: s.chatOpen,
       setChatOpen: s.setChatOpen,
-      setRouteSelect: s.setRouteSelect,
       setInfoShow: s.setInfoShow,
       setSearchPlace: s.setSearchPlace,
       isNavigating: s.isNavigating,
@@ -317,11 +313,6 @@ export default function BottomSheet() {
         setCollapsed(false);
         if (modePanelActive) {
           setSheetMode("home");
-          setComputeRoutes(null);
-          setRouteA11y([]);
-          setRouteSelect(null);
-          setInfoShow({ isOpen: false, kind: null });
-          setSearchPlace(null);
         }
         setActiveRailPanel(panel);
         setMoreOpen(false);
@@ -334,14 +325,12 @@ export default function BottomSheet() {
       // user asking to get back to it, and skipping the call would leave
       // chatOpen set and the click looking broken.
       if (activeRailPanel !== panel || modePanelActive || showAssistant) {
-        // Reset to home mode if we were in a mode panel
+        // Reset to home mode if we were in a mode panel. Leaving a route
+        // behind used to mean destroying it here; it doesn't any more — the
+        // session stays alive and `RouteSessionPill` is the way back to it
+        // (and the only way to end it). See lib/route/routeSession.ts.
         if (modePanelActive) {
           setSheetMode("home");
-          setComputeRoutes(null);
-          setRouteA11y([]);
-          setRouteSelect(null);
-          setInfoShow({ isOpen: false, kind: null });
-          setSearchPlace(null);
         }
         setActiveRailPanel(panel);
       }
@@ -355,11 +344,6 @@ export default function BottomSheet() {
       setCollapsed,
       setActiveRailPanel,
       setSheetMode,
-      setComputeRoutes,
-      setRouteA11y,
-      setRouteSelect,
-      setInfoShow,
-      setSearchPlace,
       isNavigating,
       requestNavExit,
     ],
@@ -391,9 +375,13 @@ export default function BottomSheet() {
     if (modePanelActive) {
       setSheetMode("home");
       setActiveRailPanel("search");
-      setComputeRoutes(null);
-      setRouteA11y([]);
-      setRouteSelect(null);
+      // Closing the route flow with X is an explicit "I'm done with this
+      // route" — one of the two gestures allowed to end a session (the other
+      // is the resume pill's ✕). Closing 地點詳情/車站詳情 only dismisses that
+      // detail; it must not take an unrelated route session down with it.
+      if (sheetMode === "plan" || sheetMode === "route") {
+        endRouteSession();
+      }
       setInfoShow({ isOpen: false, kind: null });
       setSearchPlace(null);
     } else if (railContentActive) {
@@ -409,12 +397,11 @@ export default function BottomSheet() {
     modePanelActive,
     railContentActive,
     showAssistant,
+    sheetMode,
     setChatOpen,
     setSheetMode,
     setActiveRailPanel,
-    setComputeRoutes,
-    setRouteA11y,
-    setRouteSelect,
+    endRouteSession,
     setInfoShow,
     setSearchPlace,
     isNavigating,

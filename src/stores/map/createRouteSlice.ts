@@ -51,4 +51,32 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   setTransitAlerts: (alerts) => set({ transitAlerts: alerts }),
   sosNavActive: false,
   setSosNavActive: (active) => set({ sosNavActive: active }),
+  // Every field below is something that puts route geometry on the map or
+  // feeds the panel that describes it. Listing them in one place is the whole
+  // point: the four hand-copied clear lists this replaces each covered a
+  // different subset, and all four missed origin/destination — which is why
+  // the destination pin survived every panel switch.
+  //
+  // Deliberately *not* here: `searchPlace` / `infoShow`. Those belong to the
+  // place-detail surface, and the pill's ✕ can be pressed while the user is
+  // reading an unrelated place — pulling that out from under them would blank
+  // the panel they're actually looking at. Callers that are also leaving the
+  // place view clear those themselves.
+  endRouteSession: () =>
+    set({
+      origin: null,
+      originName: "",
+      destination: null,
+      destinationName: "",
+      computeRoutes: null,
+      selectRoute: null,
+      routeWaypoints: [],
+      routeInfoShow: false,
+      metroAlerts: null,
+      transitAlerts: null,
+      sosNavActive: false,
+      routeA11y: [],
+      activeBusLeg: null,
+      liveBusPositions: [],
+    }),
 });

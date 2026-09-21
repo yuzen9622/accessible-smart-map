@@ -12,6 +12,7 @@ import type { MapStore } from "./map/types";
 export type {
   MobileSheetSnap,
   RailPanel,
+  RouteSubPanel,
   SavedPlaceCategory,
   SheetMode,
 } from "./map/types";

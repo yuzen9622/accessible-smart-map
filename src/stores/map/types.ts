@@ -32,18 +32,25 @@ export type MobileSheetSnap = "peek" | "half" | "full";
 export type RailPanel =
   | "none"
   | "search"
-  | "route"
   | "a11y"
   | "bus"
   | "parking"
   | "environment"
   | "hazard"
   | "welfare"
-  | "saved"
-  // Route-results-only sub-panel (AI 路線說明). Only ever set/read while
-  // sheetMode === "route" (see RouteContent); not reachable from the home
-  // rail, so it's absent from RAIL_ITEMS/RAIL_MORE_ITEMS/RAIL_CONTENT_PANELS.
-  | "explanation";
+  | "saved";
+
+/**
+ * The sub-panel showing *inside* the route results view (RouteContent's
+ * quick-action chips). This used to ride on `activeRailPanel` — including an
+ * "explanation" value that existed only for this one caller — which meant the
+ * rail's selection and the route view's sub-page were the same field. That
+ * was survivable only because leaving the route view destroyed the route;
+ * now that a route session outlives a panel switch, a leftover "hazard" from
+ * the home rail would hijack RouteContent's first paint on resume. Separate
+ * field, no overlap, no defensive resets.
+ */
+export type RouteSubPanel = "none" | "explanation" | "environment" | "hazard";
 
 export interface HazardReportContext {
   description: string;
@@ -97,6 +104,14 @@ export interface RouteSlice {
   /** True when the active route targets a live SOS requester (hides the static destination pin in favor of the pulsing SOS marker). */
   sosNavActive: boolean;
   setSosNavActive: (active: boolean) => void;
+  /**
+   * The one and only place route geometry is torn down — see
+   * `lib/route/routeSession.ts` for why that matters. Switching panels must
+   * never call this; only an explicit "結束" gesture does (the resume pill's
+   * ✕, or `confirmNavExit` when the user leaves navigation for somewhere
+   * outside the route flow).
+   */
+  endRouteSession: () => void;
 }
 
 export interface SearchSlice {
@@ -218,6 +233,15 @@ export interface SheetSlice {
   cancelNavExit: () => void;
   activeRailPanel: RailPanel;
   setActiveRailPanel: (panel: RailPanel) => void;
+  routeSubPanel: RouteSubPanel;
+  setRouteSubPanel: (panel: RouteSubPanel) => void;
+  /**
+   * Re-open the route the user already has in flight — results list if the
+   * routes came back, planning form if they only got as far as picking a
+   * destination. The counterpart to `endRouteSession`: together they are the
+   * only two things that may act on a route session's lifecycle.
+   */
+  resumeRouteSession: () => void;
 }
 
 export const SAVED_PLACE_CATEGORIES = [

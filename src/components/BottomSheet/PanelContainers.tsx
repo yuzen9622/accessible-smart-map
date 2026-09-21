@@ -164,11 +164,10 @@ export function RailPanelOrHome({
       return <HazardReportPanel onClose={closePanel} hideHeader />;
     case "welfare":
       return <WelfarePanel onClose={closePanel} hideHeader />;
-    // "search" / "none" are the home view itself, and "route" only ever lands
-    // here as a leftover from RoutePreviewHydrator once sheetMode has already
-    // gone back to "home" — all three mean "no sub-panel". Keep this list in
-    // sync with RAIL_CONTENT_PANELS. This marker div is a portal *target*,
-    // not `HomeContent` itself — see the single real mount in `BottomSheet`.
+    // "search" and "none" are the home view itself — both mean "no
+    // sub-panel". Keep this list in sync with RAIL_CONTENT_PANELS. This marker
+    // div is a portal *target*, not `HomeContent` itself — see the single real
+    // mount in `BottomSheet`.
     default:
       return <div ref={onHomeSlotRef} className="contents" />;
   }

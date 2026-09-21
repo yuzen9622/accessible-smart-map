@@ -44,8 +44,8 @@ export default function RouteContent() {
     setRouteInfoShow,
     setSheetMode,
     selectRoute,
-    activeRailPanel,
-    setActiveRailPanel,
+    routeSubPanel,
+    setRouteSubPanel,
   } = useMapStore(
     useShallow((s) => ({
       computeRoutes: s.computeRoutes,
@@ -54,25 +54,27 @@ export default function RouteContent() {
       setRouteInfoShow: s.setRouteInfoShow,
       setSheetMode: s.setSheetMode,
       selectRoute: s.selectRoute,
-      activeRailPanel: s.activeRailPanel,
-      setActiveRailPanel: s.setActiveRailPanel,
+      routeSubPanel: s.routeSubPanel,
+      setRouteSubPanel: s.setRouteSubPanel,
     })),
   );
 
-  // Single source of truth, shared with the home rail (see HomeContent /
-  // RailPanelOrHome in BottomSheet.tsx) instead of a local copy. "route" is
-  // the neutral value here — every entry point into sheetMode "route"
-  // (RoutePlanContent, RoutePreviewHydrator, SosTrackerWrapper) sets
-  // activeRailPanel to "route" so a stale value left over from the home rail
-  // (e.g. "hazard") can never leak in and hijack the first paint.
-  const panel = activeRailPanel;
-  const closePanel = () => setActiveRailPanel("route");
+  // These three sub-pages belong to the route view alone. They used to ride
+  // on `activeRailPanel`, which meant the home rail's selection and this
+  // view's sub-page were one field — survivable only while leaving the route
+  // destroyed it. A session now outlives a panel switch, so a leftover
+  // "hazard" from the rail would hijack this first paint; hence its own field.
+  const panel = routeSubPanel;
+  const closePanel = () => setRouteSubPanel("none");
 
+  // "返回" means "I want to change this plan", not "I'm done" — it drops the
+  // results and hands the user back the form with their origin/destination
+  // still in it. Ending the session outright is the X / the resume pill's ✕.
   const handleBack = () => {
     setComputeRoutes(null);
     setRouteSelect(null);
     setRouteInfoShow(false);
-    setActiveRailPanel("route");
+    setRouteSubPanel("none");
     setSheetMode("plan");
   };
 
@@ -145,7 +147,7 @@ export default function RouteContent() {
         <div className="flex gap-2 overflow-x-auto pb-1">
           <button
             type="button"
-            onClick={() => setActiveRailPanel("explanation")}
+            onClick={() => setRouteSubPanel("explanation")}
             className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 transition-colors whitespace-nowrap"
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -153,7 +155,7 @@ export default function RouteContent() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveRailPanel("environment")}
+            onClick={() => setRouteSubPanel("environment")}
             className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-500/20 transition-colors whitespace-nowrap"
           >
             <Cloud className="h-3.5 w-3.5" />
@@ -161,7 +163,7 @@ export default function RouteContent() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveRailPanel("hazard")}
+            onClick={() => setRouteSubPanel("hazard")}
             className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors whitespace-nowrap"
           >
             <AlertTriangle className="h-3.5 w-3.5" />

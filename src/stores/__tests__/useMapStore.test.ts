@@ -182,3 +182,131 @@ describe("useMapStore activeBusLeg state", () => {
     expect(useMapStore.getState().liveBusPositions).toEqual([]);
   });
 });
+
+describe("useMapStore route session lifecycle", () => {
+  const A_ROUTE = { routeName: "測試路線", totalMinutes: 23 };
+  const A_PLACE = {
+    kind: "coordinate",
+    address: "台北車站",
+    position: { lat: 25.0478, lng: 121.5319 },
+  };
+
+  const seedSession = () =>
+    useMapStore.setState({
+      sheetMode: "route",
+      activeRailPanel: "search",
+      routeSubPanel: "none",
+      isNavigating: false,
+      origin: A_PLACE as never,
+      originName: "起點",
+      destination: A_PLACE as never,
+      destinationName: "台北車站",
+      computeRoutes: [A_ROUTE] as never,
+      selectRoute: { index: 0, route: A_ROUTE } as never,
+      routeWaypoints: [{ lat: 25, lng: 121 }],
+      routeInfoShow: true,
+      routeA11y: [{} as never],
+      sosNavActive: true,
+    });
+
+  it("endRouteSession clears origin/destination too, not just the route", () => {
+    // The bug this replaces: four hand-copied clear lists each nulled
+    // computeRoutes/selectRoute and none of them touched destination, so the
+    // map's destination pin (drawn from `searchPlace ?? destination`)
+    // survived every panel switch.
+    seedSession();
+    useMapStore.getState().endRouteSession();
+    const s = useMapStore.getState();
+    expect(s.destination).toBeNull();
+    expect(s.destinationName).toBe("");
+    expect(s.origin).toBeNull();
+    expect(s.originName).toBe("");
+    expect(s.computeRoutes).toBeNull();
+    expect(s.selectRoute).toBeNull();
+    expect(s.routeWaypoints).toEqual([]);
+    expect(s.routeInfoShow).toBe(false);
+    expect(s.routeA11y).toEqual([]);
+    expect(s.sosNavActive).toBe(false);
+  });
+
+  it("endRouteSession leaves the place-detail surface alone", () => {
+    // The pill's ✕ can be pressed while the user is reading an unrelated
+    // place; blanking infoShow/searchPlace would empty the panel they're
+    // actually looking at.
+    seedSession();
+    const place = { kind: "coordinate", address: "別的地方" };
+    useMapStore.setState({
+      sheetMode: "place",
+      searchPlace: place as never,
+      infoShow: { isOpen: true, kind: "coordinate" } as never,
+    });
+    useMapStore.getState().endRouteSession();
+    expect(useMapStore.getState().searchPlace).toBe(place);
+    expect(useMapStore.getState().infoShow.isOpen).toBe(true);
+  });
+
+  it("resumeRouteSession returns to the results list when routes exist", () => {
+    seedSession();
+    useMapStore.setState({ sheetMode: "home", routeSubPanel: "hazard" });
+    useMapStore.getState().resumeRouteSession();
+    expect(useMapStore.getState().sheetMode).toBe("route");
+    // A sub-page the user opened from a previous visit must not hijack the
+    // first paint on the way back in.
+    expect(useMapStore.getState().routeSubPanel).toBe("none");
+  });
+
+  it("resumeRouteSession returns to the form when only a destination was picked", () => {
+    seedSession();
+    useMapStore.setState({
+      sheetMode: "home",
+      computeRoutes: null,
+      selectRoute: null,
+    });
+    useMapStore.getState().resumeRouteSession();
+    expect(useMapStore.getState().sheetMode).toBe("plan");
+  });
+
+  it("switching the rail panel leaves the session untouched", () => {
+    // The whole point of the change: a panel switch is no longer destructive,
+    // so the route stays planned and the pill is the way back to it.
+    seedSession();
+    useMapStore.getState().setSheetMode("home");
+    useMapStore.getState().setActiveRailPanel("bus");
+    const s = useMapStore.getState();
+    expect(s.computeRoutes).not.toBeNull();
+    expect(s.selectRoute).not.toBeNull();
+    expect(s.destination).not.toBeNull();
+  });
+
+  it("leaving navigation for a non-route panel still ends the session", () => {
+    seedSession();
+    useMapStore.setState({ isNavigating: true, sheetMode: "navigation" });
+    useMapStore.getState().requestNavExit("bus");
+    useMapStore.getState().confirmNavExit();
+    const s = useMapStore.getState();
+    expect(s.isNavigating).toBe(false);
+    expect(s.activeRailPanel).toBe("bus");
+    expect(s.destination).toBeNull();
+    expect(s.computeRoutes).toBeNull();
+  });
+
+  it("leaving navigation back to the plan keeps the session alive", () => {
+    seedSession();
+    useMapStore.setState({ isNavigating: true, sheetMode: "navigation" });
+    useMapStore.getState().requestNavExit("plan");
+    useMapStore.getState().confirmNavExit();
+    const s = useMapStore.getState();
+    expect(s.sheetMode).toBe("plan");
+    expect(s.destination).not.toBeNull();
+  });
+
+  it("ending navigation normally lands on the route list with no sub-page", () => {
+    seedSession();
+    useMapStore.setState({ routeSubPanel: "explanation" });
+    useMapStore.getState().setIsNavigating(true);
+    useMapStore.getState().setIsNavigating(false);
+    const s = useMapStore.getState();
+    expect(s.sheetMode).toBe("route");
+    expect(s.routeSubPanel).toBe("none");
+  });
+});

@@ -60,7 +60,7 @@ export default function RoutePreviewHydrator() {
     setRouteSelect,
     setRouteInfoShow,
     setSheetMode,
-    setActiveRailPanel,
+    setRouteSubPanel,
     setOrigin,
     setDestination,
     setOriginName,
@@ -72,7 +72,7 @@ export default function RoutePreviewHydrator() {
       setRouteSelect: s.setRouteSelect,
       setRouteInfoShow: s.setRouteInfoShow,
       setSheetMode: s.setSheetMode,
-      setActiveRailPanel: s.setActiveRailPanel,
+      setRouteSubPanel: s.setRouteSubPanel,
       setOrigin: s.setOrigin,
       setDestination: s.setDestination,
       setOriginName: s.setOriginName,
@@ -133,7 +133,7 @@ export default function RoutePreviewHydrator() {
         setRouteSelect({ index: 0, route: selectedRoute });
         setRouteInfoShow(true);
         setSheetMode("route");
-        setActiveRailPanel("route");
+        setRouteSubPanel("none");
         setOriginName(preview.origin.label);
         setDestinationName(preview.destination.label);
         setOrigin(
@@ -171,7 +171,7 @@ export default function RoutePreviewHydrator() {
     sessionId,
     pathname,
     router,
-    setActiveRailPanel,
+    setRouteSubPanel,
     setComputeRoutes,
     setDestination,
     setDestinationName,

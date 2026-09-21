@@ -8,6 +8,7 @@ import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import MapView, { NavigationControl } from "react-map-gl/maplibre";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import RouteSessionPill from "@/components/Route/RouteSessionPill";
 import NowPin from "@/components/shared/NowPin";
 import A11yFacilitiesWrapper from "@/components/Wrapper/A11yFacilitiesWrapper";
 import MapWrapper from "@/components/Wrapper/MapWrapper";
@@ -466,6 +467,7 @@ export default function ClientMap() {
       <HazardWrapper />
       <VoiceSessionHost />
       <RouteLine />
+      <RouteSessionPill />
       <SosTrackerWrapper />
       <RoutePreviewHydrator />
       <AIResultWrapper />

@@ -1,11 +1,13 @@
 "use client";
 import { LngLatBounds } from "maplibre-gl";
+import { routeResumeTarget } from "@/lib/route/routeSession";
 import { computeMapPadding } from "./mapPadding";
 import type {
   MapSliceCreator,
   MapStore,
   MobileSheetSnap,
   RailPanel,
+  RouteSubPanel,
   SheetSlice,
 } from "./types";
 
@@ -29,17 +31,14 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
     if (v) {
       set({ isNavigating: true, sheetMode: "navigation", is3D: true });
     } else {
-      // activeRailPanel: "route" mirrors the reset every other entry point
-      // into sheetMode "route" performs (RoutePlanContent, SosTrackerWrapper,
-      // RoutePreviewHydrator) — without it, a rail sub-panel left active
-      // before navigation started (e.g. "hazard" from a home quick-action
-      // chip, or the voice assistant driving nav start/stop without ever
-      // going through RouteContent) would leak into RouteContent on return
-      // from navigation and show that sub-panel instead of the route list.
+      // routeSubPanel is its own field now, so returning from navigation lands
+      // on the route list without having to overwrite whatever the rail was
+      // showing. (It used to reset activeRailPanel to "route" for exactly this
+      // reason, back when the two shared one field.)
       set({
         isNavigating: false,
         sheetMode: "route",
-        activeRailPanel: "route",
+        routeSubPanel: "none",
         is3D: false,
       });
       if (map) {
@@ -97,19 +96,16 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
     // Apply the intent: switch to the target panel
     if (intent.target === "plan") {
       get().setSheetMode("plan");
-    } else {
-      get().setSheetMode("home");
-      set({
-        computeRoutes: null,
-        routeWaypoints: [],
-        routeA11y: [],
-        selectRoute: null,
-        infoShow: { isOpen: false, kind: null },
-        searchPlace: null,
-      });
-      if (intent.target !== "home") {
-        get().setActiveRailPanel(intent.target);
-      }
+      return;
+    }
+    get().setSheetMode("home");
+    // Leaving navigation for somewhere outside the route flow is an explicit
+    // "I'm done with this route" — the one panel switch that still ends the
+    // session, because the user confirmed it in ExitNavDialog.
+    get().endRouteSession();
+    set({ infoShow: { isOpen: false, kind: null }, searchPlace: null });
+    if (intent.target !== "home") {
+      get().setActiveRailPanel(intent.target);
     }
   },
   cancelNavExit: () => {
@@ -125,5 +121,12 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
       update.chatOpen = false;
     }
     set(update);
+  },
+  routeSubPanel: "none" as RouteSubPanel,
+  setRouteSubPanel: (panel) => set({ routeSubPanel: panel }),
+  resumeRouteSession: () => {
+    const target = routeResumeTarget(get().computeRoutes);
+    set({ routeSubPanel: "none" });
+    get().setSheetMode(target);
   },
 });
