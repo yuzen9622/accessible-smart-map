@@ -16,58 +16,6 @@ import useComputeRoute from "./useComputeRoute";
 
 export type { ChatBubble, ToolActivity };
 
-export const TOOL_LABELS: Record<string, string> = {
-  findGooglePlaces: "搜尋周邊地點",
-  findA11yPlaces: "查詢無障礙設施",
-  getA11yFacilityDetails: "查詢無障礙設施詳情",
-  findCampusAccessibility: "查詢校園無障礙",
-  getCampusAccessibilityDetails: "查詢校區設施詳情",
-  planAccessibleRoute: "規劃無障礙路線",
-  getNavInstructions: "產生導航指引",
-  getBusRoute: "查詢公車路線",
-  getBusRouteDetail: "查詢公車路線詳情",
-  getBusArrival: "查詢公車預估到站時間",
-  getBusTimetable: "查詢公車時刻表",
-  trackBuses: "追蹤公車即時動態",
-  findNearbyBusStops: "查詢附近公車站牌",
-  getAirQuality: "查詢空氣品質",
-  getEnvironmentInfo: "查詢周邊環境資訊",
-  getNearbyHazards: "查詢附近障礙物",
-  findNearbyParking: "查詢身障停車位",
-  saveMemory: "記錄偏好設定",
-  deleteMemory: "刪除偏好設定",
-  searchAccessibilityGuide: "查詢無障礙指南",
-  webSearch: "網路搜尋",
-};
-
-/**
- * 每個工具執行時的專屬 loading 文字（已含「正在…」與結尾「…」）。
- * 找不到對應時，AIChatBot 會退回 `正在${TOOL_LABELS[name]}…` 或工具原名。
- */
-export const TOOL_LOADING_TEXT: Record<string, string> = {
-  findGooglePlaces: "正在搜尋周邊地點…",
-  findA11yPlaces: "正在查詢周邊無障礙設施…",
-  getA11yFacilityDetails: "正在查詢無障礙設施詳情…",
-  findCampusAccessibility: "正在查詢校園無障礙資訊…",
-  getCampusAccessibilityDetails: "正在查詢校區設施詳情…",
-  planAccessibleRoute: "正在為你規劃無障礙路線…",
-  getNavInstructions: "正在產生導航指引…",
-  getBusRoute: "正在查詢公車路線…",
-  getBusRouteDetail: "正在查詢公車路線詳情…",
-  getBusArrival: "正在查詢公車到站時間…",
-  getBusTimetable: "正在查詢公車時刻表…",
-  trackBuses: "正在追蹤公車即時動態…",
-  findNearbyBusStops: "正在查詢附近公車站牌…",
-  getAirQuality: "正在查詢空氣品質…",
-  getEnvironmentInfo: "正在查詢周邊環境資訊…",
-  getNearbyHazards: "正在查詢附近路況與障礙物…",
-  findNearbyParking: "正在尋找身障停車位…",
-  saveMemory: "正在記住你的偏好…",
-  deleteMemory: "正在刪除記憶…",
-  searchAccessibilityGuide: "正在查詢無障礙指南…",
-  webSearch: "正在搜尋網路資訊…",
-};
-
 export default function useAIChat() {
   const { t } = useAppTranslation();
   const { userConfig } = useAuthStore(
@@ -201,6 +149,9 @@ export default function useAIChat() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      // 從 assistant bubble 建立算到 finally，含被 abort 的情況——使用者按停止
+      // 之後仍看得到「已完成 2 項查詢 · 3.1 秒」，而不是時間憑空消失。
+      const startedAt = Date.now();
       let fullText = "";
 
       try {
@@ -323,6 +274,7 @@ export default function useAIChat() {
               content: fullText,
               isStreaming: false,
               toolActivities: activities,
+              thinkingMs: Date.now() - startedAt,
             };
           }
           return updated;

@@ -20,13 +20,16 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ThinkingOrb } from "thinking-orbs";
 import type { ChatBubble, ToolActivity } from "@/hook/useAIChat";
-import useAIChat, { TOOL_LABELS, TOOL_LOADING_TEXT } from "@/hook/useAIChat";
+import useAIChat from "@/hook/useAIChat";
 import useIsDesktop from "@/hook/useIsDesktop";
 import useOpenAiResult from "@/hook/useOpenAiResult";
 import { useAppTranslation } from "@/i18n/client";
-import { toolToOrbState } from "@/lib/ai/orbState";
+import {
+  buildTraceRows,
+  describeThinking,
+  shouldShowTrace,
+} from "@/lib/ai/thinkingTrace";
 import {
   getAggregatedToolResults,
   type ToolCardIcon,
@@ -37,8 +40,9 @@ import useAuthStore from "@/stores/useAuthStore";
 import useChatStore from "@/stores/useChatStore";
 import useMapStore from "@/stores/useMapStore";
 import useVoiceStore from "@/stores/useVoiceStore";
-import MarkdownText from "./shared/MarkdownText";
+import ThinkingTrace from "./ai/ThinkingTrace";
 import PlaceCard from "./shared/PlaceCard";
+import StreamingMarkdown from "./shared/StreamingMarkdown";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { CardContent, CardFooter } from "./ui/card";
@@ -58,31 +62,6 @@ const CARD_ICONS: Record<ToolCardIcon, React.ReactNode> = {
   hazard: <TriangleAlertIcon size={14} />,
   nav: <Navigation className="h-3.5 w-3.5" />,
 };
-
-function ThinkingIndicator({
-  label,
-  toolName,
-}: {
-  label: string;
-  toolName?: string | null;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 2 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex items-center gap-2 text-[13px] text-muted-foreground py-1.5 px-1"
-    >
-      <ThinkingOrb
-        state={toolToOrbState(toolName)}
-        size={20}
-        role="img"
-        aria-label={label}
-        className="shrink-0"
-      />
-      <span className="animate-pulse">{label}</span>
-    </motion.div>
-  );
-}
 
 function ToolResultCard({
   item,
@@ -238,21 +217,17 @@ function MessageBubble({ message }: { message: ChatBubble }) {
   // 所有已完成的工具都嘗試渲染；ToolResultView 對無法渲染的工具回 null
   const doneActivities = activities.filter((a) => a.status === "done");
 
-  // 載入文字：優先顯示進行中的工具，否則最後一個工具，再否則「思考中」
-  // 各工具有專屬文字（TOOL_LOADING_TEXT），找不到才退回通用寫法
-  const running = activities.find((a) => a.status === "running");
-  const latest = activities[activities.length - 1];
-  const labelFor = (name: string) =>
-    TOOL_LOADING_TEXT[name] ||
-    (TOOL_LABELS[name] ? `正在${TOOL_LABELS[name]}…` : `正在${name}…`);
-  const loadingLabel = running
-    ? labelFor(running.name)
-    : latest
-      ? labelFor(latest.name)
-      : "思考中…";
-
-  const showLoading =
-    !isUser && message.isStreaming && (!message.content || !!running);
+  // 標題文字、每一列的狀態與耗時都在 lib/ai/thinkingTrace 算好，這裡只決定
+  // 要不要掛上去。trace 講「過程」，下方的 ToolResultsBox 講「結果」——兩者
+  // 互補，trace 在思考結束後會自動收合成一行摘要，不會跟結果卡片打架。
+  const header = describeThinking({
+    activities,
+    isStreaming: !!message.isStreaming,
+    hasContent: !!message.content,
+    thinkingMs: message.thinkingMs,
+  });
+  const showTrace = !isUser && shouldShowTrace({ activities, header });
+  const traceRows = buildTraceRows(activities);
 
   return (
     <motion.div
@@ -264,12 +239,7 @@ function MessageBubble({ message }: { message: ChatBubble }) {
         isUser ? "items-end" : "items-start",
       )}
     >
-      {showLoading && (
-        <ThinkingIndicator
-          label={loadingLabel}
-          toolName={running?.name ?? latest?.name}
-        />
-      )}
+      {showTrace && <ThinkingTrace rows={traceRows} header={header} />}
 
       {message.content && (
         <div
@@ -280,7 +250,10 @@ function MessageBubble({ message }: { message: ChatBubble }) {
               : "bg-muted rounded-tl-sm shadow-sm border border-border/30",
           )}
         >
-          <MarkdownText>{message.content}</MarkdownText>
+          <StreamingMarkdown
+            content={message.content}
+            streaming={!isUser && !!message.isStreaming}
+          />
         </div>
       )}
 
@@ -427,7 +400,13 @@ export default function AIChatBot({ active = true }: { active?: boolean }) {
             </Fragment>
           ))}
           {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
-            <ThinkingIndicator label={t("chatbot.thinking", "思考中…")} />
+            <ThinkingTrace
+              rows={[]}
+              header={{
+                working: true,
+                label: t("chatbot.thinking", "思考中…"),
+              }}
+            />
           )}
         </CardContent>
       </ScrollArea>

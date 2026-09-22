@@ -15,6 +15,11 @@ export interface ChatBubble {
   content: string;
   isStreaming?: boolean;
   toolActivities?: ToolActivity[];
+  /** 這則回覆從送出到串流結束的耗時（毫秒），給 ThinkingTrace 顯示
+   * 「已完成 3 項查詢 · 4.2 秒」。存在 bubble 上而不是元件 state，是因為
+   * `messages` 會鏡射進 sessionStorage：重整後舊訊息仍要說得出當時花了多久。
+   * 串流中為 `undefined`，標題就只顯示「已完成 N 項查詢」。 */
+  thinkingMs?: number;
 }
 
 type MessagesUpdater = ChatBubble[] | ((prev: ChatBubble[]) => ChatBubble[]);

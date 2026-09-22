@@ -500,3 +500,125 @@ img.adp-marker2 {
   width: 44px;
   height: 44px;
 }
+
+/* ── AI 思考軌跡（ThinkingTrace）────────────────────────────
+   改寫自 Beautiful UI 的 Thinking 組件（MIT, © 2026 Shane Levine,
+   https://www.beautifului.dev）——見 AUTHORS.md。
+
+   只抄它需要的兩個 keyframe，不 import 它的 foundation.css：那是一整套
+   自帶 --ink / --line / --page 的 design system，會跟本專案的 shadcn
+   主題、dark mode 與 .high-contrast 三方打架。顏色一律改讀既有 token。 */
+@keyframes thinking-shimmer {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
+}
+
+@keyframes thinking-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.thinking-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--muted-foreground) 35%,
+    var(--foreground) 50%,
+    var(--muted-foreground) 65%
+  );
+  background-size: 200% 100%;
+  animation: thinking-shimmer 1.4s linear infinite;
+}
+
+/* 元件端已用 useReducedMotion 換成純色文字，這裡是第二道保險：CSS 先於
+   hook 的 useEffect 生效，首次 paint 不會閃一下動畫。 */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-shimmer {
+    animation: none;
+  }
+}
+
+/* 高對比模式下 bg-clip-text 會讓文字變成漸層填色，對比度不受控——直接關掉
+   漸層，回到實心前景色。 */
+.high-contrast .thinking-shimmer {
+  animation: none;
+  background-image: none;
+  -webkit-text-fill-color: var(--foreground);
+  color: var(--foreground);
+}
+
+/* ── 串流答覆的模糊前緣與游標（StreamingMarkdown）──────────
+   取自 Beautiful UI 的 StreamText（MIT, © 2026 Shane Levine,
+   https://www.beautifului.dev）——見 AUTHORS.md。
+   原版的 `--ink` 換成 `--foreground`。 */
+.stream-tail {
+  filter: blur(1.6px);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    oklch(0 0 0) 20%,
+    oklch(0 0 0 / 0.2)
+  );
+  mask-image: linear-gradient(to right, oklch(0 0 0) 20%, oklch(0 0 0 / 0.2));
+}
+
+/* 游標用 ::after 掛在最後一個文字區塊上，而不是獨立元素：markdown 渲染出來
+   的結構不固定，::after 是唯一能讓游標貼在最後一個字後面、又不會多插一個
+   換行的做法。
+   只掛 p 與 li——不能用 `> :last-child`：MarkdownText 把表格包在一層 div 裡
+   （globals 之外，見 MarkdownText.tsx 的 table 覆寫），::after 會落進表格框線
+   內部自成一行。表格／程式碼區塊結尾就不顯示游標，比放錯位置好。 */
+.stream-body.is-streaming > p:last-child::after,
+.stream-body.is-streaming > ul:last-child > li:last-child::after,
+.stream-body.is-streaming > ol:last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1.5px;
+  translate: 0 -0.5px;
+  border-radius: 1px;
+  background: var(--foreground);
+  vertical-align: text-bottom;
+  animation: stream-caret-blink 1s step-end infinite;
+}
+
+@keyframes stream-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 元件端已用 useReducedMotion 讓 is-streaming 不上身，這裡同樣是兜首次
+   paint 的第二道保險：閃爍游標與模糊都是動態效果，一律關掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .stream-body.is-streaming > p:last-child::after,
+  .stream-body.is-streaming > ul:last-child > li:last-child::after,
+  .stream-body.is-streaming > ol:last-child > li:last-child::after {
+    animation: none;
+  }
+  .stream-tail {
+    filter: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+/* 高對比模式下模糊會直接吃掉對比度。 */
+.high-contrast .stream-tail {
+  filter: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
