@@ -231,7 +231,7 @@ describe("useAuthStore.logout", () => {
     expect(mockSessionStorage.getItem("aiChatConversation")).toBeNull();
   });
 
-  it("invokes revokeSession with the captured access token when logged in", () => {
+  it("invokes revokeSession when logged in", () => {
     useAuthStore.setState({
       user: USER,
       session: { accessToken: "token-to-revoke-123" },
@@ -240,7 +240,7 @@ describe("useAuthStore.logout", () => {
     useAuthStore.getState().logout();
 
     expect(mockRevokeSession).toHaveBeenCalledTimes(1);
-    expect(mockRevokeSession).toHaveBeenCalledWith("token-to-revoke-123");
+    expect(mockRevokeSession).toHaveBeenCalledWith();
   });
 
   it("does not call revokeSession when logging out without an active session", () => {

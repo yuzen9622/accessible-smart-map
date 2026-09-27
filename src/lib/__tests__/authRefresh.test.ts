@@ -232,17 +232,19 @@ describe("useAuthStore logout race (case 20)", () => {
 });
 
 describe("useAuthStore.logout synchronization (case 20b)", () => {
-  it("clears user/session synchronously, revokes with the pre-clear token via raw fetch, never touches the refresh transport", async () => {
+  it("clears user/session synchronously, revokes via cookie-only raw fetch, never touches the refresh transport", async () => {
     useAuthStore.setState({
       user: makeUser("u1"),
       session: { accessToken: "old-token" },
     });
     let capturedAuthHeader: string | undefined;
+    let capturedCredentials: RequestCredentials | undefined;
     const fetchMock = stubFetch({
       logout: (init) => {
         capturedAuthHeader = (
           init?.headers as Record<string, string> | undefined
         )?.Authorization;
+        capturedCredentials = init?.credentials;
         return jsonResponse({ ok: true });
       },
     });
@@ -255,7 +257,8 @@ describe("useAuthStore.logout synchronization (case 20b)", () => {
 
     await flush();
 
-    expect(capturedAuthHeader).toBe("Bearer old-token");
+    expect(capturedAuthHeader).toBeUndefined();
+    expect(capturedCredentials).toBe("include");
     const refreshCalls = fetchMock.mock.calls.filter(([url]) =>
       String(url).includes("/api/v1/user/refresh"),
     );

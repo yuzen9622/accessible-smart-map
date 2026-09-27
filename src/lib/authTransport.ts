@@ -33,19 +33,17 @@ export async function requestRefresh(): Promise<string | null> {
 }
 
 /**
- * Revokes the session on the backend using an explicitly supplied token.
- * Always uses the token handed to it (captured by the caller before it
- * clears local state) — never reads the store. Failures are only logged;
- * this function never rejects, so callers never need to catch it.
+ * Revokes the session on the backend using httpOnly cookies only.
+ * The backend strictly forbids the Authorization header on logout requests;
+ * session revocation is identified entirely via the session cookie.
+ * Failures are only logged; this function never rejects, so callers
+ * never need to catch it.
  */
-export async function revokeSession(token: string): Promise<void> {
+export async function revokeSession(): Promise<void> {
   try {
     await fetch(`${END_POINT}/api/v1/user/logout`, {
       method: "POST",
       credentials: "include",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
     });
   } catch (error) {
     console.error("[authTransport] revokeSession failed", error);

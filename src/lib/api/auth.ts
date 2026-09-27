@@ -79,6 +79,7 @@ export async function refreshToken(): Promise<string | null> {
     if (!response.ok) {
       return null;
     }
+    // SAFETY: response payload contains accessToken on refresh success
     return (
       ((response as unknown as Record<string, unknown>)
         .accessToken as string) || null
@@ -91,6 +92,5 @@ export async function refreshToken(): Promise<string | null> {
 export async function logout(): Promise<ApiResponse<null>> {
   return fetchRequest(`${END_POINT}/api/v1/user/logout`, {
     method: "POST",
-    requireAuth: true,
   }) as Promise<ApiResponse<null>>;
 }

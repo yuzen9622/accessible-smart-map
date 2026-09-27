@@ -135,12 +135,11 @@ const useAuthStore = create<AuthStore>((set, get) => ({
     set((state) => ({ userConfig: { ...state.userConfig, ...config } }));
   },
   logout: () => {
-    // Synchronous 3-step logout (plan §4 useAuthStore.ts row): capture the
-    // still-valid token first, clear state synchronously (so `session`
-    // becomes an immediately observable logout intent), then fire the
-    // revoke request with the captured token — never through fetchRequest,
-    // so it can never enter the 401-refresh path.
-    const token = get().session?.accessToken;
+    // Synchronous logout: capture whether an active session exists first,
+    // clear local state synchronously (so `session` becomes an immediately
+    // observable logout intent), then fire the revoke request via pure cookie —
+    // never through fetchRequest, so it can never enter the 401-refresh path.
+    const hasSession = Boolean(get().session || get().user);
     set({ user: null, session: null });
     // The AI chat panel's conversation now survives collapse/reopen and a
     // page reload (it lives in a store + sessionStorage, not component
@@ -149,8 +148,8 @@ const useAuthStore = create<AuthStore>((set, get) => ({
     // person on a shared device. `clearAll()` also drops the sessionStorage
     // snapshot, not just the in-memory state.
     useChatStore.getState().clearAll();
-    if (token) {
-      revokeSession(token).catch((error) => {
+    if (hasSession) {
+      revokeSession().catch((error) => {
         console.error("[useAuthStore] revokeSession failed", error);
       });
     }
