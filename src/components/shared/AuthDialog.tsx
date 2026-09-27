@@ -9,6 +9,7 @@ import {
 import { GoogleLogin } from "@react-oauth/google";
 import { AlertCircle, MailCheck } from "lucide-react";
 import Image from "next/image";
+import { useTheme } from "next-themes";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
@@ -69,6 +70,8 @@ export default function AuthDialog({
   initialMode,
 }: AuthDialogProps) {
   const { t } = useAppTranslation("translation");
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
   const [mode, setMode] = useState<Mode>("login");
   const nicknameId = useId();
   const emailId = useId();
@@ -374,15 +377,19 @@ export default function AuthDialog({
           )}
 
           {showGoogle && (
-            <div ref={googleBtnRef} className="flex w-full justify-center">
+            <div
+              ref={googleBtnRef}
+              className="gsi-host flex w-full justify-center"
+            >
               <GoogleLogin
+                key={isDark ? "dark" : "light"}
                 onSuccess={(credentialResponse) => {
                   if (credentialResponse.credential) {
                     void handleGoogleSuccess(credentialResponse.credential);
                   }
                 }}
                 onError={() => toast.error(t("auth.googleLoginFailed"))}
-                theme="outline"
+                theme={isDark ? "filled_black" : "outline"}
                 size="large"
                 text="continue_with"
                 shape="pill"

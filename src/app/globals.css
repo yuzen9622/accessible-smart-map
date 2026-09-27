@@ -622,3 +622,15 @@ img.adp-marker2 {
   -webkit-mask-image: none;
   mask-image: none;
 }
+
+/* Google Identity Services: Google's button iframe document is always
+   light-scheme. When the embedder sets `color-scheme: dark`, browsers paint the
+   iframe canvas with an opaque white background (per W3C Color Adjustment spec),
+   causing a rectangular white box around the pill-shaped button in dark mode.
+   Enforcing `color-scheme: light` on both the host and the iframe matches the
+   embedded document's scheme and keeps the canvas transparent so the dialog
+   background shows through. */
+.gsi-host,
+.gsi-host iframe {
+  color-scheme: light;
+}
