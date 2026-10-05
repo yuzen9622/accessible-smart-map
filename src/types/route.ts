@@ -1,3 +1,4 @@
+import type { BusDirection, ScheduledBusDirection } from "./transit";
 import type {
   MatchedAlert,
   MatchKind,
@@ -176,7 +177,7 @@ export interface BusLeg {
   arrivalTime?: string;
   waitInfo: WaitInfo;
   estimatedWaitMinutes: number;
-  direction: 0 | 1;
+  direction: ScheduledBusDirection;
   polyline: [number, number][];
   departureStopA11y: SlimOsmA11y[];
   arrivalStopA11y: SlimOsmA11y[];
@@ -755,7 +756,7 @@ export interface BilingualName {
 export interface EstimatedTimeOfArrival {
   StopUID: string;
   StopName: BilingualName;
-  Direction: 0 | 1;
+  Direction: BusDirection;
   EstimateTime: number | null;
   StopStatus: number;
   MessageType?: number;
@@ -773,7 +774,7 @@ export interface BusPosition {
 export interface RealTimeByFrequency {
   PlateNumb: string;
   OperatorNo?: string;
-  Direction: 0 | 1;
+  Direction: BusDirection;
   BusPosition: BusPosition;
   Speed?: number;
   GPSTime?: string;
@@ -943,7 +944,7 @@ export function formatDistance(meters: number): string {
 
 export interface LiveBus {
   plateNumb: string;
-  direction: number;
+  direction: BusDirection;
   directionLabel?: string;
   lat: number;
   lng: number;

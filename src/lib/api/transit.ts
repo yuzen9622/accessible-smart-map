@@ -2,12 +2,34 @@ import type { LatLng } from "@/types";
 import type { ApiResponse } from "@/types/response";
 import type { LiveBusPositionsData } from "@/types/route";
 import type {
+  BusDirection,
   BusRealtimeNearbyStop,
   BusSearchResult,
   BusStopSearchResult,
+  BusTimetableData,
 } from "@/types/transit";
 import { END_POINT } from "../config";
 import { fetchRequest } from "../fetch";
+import {
+  parseBusArrivals,
+  parseBusRouteDirections,
+  parseBusTimetable,
+  parseLiveBusPositions,
+} from "./busParsers";
+
+async function timedBusRequest(url: string, signal?: AbortSignal) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    return await fetchRequest(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
+}
 
 export async function getBusRealtimeNearbyStop({
   arrival_stop,
@@ -65,34 +87,35 @@ export async function getRealtimeBusPosition(
 export async function getBusArrival(
   routeName?: string,
   stopName?: string,
-  direction?: 0 | 1,
+  direction?: BusDirection | null,
   city?: string,
+  signal?: AbortSignal,
 ) {
   const params = new URLSearchParams();
   if (routeName) params.set("routeName", routeName);
   if (stopName) params.set("stopName", stopName);
-  if (direction !== undefined) params.set("direction", String(direction));
+  if (direction != null) params.set("direction", String(direction));
   if (city) params.set("city", city);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  const data = (await fetchRequest(
+  const data = (await timedBusRequest(
     `${END_POINT}/api/v1/transit/bus/arrival?${params}`,
-    { signal: controller.signal },
+    signal,
   )) as ApiResponse<{
     routeName: string;
     city: string;
     stopName: string;
     arrivals: BusArrivalItem[];
   }>;
-  clearTimeout(timeout);
+  if (data.data)
+    data.data = { ...data.data, arrivals: parseBusArrivals(data.data) };
   return data;
 }
 
 export interface BusArrivalItem {
   stopName: string;
-  direction: 0 | 1;
+  direction: BusDirection;
   directionLabel: string;
   estimateMinutes: number | null;
+  /** Compound display text (status/schedule/headway), not a raw status code. */
   statusLabel: string;
   /**
    * Plate of the vehicle this ETA refers to, when TDX has dispatched one.
@@ -115,16 +138,17 @@ export interface BusArrivalItem {
 export async function getLiveBusPositions(
   routeName: string,
   city?: string,
-  direction?: 0 | 1,
+  direction?: BusDirection | null,
   signal?: AbortSignal,
 ) {
   const params = new URLSearchParams({ routeName });
   if (city) params.set("city", city);
-  if (direction !== undefined) params.set("direction", String(direction));
-  const data = (await fetchRequest(
+  if (direction != null) params.set("direction", String(direction));
+  const data = (await timedBusRequest(
     `${END_POINT}/api/v1/transit/bus/positions?${params}`,
-    { signal },
+    signal,
   )) as ApiResponse<LiveBusPositionsData>;
+  if (data.data) data.data = parseLiveBusPositions(data.data);
   return data;
 }
 
@@ -186,30 +210,59 @@ export async function searchBusStops(
 }
 
 export interface RouteDetailStop {
+  stopUid?: string;
   seq: number;
   name: string;
   lat: number;
   lng: number;
   estimateMinutes: number | null;
+  /** Compound display text, just like arrival statusLabel; not raw-code-only. */
   statusLabel: string;
 }
 
 export interface RouteDetailDirection {
-  direction: 0 | 1;
+  direction: BusDirection;
   stops: RouteDetailStop[];
+  /** Optional published route geometry, in [lng, lat] order. */
+  polyline?: [number, number][];
   /** Identifies which sub-route these stops belong to (99 vs 99延). */
   subRouteUid?: string;
   subRouteName?: string;
 }
 
-export async function getBusRouteDetail(routeName: string, city: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  const data = (await fetchRequest(
-    `${END_POINT}/api/v1/transit/bus/route-detail?routeName=${encodeURIComponent(routeName)}&city=${encodeURIComponent(city)}`,
-    { signal: controller.signal },
+export async function getBusRouteDetail(
+  routeName: string,
+  city: string,
+  subRouteUid?: string,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ routeName, city });
+  if (subRouteUid) params.set("subRouteUid", subRouteUid);
+  const data = (await timedBusRequest(
+    `${END_POINT}/api/v1/transit/bus/route-detail?${params}`,
+    signal,
   )) as ApiResponse<{ directions: RouteDetailDirection[] }>;
-  clearTimeout(timeout);
+  if (data.data)
+    data.data = {
+      ...data.data,
+      directions: parseBusRouteDirections(data.data),
+    };
+  return data;
+}
+
+/** Published origin departures/headways, not invented per-stop arrival times. */
+export async function getBusTimetable(
+  routeName: string,
+  city?: string,
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams({ routeName });
+  if (city) params.set("city", city);
+  const data = (await timedBusRequest(
+    `${END_POINT}/api/v1/transit/bus/timetable?${params}`,
+    signal,
+  )) as ApiResponse<BusTimetableData>;
+  if (data.data) data.data = parseBusTimetable(data.data);
   return data;
 }
 

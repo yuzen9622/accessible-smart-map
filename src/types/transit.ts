@@ -1,5 +1,50 @@
 import type { IBathroom, LatLng, metroA11yData } from ".";
 
+/** Raw TDX bus directions; do not use for GTFS or rail directions. */
+export type BusDirection = 0 | 1 | 2 | 10 | 255;
+export type ScheduledBusDirection = 0 | 1;
+
+export function isBusDirection(value: unknown): value is BusDirection {
+  return (
+    value === 0 || value === 1 || value === 2 || value === 10 || value === 255
+  );
+}
+
+export type BusScheduledTrip = {
+  scheduleType: "trip";
+  serviceDays: string;
+  originStopName: string;
+  originDepartureTime: string;
+  stopTimes?: { seq: number; stopName: string; arrivalTime: string }[];
+};
+
+export type BusHeadwayWindow = {
+  scheduleType: "headway";
+  serviceDays: string;
+  start?: string;
+  end?: string;
+  minHeadwayMins?: number;
+  maxHeadwayMins?: number;
+};
+
+export type BusFrequency = BusScheduledTrip | BusHeadwayWindow;
+export type BusScheduleByDirection = {
+  subRouteUid?: string;
+  subRouteName?: string;
+  direction: BusDirection;
+  directionLabel: string;
+  first?: string;
+  last?: string;
+  frequencies: BusFrequency[];
+};
+export type BusTimetableData = {
+  routeName: string;
+  city: string;
+  schedules: BusScheduleByDirection[];
+  note: string;
+  truncated?: boolean;
+};
+
 type BusEstimate = {
   PlateNumb: string;
   EstimateTime: number;
@@ -50,7 +95,7 @@ export type BusRealtimeNearbyStop = {
     Zh_tw: string;
     En: string;
   };
-  Direction: number;
+  Direction: BusDirection;
   EstimateTime: number;
   ScheduledTime: string;
   StopCountDown: number;
@@ -85,7 +130,7 @@ export type BusRealtimeInfo = {
     Zh_tw: string;
     En: string;
   };
-  Direction: number;
+  Direction: BusDirection;
   BusPosition: {
     PositionLon: number;
     PositionLat: number;
