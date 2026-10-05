@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { RouteDetailStop } from "@/lib/api/transit";
 import {
   buildStopRows,
+  busLegKey,
   CURRENT_STOP_RADIUS_M,
   fallbackStopRows,
   normalizeStopName,
@@ -10,6 +11,7 @@ import {
   resolveCurrentStopSeq,
   resolveEtaLabel,
   resolveLegDirection,
+  resolveLegRide,
   resolveLegStops,
   sliceLegStops,
 } from "@/lib/transit/busLegStops";
@@ -56,6 +58,20 @@ describe("pickDirection", () => {
     expect(pickDirection([{ direction: 0, stops: [] }], 0)).toBeNull();
     expect(pickDirection([{ direction: 0, stops: line }], 1)).toBeNull();
   });
+
+  it("never treats 255 (direction unknown) as a ride", () => {
+    expect(pickDirection([{ direction: 255, stops: line }], 255)).toBeNull();
+  });
+
+  it("refuses to guess between branches sharing a direction number", () => {
+    const branches = [
+      { direction: 0 as const, subRouteUid: "A", stops: line },
+      { direction: 0 as const, subRouteUid: "B", stops: [...line].reverse() },
+    ];
+    expect(pickDirection(branches, 0)).toBeNull();
+    expect(pickDirection(branches, 0, "B")?.[0].name).toBe("終點");
+    expect(pickDirection(branches, 0, "C")).toBeNull();
+  });
 });
 
 describe("sliceLegStops", () => {
@@ -81,7 +97,33 @@ describe("sliceLegStops", () => {
     expect(sliceLegStops(line, "C站", "A站")).toBeNull();
   });
 
-  it("picks the first alight occurrence after the board stop on a loop", () => {
+  it("rejects a repeated departure stop instead of taking the first", () => {
+    const repeated = [
+      stop(1, "A站"),
+      stop(2, "B站"),
+      stop(3, "A站"),
+      stop(4, "C站"),
+    ];
+    expect(sliceLegStops(repeated, "A站", "C站")).toBeNull();
+  });
+
+  it("rejects a loop that reaches both stops on two laps", () => {
+    const twoLaps = [
+      stop(1, "A站"),
+      stop(2, "B站"),
+      stop(3, "A站"),
+      stop(4, "B站"),
+    ];
+    expect(sliceLegStops(twoLaps, "A站", "B站")).toBeNull();
+  });
+
+  it("does not wrap past the end of the line", () => {
+    expect(
+      sliceLegStops([stop(1, "A站"), stop(2, "B站")], "B站", "A站"),
+    ).toBeNull();
+  });
+
+  it("takes the single forward lap on a loop", () => {
     const loop = [
       stop(1, "總站"),
       stop(2, "A站"),
@@ -238,6 +280,31 @@ describe("parseStatusLabel", () => {
     expect(parseStatusLabel("尚未發車")?.key).toBe("busNotDeparted");
   });
 
+  it("reads a published headway as scheduled, not live", () => {
+    expect(parseStatusLabel("每 5–10 分一班")).toEqual({
+      key: "busHeadwayRange",
+      params: { min: 5, max: 10 },
+      tone: "muted",
+      kind: "scheduled",
+    });
+    expect(parseStatusLabel("每 5-10 分一班")?.key).toBe("busHeadwayRange");
+    expect(parseStatusLabel("每 12 分一班")).toEqual({
+      key: "busHeadway",
+      params: { count: 12 },
+      tone: "muted",
+      kind: "scheduled",
+    });
+    expect(parseStatusLabel("每 分一班")).toBeNull();
+  });
+
+  it("maps the arrival feed's 暫無到站資訊", () => {
+    expect(parseStatusLabel("暫無到站資訊")).toEqual({
+      key: "busArrivalUnavailable",
+      tone: "muted",
+      kind: "status",
+    });
+  });
+
   it("returns null for labels that say nothing useful", () => {
     expect(parseStatusLabel("正常")).toBeNull();
     expect(parseStatusLabel("誰知道")).toBeNull();
@@ -308,15 +375,17 @@ describe("resolveEtaLabel", () => {
   // The backend leaves StopStatus 0 as 「正常」 and computes estimateMinutes
   // independently, so 「正常」 + null ETA is a real combination. Calling that
   // "no service" is the misleading claim this whole change exists to remove.
-  it("says nothing rather than claiming no service once settled", () => {
+  it("reports unavailable rather than inventing no service once settled", () => {
     expect(resolveEtaLabel(row(null, "upcoming", "正常"))).toEqual({
-      key: "busEtaUnknown",
+      key: "busArrivalUnavailable",
       tone: "muted",
       kind: "status",
     });
-    expect(resolveEtaLabel(row(null, "upcoming", "")).key).toBe(
-      "busEtaUnknown",
-    );
+    for (const status of ["", "  ", "暫無到站資訊"]) {
+      expect(resolveEtaLabel(row(null, "upcoming", status)).key).toBe(
+        "busArrivalUnavailable",
+      );
+    }
   });
 
   it("shows the next departure time instead of a missing ETA", () => {
@@ -511,17 +580,31 @@ describe("resolveLegStops sub-route scoping", () => {
     expect(sliced?.at(-1)?.name).toBe("臺中區監理所(遊園路)");
   });
 
-  it("falls back to geometry when the named sub-route is absent", () => {
-    const sliced = resolveLegStops(directions, {
-      direction: 0,
-      departureStop: "豐樂公園",
-      arrivalStop: "仁友停車場",
-      subRouteUid: "TXG-nope",
-    });
-    expect(sliced?.at(-1)?.name).toBe("仁友停車場");
+  // Rows that explicitly name another branch are evidence against the ride.
+  it("does not borrow a different known branch for an unknown sub-route", () => {
+    expect(
+      resolveLegStops(directions, {
+        direction: 0,
+        departureStop: "豐樂公園",
+        arrivalStop: "仁友停車場",
+        subRouteUid: "TXG-nope",
+      }),
+    ).toBeNull();
   });
 
-  it("prefers the declared direction among a sub-route's runs", () => {
+  it("lets an unknown sub-route fall back only to rows carrying no UID", () => {
+    const unlabelled = [{ direction: 0 as const, stops: line(["A", "B"]) }];
+    expect(
+      resolveLegStops(unlabelled, {
+        direction: 0,
+        departureStop: "A",
+        arrivalStop: "B",
+        subRouteUid: "TXG-nope",
+      })?.length,
+    ).toBe(2);
+  });
+
+  it("does not let the GTFS direction break a tie between two fitting runs", () => {
     const both = [
       {
         direction: 1 as const,
@@ -534,13 +617,113 @@ describe("resolveLegStops sub-route scoping", () => {
         stops: line(["A", "B", "C"]),
       },
     ];
+    const ref = {
+      direction: 0 as const,
+      departureStop: "A",
+      arrivalStop: "C",
+      subRouteUid: "TXG99",
+    };
+    expect(resolveLegDirection(both, ref)).toBeNull();
+    expect(resolveLegDirection(both, { ...ref, direction: 1 })).toBeNull();
+  });
+
+  it("resolves when only one of a sub-route's runs holds the ride", () => {
+    const runs = [
+      {
+        direction: 1 as const,
+        subRouteUid: "TXG99",
+        stops: line(["C", "B", "A"]),
+      },
+      {
+        direction: 0 as const,
+        subRouteUid: "TXG99",
+        stops: line(["A", "B", "C"]),
+      },
+    ];
     expect(
-      resolveLegDirection(both, {
-        direction: 0,
+      resolveLegDirection(runs, {
+        direction: 1,
         departureStop: "A",
         arrivalStop: "C",
         subRouteUid: "TXG99",
       }),
     ).toBe(0);
+  });
+});
+
+describe("resolveLegRide", () => {
+  const line = (names: string[]) =>
+    names.map((name, seq) => ({
+      seq,
+      name,
+      lat: 0,
+      lng: 0,
+      estimateMinutes: null,
+      statusLabel: "正常",
+    }));
+  const ref = {
+    direction: 0 as const,
+    departureStop: "A",
+    arrivalStop: "C",
+  };
+
+  it("never resolves a 255 run into a ride", () => {
+    expect(
+      resolveLegRide([{ direction: 255, stops: line(["A", "B", "C"]) }], ref),
+    ).toBeNull();
+  });
+
+  it("accepts the loop (2) and circular (10) directions", () => {
+    expect(
+      resolveLegRide([{ direction: 2, stops: line(["A", "B", "C"]) }], ref)
+        ?.direction,
+    ).toBe(2);
+    expect(
+      resolveLegRide([{ direction: 10, stops: line(["A", "B", "C"]) }], ref)
+        ?.direction,
+    ).toBe(10);
+  });
+
+  it("refuses when two branches without a UID both fit", () => {
+    expect(
+      resolveLegRide(
+        [
+          { direction: 0, subRouteUid: "X", stops: line(["A", "B", "C"]) },
+          { direction: 0, subRouteUid: "Y", stops: line(["A", "C"]) },
+        ],
+        ref,
+      ),
+    ).toBeNull();
+  });
+
+  it("reports the resolved branch and whether it is the only one in its direction", () => {
+    const runs = [
+      { direction: 0 as const, subRouteUid: "X", stops: line(["A", "B", "C"]) },
+      { direction: 0 as const, subRouteUid: "Y", stops: line(["A", "D"]) },
+      { direction: 1 as const, subRouteUid: "X", stops: line(["C", "A"]) },
+    ];
+    const ride = resolveLegRide(runs, { ...ref, subRouteUid: "X" });
+    expect(ride?.subRouteUid).toBe("X");
+    expect(ride?.direction).toBe(0);
+    expect(ride?.singleBranchInDirection).toBe(false);
+  });
+});
+
+describe("busLegKey", () => {
+  const base = {
+    routeName: "99",
+    direction: 0,
+    departureStop: "A",
+    arrivalStop: "B",
+    tdxCity: "Taichung",
+  } as BusLeg;
+
+  it("distinguishes city, branch and board/alight stops", () => {
+    const k = busLegKey("0:0", base);
+    expect(busLegKey("0:0", { ...base, tdxCity: "Taipei" })).not.toBe(k);
+    expect(busLegKey("0:0", { ...base, subRouteUid: "X" })).not.toBe(k);
+    expect(busLegKey("0:0", { ...base, arrivalStop: "C" })).not.toBe(k);
+    expect(busLegKey("0:1", base)).not.toBe(k);
+    expect(busLegKey("0:0", { ...base })).toBe(k);
   });
 });

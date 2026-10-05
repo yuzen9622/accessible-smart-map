@@ -1,6 +1,7 @@
 import type { RouteDetailDirection, RouteDetailStop } from "@/lib/api/transit";
 import { haversineMeters } from "@/lib/geo";
 import type { BusLeg } from "@/types/route";
+import type { BusDirection } from "@/types/transit";
 
 export type StopRowState = "passed" | "current" | "upcoming";
 export type StopRowKind = "board" | "intermediate" | "alight";
@@ -25,10 +26,20 @@ export interface BusLegStopRow {
 
 export function pickDirection(
   directions: RouteDetailDirection[] | undefined,
-  direction: 0 | 1,
+  direction: BusDirection,
+  subRouteUid?: string,
 ): RouteDetailStop[] | null {
-  const match = directions?.find((d) => d.direction === direction);
-  return match?.stops?.length ? match.stops : null;
+  // 255 means TDX could not say which way the run goes: never a ride.
+  if (direction === 255) return null;
+  // Several branches can share a direction number; guessing the first one
+  // would show another branch's stops.
+  const matches = (directions ?? []).filter(
+    (d) =>
+      d.direction === direction &&
+      (subRouteUid === undefined || d.subRouteUid === subRouteUid),
+  );
+  if (matches.length !== 1) return null;
+  return matches[0].stops?.length ? matches[0].stops : null;
 }
 
 /**
@@ -72,10 +83,12 @@ function looseEqualStopName(a?: string, b?: string): boolean {
 /**
  * Cut `departureStop` → `arrivalStop` (inclusive) out of the whole line.
  *
- * The arrival stop is searched *after* the departure stop so a circular route
- * that visits the same name twice yields the ride, not the whole loop. Exact
- * (normalised) names are tried across the whole line before falling back to
- * containment, so a loose match never beats a real one.
+ * Every forward (departure before arrival) pair is enumerated; the ride is
+ * only returned when exactly one exists. A name that repeats on the line, or a
+ * loop that passes both stops twice, leaves the intended lap unknowable, so it
+ * is rejected rather than guessed. Exact (normalised) names are tried first,
+ * and containment is only a fallback when nothing matched exactly — and must
+ * itself be unique. No wrap-around: the arrival is always after the departure.
  */
 export function sliceLegStops(
   stops: RouteDetailStop[],
@@ -83,34 +96,38 @@ export function sliceLegStops(
   arrivalStop: string,
 ): RouteDetailStop[] | null {
   for (const eq of [equalStopName, looseEqualStopName]) {
-    const from = stops.findIndex((s) => eq(s.name, departureStop));
-    if (from === -1) continue;
-
-    const relative = stops
-      .slice(from + 1)
-      .findIndex((s) => eq(s.name, arrivalStop));
-    if (relative === -1) continue;
-
-    return stops.slice(from, from + 1 + relative + 1);
+    const pairs: [number, number][] = [];
+    for (let from = 0; from < stops.length; from++) {
+      if (!eq(stops[from].name, departureStop)) continue;
+      for (let to = from + 1; to < stops.length; to++) {
+        if (eq(stops[to].name, arrivalStop)) pairs.push([from, to]);
+      }
+    }
+    if (pairs.length === 1) return stops.slice(pairs[0][0], pairs[0][1] + 1);
+    if (pairs.length > 1) return null;
   }
   return null;
 }
 
 /**
- * The ride's stops, hunting for the direction that actually contains it.
- *
- * `leg.direction` cannot be trusted: TDX numbers a line's two directions
- * independently of how the planner labelled the leg, so on 365 / 26 the
- * declared direction 0 holds the stops in the opposite order and the slice
- * finds no arrival stop after the departure stop — leaving every badge with no
- * data at all. The declared direction is tried first, then the other one.
+ * Identifies the ride the planner chose. `direction` is the planner's (GTFS)
+ * number: TDX numbers a line's runs independently, so it is never used to pick
+ * between candidates — only the stop order can.
  */
-/** Identifies the exact run a leg rides: the planner's sub-route, if it named one. */
 export interface LegRideRef {
   direction: 0 | 1;
   departureStop: string;
   arrivalStop: string;
   subRouteUid?: string;
+}
+
+export interface ResolvedLegRide {
+  direction: BusDirection;
+  stops: RouteDetailStop[];
+  /** The branch the ride was found on; absent when the payload names none. */
+  subRouteUid?: string;
+  /** True when no other run of the same direction number exists in the payload. */
+  singleBranchInDirection: boolean;
 }
 
 export function resolveLegStops(
@@ -130,48 +147,66 @@ export function resolveLegStops(
 export function resolveLegDirection(
   directions: RouteDetailDirection[] | undefined,
   leg: LegRideRef,
-): 0 | 1 | null {
+): BusDirection | null {
   return resolveLegRide(directions, leg)?.direction ?? null;
 }
 
 /**
- * Pick the published run this leg actually rides.
+ * Find the one published run that holds board → alight, in stop order.
  *
- * `subRouteUid` is authoritative when the planner supplied one: a line's
- * sub-routes (99 vs 99延) share a name but not a stop list, and picking the
- * wrong one yields stops the rider never sees. Only when the payload carries
- * no matching sub-route do we fall back to geometry — trying each direction
- * and keeping the one whose stop order can hold board → alight.
+ * - A supplied `subRouteUid` with matching rows restricts the search to that
+ *   branch. When it matches nothing, only rows that carry no UID may stand in:
+ *   a row explicitly naming a different branch is evidence against it.
+ * - Without a UID, the ride is only usable when exactly one run fits.
+ * - 255 (direction unknown) is never a ride, and the GTFS direction number
+ *   never breaks a tie: more than one fitting run means null.
  */
 export function resolveLegRide(
   directions: RouteDetailDirection[] | undefined,
   leg: LegRideRef,
-): { direction: 0 | 1; stops: RouteDetailStop[] } | null {
+): ResolvedLegRide | null {
   if (!directions?.length) return null;
 
-  const scoped = leg.subRouteUid
-    ? directions.filter((d) => d.subRouteUid === leg.subRouteUid)
-    : [];
-  const pool = scoped.length ? scoped : directions;
-
-  // The declared direction first: with a correct sub-route it is normally
-  // right, and preferring it keeps a loop route from matching the wrong lap.
-  const ordered = [
-    ...pool.filter((d) => d.direction === leg.direction),
-    ...pool.filter((d) => d.direction !== leg.direction),
-  ];
-
-  for (const candidate of ordered) {
-    if (!candidate.stops?.length) continue;
-    const sliced = sliceLegStops(
-      candidate.stops,
-      leg.departureStop,
-      leg.arrivalStop,
-    );
-    if (sliced?.length)
-      return { direction: candidate.direction, stops: sliced };
+  let pool = directions;
+  if (leg.subRouteUid) {
+    const named = directions.filter((d) => d.subRouteUid === leg.subRouteUid);
+    pool = named.length ? named : directions.filter((d) => !d.subRouteUid);
   }
-  return null;
+
+  const candidates: { run: RouteDetailDirection; stops: RouteDetailStop[] }[] =
+    [];
+  for (const run of pool) {
+    if (run.direction === 255 || !run.stops?.length) continue;
+    const stops = sliceLegStops(run.stops, leg.departureStop, leg.arrivalStop);
+    if (stops?.length) candidates.push({ run, stops });
+  }
+  if (candidates.length !== 1) return null;
+
+  const { run, stops } = candidates[0];
+  return {
+    direction: run.direction,
+    stops,
+    subRouteUid: run.subRouteUid,
+    singleBranchInDirection:
+      directions.filter((d) => d.direction === run.direction).length === 1,
+  };
+}
+
+/**
+ * Stable identity of a tracked bus leg. Both entry points (route card and
+ * navigation) build their store key from this so the same ride is never
+ * tracked under two keys, and two different rides never share one.
+ */
+export function busLegKey(prefix: string, leg: BusLeg): string {
+  return JSON.stringify([
+    prefix,
+    leg.tdxCity ?? leg.cityCode ?? "",
+    leg.subRouteName ?? leg.routeName,
+    leg.subRouteUid ?? null,
+    leg.direction,
+    leg.departureStop,
+    leg.arrivalStop,
+  ]);
 }
 
 /** Beyond this the target vehicle counts as travelling between stops. */
@@ -277,10 +312,14 @@ export interface EtaLabel {
  */
 const SCHEDULED_RE = /^(明日\s*)?(\d{1,2}:\d{2})(\s*起點發車)?$/;
 
+/** `每 5–10 分一班` / `每 10 分一班`: a published headway, not a live ETA. */
+const HEADWAY_RE = /^每\s*(\d+)(?:\s*[–—-]\s*(\d+))?\s*分一班$/;
+
 /**
  * Interpret the backend's `statusLabel`.
  *
- * `/transit/bus/route-detail` does not just echo TDX's StopStatus: when a stop
+ * Both `/transit/bus/route-detail` and `/transit/bus/arrival` emit this compound
+ * text. route-detail does not just echo TDX's StopStatus: when a stop
  * reports StopStatus 1 (尚未發車) the backend overwrites the label with the next
  * departure it can find — TDX's `NextBusTime`, else the timetable — so the field
  * carries times like `18:15`, `18:15 起點發車` or `明日 06:00`. The other statuses
@@ -312,6 +351,23 @@ export function parseStatusLabel(statusLabel: string): EtaLabel | null {
     };
   }
 
+  const headway = HEADWAY_RE.exec(label);
+  if (headway) {
+    return headway[2]
+      ? {
+          key: "busHeadwayRange",
+          params: { min: Number(headway[1]), max: Number(headway[2]) },
+          tone: "muted",
+          kind: "scheduled",
+        }
+      : {
+          key: "busHeadway",
+          params: { count: Number(headway[1]) },
+          tone: "muted",
+          kind: "scheduled",
+        };
+  }
+
   switch (label) {
     case "末班車已過":
       return { key: "busServiceEnded", tone: "muted", kind: "status" };
@@ -321,6 +377,8 @@ export function parseStatusLabel(statusLabel: string): EtaLabel | null {
       return { key: "busStopSkipped", tone: "muted", kind: "status" };
     case "尚未發車":
       return { key: "busNotDeparted", tone: "muted", kind: "status" };
+    case "暫無到站資訊":
+      return { key: "busArrivalUnavailable", tone: "muted", kind: "status" };
     default:
       return null;
   }
@@ -338,7 +396,7 @@ export function resolveEtaLabel(row: BusLegStopRow): EtaLabel {
     return { key: "busStopPassed", tone: "muted", kind: "status" };
 
   const m = row.estimateMinutes;
-  if (typeof m === "number" && m >= 0) {
+  if (typeof m === "number" && Number.isFinite(m) && m >= 0) {
     if (m === 0)
       return { key: "busArrivalArriving", tone: "arriving", kind: "eta" };
     if (m < 3) return { key: "busArrivalSoon", tone: "arriving", kind: "eta" };
@@ -359,5 +417,5 @@ export function resolveEtaLabel(row: BusLegStopRow): EtaLabel {
   // Settled with nothing usable — including `正常` paired with a null ETA,
   // which the backend emits whenever TDX has no position to estimate from.
   // "No service" would be a claim we cannot support.
-  return { key: "busEtaUnknown", tone: "muted", kind: "status" };
+  return { key: "busArrivalUnavailable", tone: "muted", kind: "status" };
 }

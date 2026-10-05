@@ -3,7 +3,9 @@ import type { RouteDetailDirection } from "@/lib/api/transit";
 import {
   __clearRouteDetailCache,
   fetchRouteDetailCached,
+  fetchRouteDetailSnapshot,
   peekRouteDetail,
+  peekRouteDetailSnapshot,
   routeDetailKey,
 } from "@/lib/transit/busRouteDetailCache";
 
@@ -46,6 +48,102 @@ describe("routeDetailKey", () => {
     expect(routeDetailKey("365", "Taichung")).not.toBe(
       routeDetailKey("365", "Taipei"),
     );
+  });
+});
+
+describe("route-detail identity", () => {
+  it("keys by sub-route as well, so branches never share an entry", async () => {
+    expect(routeDetailKey("99", "Taichung", "A")).not.toBe(
+      routeDetailKey("99", "Taichung", "B"),
+    );
+    expect(routeDetailKey("99", "Taichung")).not.toBe(
+      routeDetailKey("99", "Taichung", "A"),
+    );
+    getBusRouteDetail.mockResolvedValue(ok());
+    await fetchRouteDetailCached("99", "Taichung", { subRouteUid: "A" });
+    await fetchRouteDetailCached("99", "Taichung", { subRouteUid: "B" });
+    expect(getBusRouteDetail).toHaveBeenCalledTimes(2);
+    expect(getBusRouteDetail).toHaveBeenNthCalledWith(1, "99", "Taichung", "A");
+    expect(peekRouteDetail("99", "Taichung", "A")).toEqual(directions);
+    expect(peekRouteDetail("99", "Taichung")).toBeNull();
+  });
+});
+
+describe("receipt time", () => {
+  it("is set once on response and not refreshed by later reads", async () => {
+    getBusRouteDetail.mockResolvedValue(ok());
+    const first = await fetchRouteDetailSnapshot("365", "Taichung");
+    vi.advanceTimersByTime(10_000);
+    const second = await fetchRouteDetailSnapshot("365", "Taichung");
+    expect(second?.receivedAt).toBe(first?.receivedAt);
+    expect(second?.expiresAt).toBe((first?.receivedAt ?? 0) + 15_000);
+    expect(peekRouteDetailSnapshot("365", "Taichung")?.receivedAt).toBe(
+      first?.receivedAt,
+    );
+    vi.advanceTimersByTime(5_001);
+    expect(peekRouteDetail("365", "Taichung")).toBeNull();
+  });
+
+  it("is measured from the response, not from the request start", async () => {
+    let finish: (v: unknown) => void = () => {};
+    getBusRouteDetail.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const pending = fetchRouteDetailSnapshot("365", "Taichung");
+    vi.advanceTimersByTime(8_000);
+    finish(ok());
+    const snapshot = await pending;
+    expect(snapshot?.receivedAt).toBe(Date.now());
+  });
+});
+
+describe("failure and cancellation", () => {
+  it("a failed forced refresh does not delete a newer entry", async () => {
+    let failFirst: (v: unknown) => void = () => {};
+    getBusRouteDetail.mockReturnValueOnce(
+      new Promise((resolve) => {
+        failFirst = resolve;
+      }),
+    );
+    const slow = fetchRouteDetailCached("365", "Taichung");
+    // Replace the in-flight request's slot with a newer one.
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    __clearRouteDetailCache();
+    await fetchRouteDetailCached("365", "Taichung");
+    failFirst({ ok: false });
+    await expect(slow).resolves.toBeNull();
+    expect(peekRouteDetail("365", "Taichung")).toEqual(directions);
+  });
+
+  it("a cancelled consumer stops waiting but the shared request completes for others", async () => {
+    let finish: (v: unknown) => void = () => {};
+    getBusRouteDetail.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const controller = new AbortController();
+    const cancelled = fetchRouteDetailCached("365", "Taichung", {
+      signal: controller.signal,
+    });
+    const other = fetchRouteDetailCached("365", "Taichung");
+    controller.abort();
+    await expect(cancelled).resolves.toBeNull();
+
+    finish(ok());
+    await expect(other).resolves.toEqual(directions);
+    expect(getBusRouteDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null without waiting when already aborted", async () => {
+    getBusRouteDetail.mockResolvedValue(ok());
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      fetchRouteDetailCached("365", "Taichung", { signal: controller.signal }),
+    ).resolves.toBeNull();
   });
 });
 
