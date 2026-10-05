@@ -12,7 +12,9 @@ export const createTransitSlice: MapSliceCreator<TransitSlice> = (set) => ({
   nearbyBusStops: [],
   setNearbyBusStops: (stops) => set({ nearbyBusStops: stops }),
   busRouteStops: [],
-  setBusRouteStops: (stops) => set({ busRouteStops: stops }),
+  busRoutePolyline: [],
+  setBusRouteStops: (stops, polyline = []) =>
+    set({ busRouteStops: stops, busRoutePolyline: polyline }),
   selectedBusStop: null,
   setSelectedBusStop: (stop) => set({ selectedBusStop: stop }),
 });

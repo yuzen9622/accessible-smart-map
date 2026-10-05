@@ -85,6 +85,7 @@ describe("useMapStore transit bus state", () => {
     useMapStore.setState({
       nearbyBusStops: [],
       busRouteStops: [],
+      busRoutePolyline: [],
       selectedBusStop: null,
     });
   });
@@ -97,6 +98,31 @@ describe("useMapStore transit bus state", () => {
     useMapStore.getState().setBusRouteStops([dummyRouteStop]);
     expect(useMapStore.getState().busRouteStops).toHaveLength(1);
     expect(useMapStore.getState().busRouteStops[0].name).toBe("捷運台北車站");
+  });
+
+  it("updates branch stops and the published shape atomically, clearing missing shapes", () => {
+    const snapshots: { stops: RouteDetailStop[]; shape: [number, number][] }[] =
+      [];
+    const unsubscribe = useMapStore.subscribe((state) =>
+      snapshots.push({
+        stops: state.busRouteStops,
+        shape: state.busRoutePolyline,
+      }),
+    );
+    const shape: [number, number][] = [
+      [121.5, 25],
+      [121.6, 25.1],
+    ];
+    useMapStore.getState().setBusRouteStops([dummyRouteStop], shape);
+    expect(snapshots).toEqual([{ stops: [dummyRouteStop], shape }]);
+    useMapStore
+      .getState()
+      .setBusRouteStops([{ ...dummyRouteStop, name: "Other branch" }]);
+    expect(useMapStore.getState().busRoutePolyline).toEqual([]);
+    useMapStore.getState().setBusRouteStops([]);
+    expect(useMapStore.getState().busRouteStops).toEqual([]);
+    expect(useMapStore.getState().busRoutePolyline).toEqual([]);
+    unsubscribe();
   });
 
   it("selects a bus stop", () => {

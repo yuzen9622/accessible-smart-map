@@ -1,14 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import type { RouteDetailDirection } from "@/lib/api/transit";
 import {
-  fetchRouteDetailCached,
-  peekRouteDetail,
+  fetchRouteDetailSnapshot,
+  peekRouteDetailSnapshot,
+  routeDetailKey,
 } from "@/lib/transit/busRouteDetailCache";
 import type { BusLeg } from "@/types/route";
 
 export type BusLegEtaStatus = "idle" | "loading" | "ready" | "error";
 
-const POLL_INTERVAL_MS = 20_000;
+// Shorter than the route-detail cache TTL (15s): a polling consumer replaces
+// its data before it expires instead of blanking the list between ticks.
+const POLL_INTERVAL_MS = 10_000;
+
+interface EtaState {
+  /** Branch identity the data belongs to; data under another key is never shown. */
+  key: string;
+  directions: RouteDetailDirection[] | null;
+  expiresAt: number;
+  status: BusLegEtaStatus;
+}
+
+const emptyState = (key: string, status: BusLegEtaStatus): EtaState => ({
+  key,
+  directions: null,
+  expiresAt: 0,
+  status,
+});
+
+function seed(routeName: string, city: string, uid?: string): EtaState {
+  const key = routeDetailKey(routeName, city, uid);
+  const warm =
+    routeName && city ? peekRouteDetailSnapshot(routeName, city, uid) : null;
+  return warm
+    ? {
+        key,
+        directions: warm.directions,
+        expiresAt: warm.expiresAt,
+        status: "ready",
+      }
+    : emptyState(key, "idle");
+}
 
 /**
  * Stop-by-stop ETAs for one BUS leg.
@@ -16,12 +48,16 @@ const POLL_INTERVAL_MS = 20_000;
  * `enabled` and `poll` are deliberately separate: selecting a route enables the
  * hook so the payload is already warm (and shared through the route-detail
  * cache) by the time the user expands the leg, while only expanding it starts
- * the 20s refresh. Fetching only on expand is what made every stop render as
+ * the refresh. Fetching only on expand is what made every stop render as
  * 「尚未發車」 for the first second.
  *
- * Both directions are returned rather than the leg's declared one: picking the
- * direction that actually contains the ride is `resolveLegStops`' job, because
- * `leg.direction` does not reliably match TDX's numbering.
+ * Every run of the line is returned rather than one: picking the run that
+ * actually contains the ride is `resolveLegRide`' job, because `leg.direction`
+ * does not reliably match TDX's numbering.
+ *
+ * Data is bound to its branch key and to the cache's receipt time: switching
+ * leg or branch never exposes the previous one, and ETAs vanish once they are
+ * older than the cache TTL instead of being shown indefinitely.
  */
 export function useBusLegStopEtas(
   leg: BusLeg | null,
@@ -32,40 +68,49 @@ export function useBusLegStopEtas(
   // TDX indexes stop sequences by sub-route: 99 and 99延 are different lists.
   // The planner names the run it chose, so ask for that one.
   const routeName = leg?.subRouteName ?? leg?.routeName ?? "";
+  const subRouteUid = leg?.subRouteUid;
+  const key = routeDetailKey(routeName, city, subRouteUid);
 
   // Seed from an already-warm cache entry so the first render after expanding
   // shows real ETAs instead of a placeholder.
-  const [directions, setDirections] = useState<RouteDetailDirection[] | null>(
-    () => (routeName && city ? peekRouteDetail(routeName, city) : null),
-  );
-  const [status, setStatus] = useState<BusLegEtaStatus>(() =>
-    routeName && city && peekRouteDetail(routeName, city) ? "ready" : "idle",
+  const [state, setState] = useState<EtaState>(() =>
+    seed(routeName, city, subRouteUid),
   );
 
-  const legRef = useRef(leg);
-  legRef.current = leg;
+  const pollRef = useRef(poll);
+  pollRef.current = poll;
 
   useEffect(() => {
-    if (!enabled || !legRef.current || !routeName || !city) {
-      setStatus("idle");
-      setDirections(null);
+    if (!enabled || !routeName || !city) {
+      setState(emptyState(key, "idle"));
       return;
     }
 
     let cancelled = false;
+    let version = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const controller = new AbortController();
 
     const fetchEtas = async (force: boolean) => {
-      const fetched = await fetchRouteDetailCached(routeName, city, { force });
-      if (cancelled) return;
+      const mine = ++version;
+      const snapshot = await fetchRouteDetailSnapshot(routeName, city, {
+        force,
+        subRouteUid,
+        signal: controller.signal,
+      });
+      // Superseded or cancelled: a late response must not overwrite newer state.
+      if (cancelled || mine !== version) return;
 
-      if (!fetched) {
-        setStatus("error");
+      if (!snapshot) {
+        setState(emptyState(key, "error"));
         return;
       }
-
-      setDirections(fetched);
-      setStatus("ready");
+      setState({
+        key,
+        directions: snapshot.directions,
+        expiresAt: snapshot.expiresAt,
+        status: "ready",
+      });
     };
 
     function scheduleNext() {
@@ -89,14 +134,19 @@ export function useBusLegStopEtas(
     }
 
     // A warm cache entry means we already have data; don't flash a loading
-    // state over it just because the effect re-ran.
-    const warm = peekRouteDetail(routeName, city);
-    if (warm) {
-      setDirections(warm);
-      setStatus("ready");
-    } else {
-      setStatus("loading");
-    }
+    // state over it just because the effect re-ran. A cold one (or one from a
+    // different branch) must clear whatever was showing.
+    const warm = peekRouteDetailSnapshot(routeName, city, subRouteUid);
+    setState(
+      warm
+        ? {
+            key,
+            directions: warm.directions,
+            expiresAt: warm.expiresAt,
+            status: "ready",
+          }
+        : emptyState(key, "loading"),
+    );
 
     if (poll) {
       tick();
@@ -108,10 +158,34 @@ export function useBusLegStopEtas(
 
     return () => {
       cancelled = true;
+      controller.abort();
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, poll, routeName, city]);
+  }, [enabled, poll, routeName, city, subRouteUid, key]);
 
-  return { directions, status };
+  // Expire what is on screen at the cache's deadline. The receipt time is not
+  // renewed by this: only a new response can bring data back.
+  const { key: stateKey, expiresAt } = state;
+  useEffect(() => {
+    if (!expiresAt) return;
+    const wait = Math.max(0, expiresAt - Date.now());
+    const timer = setTimeout(() => {
+      setState((current) =>
+        current.key === stateKey && current.expiresAt === expiresAt
+          ? emptyState(stateKey, pollRef.current ? "loading" : "idle")
+          : current,
+      );
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [stateKey, expiresAt]);
+
+  // Render guard: nothing from another branch, nothing past its deadline.
+  if (state.key !== key) {
+    return { directions: null, status: enabled ? "loading" : "idle" };
+  }
+  if (state.directions && Date.now() >= state.expiresAt) {
+    return { directions: null, status: poll ? "loading" : "idle" };
+  }
+  return { directions: state.directions, status: state.status };
 }

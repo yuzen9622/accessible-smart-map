@@ -150,7 +150,7 @@ export interface SearchSlice {
  * `null` means no tracking at all: no vehicle drawn, no polling in flight.
  */
 export interface ActiveBusLeg {
-  /** `${routeIndex}:${legIndex}:${routeName}:${direction}:${departureStop}` */
+  /** Opaque run identity including city, branch and boarding/alighting stops. */
   key: string;
   leg: BusLeg;
 }
@@ -165,7 +165,12 @@ export interface TransitSlice {
     stops: (BusStopSearchResult & { distance?: number })[],
   ) => void;
   busRouteStops: RouteDetailStop[];
-  setBusRouteStops: (stops: RouteDetailStop[]) => void;
+  /** Published [lng, lat] shape of the very same selected branch/direction. */
+  busRoutePolyline: [number, number][];
+  setBusRouteStops: (
+    stops: RouteDetailStop[],
+    polyline?: [number, number][],
+  ) => void;
   selectedBusStop:
     | (BusStopSearchResult & { distance?: number })
     | RouteDetailStop
