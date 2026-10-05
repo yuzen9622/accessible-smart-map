@@ -5,6 +5,7 @@ import { Marker, useMap } from "react-map-gl/maplibre";
 import useSupercluster from "use-supercluster";
 import { useShallow } from "zustand/react/shallow";
 import BusStopPin from "@/components/BusStopPin";
+import Polyline from "@/components/Polyline";
 import { useMapBoundsAndZoom } from "@/hook/useMapBoundsAndZoom";
 import { getNearbyBusStops, type RouteDetailStop } from "@/lib/api/transit";
 import useMapStore from "@/stores/useMapStore";
@@ -24,6 +25,7 @@ export default function TransitWrapper() {
     nearbyBusStops,
     setNearbyBusStops,
     busRouteStops,
+    busRoutePolyline,
   } = useMapStore(
     useShallow((s) => ({
       activeRailPanel: s.activeRailPanel,
@@ -31,6 +33,7 @@ export default function TransitWrapper() {
       nearbyBusStops: s.nearbyBusStops,
       setNearbyBusStops: s.setNearbyBusStops,
       busRouteStops: s.busRouteStops,
+      busRoutePolyline: s.busRoutePolyline,
     })),
   );
 
@@ -124,10 +127,19 @@ export default function TransitWrapper() {
     options: { radius: 60, maxZoom: 16 },
   });
 
-  if (!shouldShow || points.length === 0) return null;
+  if (!shouldShow || (points.length === 0 && busRoutePolyline.length < 2))
+    return null;
 
   return (
     <>
+      {busRoutePolyline.length >= 2 && (
+        <Polyline
+          id="selected-bus-route"
+          path={busRoutePolyline.map(([lng, lat]) => ({ lng, lat }))}
+          strokeColor="#10b981"
+          strokeWeight={4}
+        />
+      )}
       {clusters.map((cluster) => {
         const [longitude, latitude] = cluster.geometry.coordinates;
         const properties = cluster.properties as {

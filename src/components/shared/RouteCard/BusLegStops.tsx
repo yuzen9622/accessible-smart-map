@@ -3,9 +3,10 @@ import { useBusLegStopEtas } from "@/hook/useBusLegStopEtas";
 import { useAppTranslation } from "@/i18n/client";
 import {
   buildStopRows,
+  busLegKey,
   fallbackStopRows,
   resolveCurrentStopSeq,
-  resolveLegStops,
+  resolveLegRide,
 } from "@/lib/transit/busLegStops";
 import useMapStore from "@/stores/useMapStore";
 import type { BusLeg } from "@/types/route";
@@ -24,7 +25,7 @@ export function BusLegStops({
   isSelected: boolean;
 }) {
   const { t } = useAppTranslation();
-  const key = `${routeIndex}:${legIndex}:${leg.routeName}:${leg.direction}:${leg.departureStop}`;
+  const key = busLegKey(`${routeIndex}:${legIndex}`, leg);
 
   const activeBusLeg = useMapStore((s) => s.activeBusLeg);
   const setActiveBusLeg = useMapStore((s) => s.setActiveBusLeg);
@@ -44,17 +45,33 @@ export function BusLegStops({
     isSelected || isOpen,
     isOpen,
   );
-  const targetBus = Array.isArray(liveBusPositions)
-    ? (liveBusPositions.find((b) => b.isTarget) ?? null)
-    : null;
+  const ride = useMemo(
+    () => resolveLegRide(directions ?? undefined, leg),
+    [directions, leg],
+  );
+
+  // The tracked vehicle is shared store state: only show it on the open leg,
+  // and only when it runs the same direction/branch this leg resolved to.
+  const targetBus = useMemo(() => {
+    if (!isOpen || !ride || !Array.isArray(liveBusPositions)) return null;
+    return (
+      liveBusPositions.find(
+        (b) =>
+          b.isTarget &&
+          b.direction === ride.direction &&
+          (!ride.subRouteUid ||
+            !b.subRouteUid ||
+            b.subRouteUid === ride.subRouteUid),
+      ) ?? null
+    );
+  }, [isOpen, ride, liveBusPositions]);
 
   const rows = useMemo(() => {
     if (!isOpen) return undefined;
 
-    const sliced = resolveLegStops(directions ?? undefined, leg);
-    if (sliced && sliced.length > 0) {
-      const currentSeq = resolveCurrentStopSeq(sliced, targetBus);
-      return buildStopRows(sliced, currentSeq);
+    if (ride && ride.stops.length > 0) {
+      const currentSeq = resolveCurrentStopSeq(ride.stops, targetBus);
+      return buildStopRows(ride.stops, currentSeq);
     }
 
     // No ETAs to attach: placeholders while the lookup runs, "no information"
@@ -62,7 +79,7 @@ export function BusLegStops({
     return fallbackStopRows(leg, {
       pending: status === "idle" || status === "loading",
     });
-  }, [isOpen, directions, leg, targetBus, status]);
+  }, [isOpen, ride, leg, targetBus, status]);
 
   const currentStopName = rows?.find((r) => r.state === "current")?.name;
 

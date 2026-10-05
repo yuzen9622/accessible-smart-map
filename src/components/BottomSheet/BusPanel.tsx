@@ -1,7 +1,7 @@
 "use client";
 
 import { Bus, ChevronLeft, Loader2, MapPin, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import useBusSearch, { type BusSearchMode } from "@/hook/useBusSearch";
 import { useAppTranslation } from "@/i18n/client";
@@ -11,6 +11,13 @@ import {
   type RouteDetailDirection,
   type RouteDetailStop,
 } from "@/lib/api/transit";
+import {
+  type BusDirectionSelection,
+  busDirectionLabel,
+  busDirectionOptions,
+  selectBusDirection,
+} from "@/lib/transit/busDirections";
+import { parseStatusLabel } from "@/lib/transit/busLegStops";
 import useMapStore from "@/stores/useMapStore";
 import type { BusSearchResult, BusStopSearchResult } from "@/types/transit";
 import { Badge } from "../ui/badge";
@@ -42,7 +49,7 @@ const CityNameMap: Record<string, string> = {
   InterCity: "公路公車",
 };
 
-function RouteStopCard({
+export function RouteStopCard({
   stop,
   isSelected,
   onSelect,
@@ -51,23 +58,37 @@ function RouteStopCard({
   isSelected?: boolean;
   onSelect?: () => void;
 }) {
+  const { t } = useAppTranslation();
   const hasEstimate =
-    stop.estimateMinutes !== null && stop.estimateMinutes >= 0;
+    typeof stop.estimateMinutes === "number" &&
+    Number.isFinite(stop.estimateMinutes) &&
+    stop.estimateMinutes >= 0;
   const isArrivingSoon =
     hasEstimate &&
     typeof stop.estimateMinutes === "number" &&
     stop.estimateMinutes < 3;
 
-  let badgeText = stop.statusLabel || "尚未發車";
+  const status = stop.statusLabel?.trim() ?? "";
+  const parsedStatus = parseStatusLabel(status);
+  let badgeText = parsedStatus?.key
+    ? t(parsedStatus.key, parsedStatus.params)
+    : !status || status === "正常" || status === "暫無到站資訊"
+      ? t("busArrivalUnavailable")
+      : status;
+  if (parsedStatus?.kind === "scheduled") {
+    badgeText = t("busPlannedAt", { time: badgeText });
+  }
   let badgeColor = "text-muted-foreground bg-muted/60";
 
   if (hasEstimate && typeof stop.estimateMinutes === "number") {
     if (isArrivingSoon) {
-      badgeText = stop.estimateMinutes === 0 ? "進站中" : "即將到站";
+      badgeText = t(
+        stop.estimateMinutes === 0 ? "busArrivalArriving" : "busArrivalSoon",
+      );
       badgeColor =
         "text-red-600 bg-red-500/10 font-bold border border-red-500/20 shadow-sm";
     } else {
-      badgeText = `${stop.estimateMinutes} 分鐘`;
+      badgeText = t("minutesAway", { minutes: stop.estimateMinutes });
       badgeColor = "text-emerald-600 bg-emerald-500/10";
     }
   }
@@ -238,7 +259,9 @@ export default function BusPanel({
   const [selectedStop, setSelectedStop] = useState<BusStopSearchResult | null>(
     null,
   );
-  const [direction, setDirection] = useState<0 | 1 | null>(null);
+  const [selection, setSelection] = useState<BusDirectionSelection | null>(
+    null,
+  );
   const [routeDetails, setRouteDetails] = useState<RouteDetailDirection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,75 +269,100 @@ export default function BusPanel({
   const REFRESH_INTERVAL = 30;
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
 
-  const fetchRouteDetail = useCallback(
-    async (isBackgroundRefresh = false) => {
-      if (!selectedRoute) return;
-      if (!isBackgroundRefresh) setLoading(true);
+  useEffect(() => {
+    if (!selectedRoute) return;
+    let active = true;
+    let pending = false;
+    let remaining = REFRESH_INTERVAL;
+    let request: AbortController | undefined;
+    const refresh = async (background = false) => {
+      if (pending) return;
+      pending = true;
+      request = new AbortController();
+      if (!background) setLoading(true);
+      // A new receipt is only established by a successful response. Expired
+      // snapshots keep the published sequence but never a permanent zero ETA.
+      if (background) {
+        setRouteDetails((details) =>
+          details.map((detail) => ({
+            ...detail,
+            stops: detail.stops.map((stop) => ({
+              ...stop,
+              estimateMinutes: null,
+              statusLabel: "",
+            })),
+          })),
+        );
+      }
       setError(null);
       try {
         const res = await getBusRouteDetail(
           selectedRoute.routeName,
           selectedRoute.city,
+          undefined,
+          request.signal,
         );
-        if (res.ok && res.data?.directions) {
-          setRouteDetails(res.data.directions);
-          if (!isBackgroundRefresh) {
-            setDirection(0);
-          }
-          if (res.data.directions.length === 0) {
-            setError(t("noBusData"));
-          }
+        if (!active) return;
+        if ((res.ok || res.success) && res.data?.directions) {
+          const details = res.data.directions;
+          setRouteDetails(details);
+          setSelection((previous) =>
+            selectBusDirection(busDirectionOptions(details), previous),
+          );
+          if (!details.length) setError(t("noBusData"));
         } else {
-          if (!isBackgroundRefresh) setRouteDetails([]);
-          setError((res as { message?: string }).message || t("noBusData"));
+          setRouteDetails([]);
+          setError(res.message || t("noBusData"));
         }
       } catch (err) {
-        if (!isBackgroundRefresh) setRouteDetails([]);
+        if (!active) return;
+        setRouteDetails([]);
         setError(err instanceof Error ? err.message : t("networkError"));
       } finally {
-        if (!isBackgroundRefresh) setLoading(false);
-        setCountdown(REFRESH_INTERVAL);
-      }
-    },
-    [selectedRoute, t],
-  );
-
-  useEffect(() => {
-    if (selectedRoute) {
-      void fetchRouteDetail();
-    }
-  }, [selectedRoute, fetchRouteDetail]);
-
-  useEffect(() => {
-    if (!selectedRoute) return;
-
-    const intervalId = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          void fetchRouteDetail(true);
-          return REFRESH_INTERVAL;
+        if (active) {
+          pending = false;
+          setLoading(false);
+          remaining = REFRESH_INTERVAL;
+          setCountdown(remaining);
         }
-        return prev - 1;
-      });
+      }
+    };
+    void refresh();
+    const intervalId = setInterval(() => {
+      if (pending) return;
+      remaining -= 1;
+      setCountdown(remaining);
+      if (remaining <= 0) void refresh(true);
     }, 1000);
+    const onResume = () => {
+      if (document.visibilityState === "visible") void refresh(true);
+    };
+    document.addEventListener("visibilitychange", onResume);
+    return () => {
+      active = false;
+      request?.abort();
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onResume);
+    };
+  }, [selectedRoute, t]);
 
-    return () => clearInterval(intervalId);
-  }, [selectedRoute, fetchRouteDetail]);
-
-  const currentDirectionDetails = routeDetails.find(
-    (d) => d.direction === direction,
-  );
-
-  // Prefer the route's own departure/destination (present for route-mode entry);
-  // fall back to the terminal stop of each direction for stop-mode entry.
-  const destinationLabel =
-    selectedRoute?.destination ||
-    routeDetails.find((d) => d.direction === 0)?.stops.at(-1)?.name ||
-    "去程";
-  const departureLabel =
-    selectedRoute?.departure ||
-    routeDetails.find((d) => d.direction === 1)?.stops.at(-1)?.name ||
-    "返程";
+  const directionOptions = busDirectionOptions(routeDetails);
+  const currentDirectionDetails = directionOptions.find(
+    (option) => option.key === selection?.key,
+  )?.detail;
+  const directionLabel = (detail: RouteDetailDirection) => {
+    const semanticLabel = t(busDirectionLabel(detail.direction));
+    const terminal =
+      detail.stops.at(-1)?.name ||
+      (detail.direction === 0
+        ? selectedRoute?.destination
+        : selectedRoute?.departure);
+    const label =
+      (detail.direction === 0 || detail.direction === 1) && terminal
+        ? t("busTowards", { destination: terminal })
+        : semanticLabel;
+    return detail.subRouteName ? `${detail.subRouteName} · ${label}` : label;
+  };
 
   useEffect(() => {
     if (mode === "stop" && stopResults.length > 0) {
@@ -325,16 +373,31 @@ export default function BusPanel({
   }, [mode, stopResults, selectedRoute, nearbyStops, setNearbyBusStops]);
 
   useEffect(() => {
-    if (currentDirectionDetails?.stops) {
-      setBusRouteStops(currentDirectionDetails.stops);
-    }
+    setBusRouteStops(
+      currentDirectionDetails?.stops ?? [],
+      currentDirectionDetails?.polyline,
+    );
   }, [currentDirectionDetails, setBusRouteStops]);
+
+  useEffect(
+    () => () => {
+      setBusRouteStops([]);
+      setSelectedBusStop(null);
+    },
+    [setBusRouteStops, setSelectedBusStop],
+  );
+
+  useEffect(() => {
+    if (selection?.key) setSelectedBusStop(null);
+  }, [selection?.key, setSelectedBusStop]);
 
   const handleRouteSelect = (route: BusSearchResult) => {
     setSelectedRoute(route);
     setOpen(false);
     setKeyword("");
-    setDirection(null);
+    setSelection(null);
+    setSelectedBusStop(null);
+    setBusRouteStops([]);
     setRouteDetails([]);
     setError(null);
     setCountdown(REFRESH_INTERVAL);
@@ -342,7 +405,7 @@ export default function BusPanel({
 
   const resetSelection = () => {
     setSelectedRoute(null);
-    setDirection(null);
+    setSelection(null);
     setRouteDetails([]);
     setBusRouteStops([]);
     setSelectedBusStop(null);
@@ -383,7 +446,7 @@ export default function BusPanel({
   const handleStopRouteSelect = (routeName: string, city: string) => {
     setSelectedStop(null);
     setSelectedRoute({ routeName, city, departure: "", destination: "" });
-    setDirection(null);
+    setSelection(null);
     setRouteDetails([]);
     setBusRouteStops([]);
     setError(null);
@@ -429,34 +492,35 @@ export default function BusPanel({
             </div>
           </div>
 
-          {direction !== null && routeDetails.length > 0 && (
+          {selection !== null && directionOptions.length > 0 && (
             <div className="space-y-3">
-              <div className="flex rounded-lg bg-muted/60 border border-border/30 p-0.5 text-sm">
-                <button
-                  type="button"
-                  aria-pressed={direction === 0}
-                  onClick={() => setDirection(0)}
-                  className={`flex-1 px-3 py-1.5 rounded-md transition-all duration-200 truncate ${
-                    direction === 0
-                      ? "bg-background shadow-sm text-foreground font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  往 {destinationLabel}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={direction === 1}
-                  onClick={() => setDirection(1)}
-                  className={`flex-1 px-3 py-1.5 rounded-md transition-all duration-200 truncate ${
-                    direction === 1
-                      ? "bg-background shadow-sm text-foreground font-semibold"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  往 {departureLabel}
-                </button>
-              </div>
+              <fieldset className="flex flex-wrap gap-1 rounded-lg bg-muted/60 border border-border/30 p-0.5 text-sm">
+                <legend className="sr-only">
+                  {t("busDirectionSelection")}
+                </legend>
+                {directionOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    type="button"
+                    aria-pressed={selection.key === option.key}
+                    onClick={() => {
+                      setSelectedBusStop(null);
+                      setSelection({
+                        key: option.key,
+                        subRouteUid: option.subRouteUid,
+                        subRouteName: option.subRouteName,
+                      });
+                    }}
+                    className={`flex-1 min-h-11 px-3 py-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                      selection.key === option.key
+                        ? "bg-background shadow-sm text-foreground font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {directionLabel(option.detail)}
+                  </button>
+                ))}
+              </fieldset>
 
               {/* Progress bar countdown */}
               {!loading && !error && (

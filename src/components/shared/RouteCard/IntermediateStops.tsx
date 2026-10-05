@@ -27,7 +27,9 @@ function EtaBadge({
     );
   }
 
-  const labelText = t(key, params);
+  const translated = t(key, params);
+  const labelText =
+    kind === "scheduled" ? t("busPlannedAt", { time: translated }) : translated;
 
   const toneClasses: Record<EtaTone, string> = {
     arriving: "text-red-600 dark:text-red-400 bg-red-500/10 font-bold",

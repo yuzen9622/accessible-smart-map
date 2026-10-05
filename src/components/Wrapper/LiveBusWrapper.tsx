@@ -6,6 +6,7 @@ import { Marker } from "react-map-gl/maplibre";
 import { type AnimatedBus, useAnimatedBuses } from "@/hook/useAnimatedBuses";
 import { useLiveBusPositions } from "@/hook/useLiveBusPositions";
 import { resolveActiveBusLegOrdinal } from "@/lib/navigation/legMode";
+import { busLegKey } from "@/lib/transit/busLegStops";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type { BusLeg } from "@/types/route";
@@ -112,9 +113,7 @@ function useNavigationBusTracking() {
     );
     const ordinal = resolveActiveBusLegOrdinal(instructions, currentStepIndex);
     const leg = ordinal == null ? undefined : busLegs[ordinal];
-    const nextKey = leg
-      ? `nav:${ordinal}:${leg.routeName}:${leg.direction}:${leg.departureStop}`
-      : null;
+    const nextKey = leg ? busLegKey(`nav:${ordinal}`, leg) : null;
 
     if (nextKey === lastKeyRef.current) return;
     lastKeyRef.current = nextKey;
