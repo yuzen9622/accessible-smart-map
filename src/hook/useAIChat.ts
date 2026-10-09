@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
 import { executeAction } from "@/lib/ai/actionExecutor";
+import { AI_ROUTE_UNAVAILABLE, isRouteTool } from "@/lib/ai/routeContract";
+import {
+  getRouteConversationInput,
+  type ToolSummary,
+  toolSummary,
+} from "@/lib/ai/routeConversation";
 import { mapToolToActions } from "@/lib/ai/toolActionMapper";
 import { streamChatWithAgent } from "@/lib/api/ai";
 import useAuthStore from "@/stores/useAuthStore";
@@ -12,15 +19,11 @@ import useChatStore, {
 import useMapStore from "@/stores/useMapStore";
 import useOnboardingStore from "@/stores/useOnboardingStore";
 import { describeProfileForAssistant } from "@/types/a11yProfile";
-import useComputeRoute from "./useComputeRoute";
 
 export type { ChatBubble, ToolActivity };
 
 export default function useAIChat() {
   const { t } = useAppTranslation();
-  const { userConfig } = useAuthStore(
-    useShallow((s) => ({ userConfig: s.userConfig })),
-  );
 
   // Shared across every mount of the AI panel (mobile/desktop copies, and
   // any remount from the panel being collapsed/closed then reopened) so a
@@ -81,8 +84,14 @@ export default function useAIChat() {
       setChatOpen: s.setChatOpen,
     })),
   );
-  const { handleComputeRoute } = useComputeRoute();
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    [],
+  );
 
   const markDone = useCallback(
     (activities: ToolActivity[] | undefined) =>
@@ -93,7 +102,7 @@ export default function useAIChat() {
   const handleSend = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed || useChatStore.getState().isLoading) return;
 
       setInput("");
       setIsLoading(true);
@@ -104,15 +113,16 @@ export default function useAIChat() {
       // needing the chat to remount.
       const profileNote = describeProfileForAssistant(
         useOnboardingStore.getState().profile,
-        userConfig.language === "en" ? "en" : "zh-TW",
+        getAppLanguage(),
       );
-      const baseSystemPrompt = `你是「無障礙智慧地圖」的 AI 助理，專門協助使用者查詢無障礙相關資訊、路線規劃、附近設施。請使用${userConfig.language === "en" ? "英文" : "繁體中文"}回答。`;
+      const baseSystemPrompt =
+        "你是「無障礙智慧地圖」的 AI 助理，專門協助使用者查詢無障礙相關資訊、路線規劃、附近設施。";
       // §6.1 of the UX audit's global a11y filter — re-read live (not
       // subscribed) for the same reason `profileNote` is re-derived every
       // send: toggling it mid-conversation should affect the next message
       // without needing the chat to remount.
       const a11yFilterNote = useMapStore.getState().a11yFilterEnabled
-        ? userConfig.language === "en"
+        ? getAppLanguage() === "en"
           ? " The user has turned on the accessibility filter — only recommend places and routes that are wheelchair/step-free accessible."
           : "使用者已開啟無障礙篩選，請只推薦無障礙（輪椅可通行、無階梯）的地點與路線。"
         : "";
@@ -153,11 +163,35 @@ export default function useAIChat() {
       // 之後仍看得到「已完成 2 項查詢 · 3.1 秒」，而不是時間憑空消失。
       const startedAt = Date.now();
       let fullText = "";
+      let generation = useMapStore.getState().routeGeneration;
+      let applying = false;
+      const summaries: ToolSummary[] = [];
+      const calls = new Set<string>();
+      const completed = new Set<string>();
+      const unsubscribe = useMapStore.subscribe((state) => {
+        if (!applying && state.routeGeneration !== generation)
+          controller.abort();
+      });
+      const conversationGeneration =
+        useChatStore.getState().conversationGeneration;
+      const unsubscribeChat = useChatStore.subscribe((state) => {
+        if (state.conversationGeneration !== conversationGeneration)
+          controller.abort();
+      });
+      const identity = useAuthStore.getState().user?._id;
+      const unsubscribeAuth = useAuthStore.subscribe((state) => {
+        if (state.user?._id !== identity) controller.abort();
+      });
+      const current = () =>
+        !controller.signal.aborted &&
+        abortRef.current === controller &&
+        generation === useMapStore.getState().routeGeneration;
 
       try {
         await streamChatWithAgent(
           {
             messages: chatHistory,
+            ...getRouteConversationInput(),
             stream: true,
             temperature: 0.7,
             ...(userLocation
@@ -170,11 +204,12 @@ export default function useAIChat() {
               : {}),
           },
           (chunk) => {
+            if (!current()) return;
             fullText += chunk;
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
-              if (last.role === "assistant") {
+              if (last?.role === "assistant") {
                 const activities = markDone(last.toolActivities);
                 updated[updated.length - 1] = {
                   ...last,
@@ -186,24 +221,44 @@ export default function useAIChat() {
               return updated;
             });
           },
-          (toolName, toolArgs, isDone, result) => {
+          (toolName, toolArgs, isDone, result, metadata) => {
+            if (!current()) return;
+            const callId = metadata?.callId;
+            if (!isDone && callId) calls.add(callId);
+            if (
+              isDone &&
+              isRouteTool(toolName) &&
+              (!callId || !calls.has(callId))
+            )
+              throw new Error(AI_ROUTE_UNAVAILABLE);
+            if (isDone && callId) {
+              if (completed.has(callId)) return;
+              completed.add(callId);
+            }
+            const summary = toolSummary(toolName, metadata?.summary);
+            if (isDone && summary && summaries.length < 8)
+              summaries.push(summary);
+            const safeResult = isRouteTool(toolName) ? undefined : result;
+
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
-              if (last.role === "assistant") {
+              if (last?.role === "assistant") {
                 const existing = last.toolActivities
                   ? [...last.toolActivities]
                   : [];
                 // Find if this tool is already in the list
-                const idx = existing.findIndex(
-                  (a) => a.name === toolName && a.status === "running",
+                const idx = existing.findIndex((a) =>
+                  callId
+                    ? a.callId === callId
+                    : a.name === toolName && a.status === "running",
                 );
 
                 if (idx !== -1) {
                   existing[idx] = {
                     ...existing[idx],
                     args: toolArgs,
-                    result,
+                    result: safeResult,
                     status: isDone ? "done" : "running",
                   };
                   updated[updated.length - 1] = {
@@ -218,8 +273,9 @@ export default function useAIChat() {
                       ...doneExisting,
                       {
                         name: toolName,
+                        callId,
                         args: toolArgs,
-                        result,
+                        result: safeResult,
                         status: isDone ? "done" : "running",
                       },
                     ],
@@ -231,81 +287,72 @@ export default function useAIChat() {
 
             if (isDone) {
               const actions = mapToolToActions(toolName, result, toolArgs);
-              let shouldCloseChat = false;
-
-              for (const action of actions) {
-                if (action.type === "compute-route") {
-                  void handleComputeRoute({
-                    origin: action.origin,
-                    destination: action.destination,
-                  }).then((ok) => {
-                    if (ok) setOpen(false);
-                  });
-                } else {
-                  executeAction(action);
-                  if (
-                    action.type === "show-route" ||
-                    action.type === "switch-panel"
-                  ) {
-                    shouldCloseChat = true;
-                  }
+              applying = true;
+              try {
+                for (const action of actions) {
+                  if (!executeAction(action).ok)
+                    throw new Error(AI_ROUTE_UNAVAILABLE);
                 }
+                generation = useMapStore.getState().routeGeneration;
+              } finally {
+                applying = false;
               }
-              if (shouldCloseChat) setOpen(false);
             }
           },
           controller.signal,
         );
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
+        controller.abort();
         fullText =
-          fullText || t("chatbot.error", "抱歉，發生錯誤，請稍後再試。");
+          err instanceof Error && err.message === AI_ROUTE_UNAVAILABLE
+            ? AI_ROUTE_UNAVAILABLE
+            : t("chatbot.error", "抱歉，發生錯誤，請稍後再試。");
       } finally {
-        setMessages((prev) => {
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last.role === "assistant") {
-            const activities = last.toolActivities?.map((a) => ({
-              ...a,
-              status: "done" as const,
-            }));
-            updated[updated.length - 1] = {
-              ...last,
-              content: fullText,
-              isStreaming: false,
-              toolActivities: activities,
-              thinkingMs: Date.now() - startedAt,
-            };
-          }
-          return updated;
-        });
+        unsubscribe();
+        unsubscribeAuth();
+        unsubscribeChat();
+        const sameConversation =
+          useChatStore.getState().conversationGeneration ===
+            conversationGeneration &&
+          useAuthStore.getState().user?._id === identity;
+        if (abortRef.current === controller && sameConversation) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === "assistant") {
+              const activities = last.toolActivities?.map((a) => ({
+                ...a,
+                status: "done" as const,
+              }));
+              updated[updated.length - 1] = {
+                ...last,
+                content: fullText,
+                isStreaming: false,
+                toolActivities: activities,
+                thinkingMs: Date.now() - startedAt,
+              };
+            }
+            return updated;
+          });
 
-        setChatHistory((prev) => [
-          ...prev,
-          { role: "assistant", content: fullText },
-        ]);
-        setIsLoading(false);
-        abortRef.current = null;
+          setChatHistory((prev) => [
+            ...prev,
+            { role: "assistant", content: fullText, tool_summaries: summaries },
+          ]);
+        }
+        if (abortRef.current === controller) {
+          setIsLoading(false);
+          abortRef.current = null;
+        }
       }
     },
-    [
-      isLoading,
-      userLocation,
-      handleComputeRoute,
-      setOpen,
-      t,
-      userConfig.language,
-      markDone,
-      setInput,
-      setIsLoading,
-      setMessages,
-    ],
+    [userLocation, t, markDone, setInput, setIsLoading, setMessages],
   );
 
   const stopStreaming = useCallback(() => {
     abortRef.current?.abort();
-    setIsLoading(false);
-  }, [setIsLoading]);
+  }, []);
 
   return {
     messages,

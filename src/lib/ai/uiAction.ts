@@ -1,6 +1,6 @@
 import type { SheetMode } from "@/stores/useMapStore";
 import type { AiResultMarker, LatLng } from "@/types";
-import type { AccessibleRoute } from "@/types/route";
+import type { AiRoutePlan } from "@/types/route";
 
 // ── Map ──
 
@@ -23,15 +23,7 @@ interface FlyToAction {
 
 interface ShowRouteAction {
   type: "show-route";
-  origin: LatLng;
-  destination: LatLng;
-  routes: AccessibleRoute[];
-}
-
-interface ComputeRouteAction {
-  type: "compute-route";
-  origin: LatLng;
-  destination: LatLng;
+  plan: AiRoutePlan;
 }
 
 // ── Panel ──
@@ -52,7 +44,6 @@ export type UIAction =
   | ClearMarkersAction
   | FlyToAction
   | ShowRouteAction
-  | ComputeRouteAction
   | SwitchPanelAction
   | CloseChatAction;
 

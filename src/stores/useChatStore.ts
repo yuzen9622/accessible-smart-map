@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { ChatMessage } from "@/lib/api/ai";
 
 export interface ToolActivity {
+  callId?: string;
   name: string;
   args?: unknown;
   result?: unknown;
@@ -76,6 +77,7 @@ function clearStored() {
 }
 
 interface ChatState {
+  conversationGeneration: number;
   hydrated: boolean;
   /** Rendered bubbles. Lives here (not component state) so the AI panel
    * keeps its history across mount/unmount — e.g. collapsing the desktop
@@ -110,6 +112,7 @@ interface ChatState {
 }
 
 const useChatStore = create<ChatState>((set, get) => ({
+  conversationGeneration: 0,
   hydrated: false,
   messages: [],
   input: "",
@@ -141,7 +144,12 @@ const useChatStore = create<ChatState>((set, get) => ({
   },
   clearAll: (seedMessages = []) => {
     clearStored();
-    set({ messages: seedMessages, chatHistory: [], input: "" });
+    set({
+      messages: seedMessages,
+      chatHistory: [],
+      input: "",
+      conversationGeneration: get().conversationGeneration + 1,
+    });
   },
 }));
 

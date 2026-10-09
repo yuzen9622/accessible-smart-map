@@ -26,15 +26,15 @@ export function executeAction(action: UIAction): ActionResult {
       return { ok: true };
 
     case "show-route": {
-      const { routes, origin, destination } = action;
-      if (!routes.length) return { ok: false, skipped: "empty routes" };
-
-      s.setComputeRoutes(routes);
-      s.setRouteSelect({ index: 0, route: routes[0] });
-      s.setRouteInfoShow(true);
+      const { routes, origin, destination, selectedRouteId } = action.plan;
+      const selected = routes.find(
+        (route) => route.routeId === selectedRouteId,
+      );
+      if (!selected) return { ok: false, skipped: "missing selected route" };
+      s.applyAiRoutePlan(action.plan);
 
       if (s.map) {
-        const bounds = routeBoundsFromLegs(routes[0].legs);
+        const bounds = routeBoundsFromLegs(selected.legs);
         if (bounds.isEmpty() && origin && destination) {
           extendBounds(bounds, origin.lng, origin.lat);
           extendBounds(bounds, destination.lng, destination.lat);
@@ -43,9 +43,6 @@ export function executeAction(action: UIAction): ActionResult {
       }
       return { ok: true };
     }
-
-    case "compute-route":
-      return { ok: false, skipped: "async-needs-caller" };
 
     case "switch-panel":
       s.setSheetMode(action.sheet);

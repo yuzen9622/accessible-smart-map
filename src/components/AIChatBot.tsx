@@ -300,6 +300,7 @@ export default function AIChatBot({ active = true }: { active?: boolean }) {
       toast.error(t("chatbot.voice.loginRequired", "請先登入才能使用語音對話"));
       return;
     }
+    stopStreaming();
     setVoiceViewMode("panel");
     startVoiceSession();
   };
