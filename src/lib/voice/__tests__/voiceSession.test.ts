@@ -66,6 +66,7 @@ function createHarness(opts?: {
   token?: string | undefined;
   location?: { latitude: number; longitude: number } | null;
   resumeState?: VoiceNavigationResumeState | null;
+  deps?: Partial<VoiceSessionDeps>;
 }) {
   const sockets: FakeSocket[] = [];
   const captureCalls: CaptureCall[] = [];
@@ -117,7 +118,13 @@ function createHarness(opts?: {
   });
 
   let blockedCb: (() => void) | null = null;
+  let idleCb: (() => void) | null = null;
+  let playbackIdle = true;
   const playback = {
+    isIdle: () => playbackIdle,
+    onIdle: (callback: () => void) => {
+      idleCb = callback;
+    },
     play: vi.fn(),
     clear: vi.fn(),
     dispose: vi.fn(),
@@ -146,6 +153,7 @@ function createHarness(opts?: {
     onToolEvent,
     onNavigationEvent,
     getNavigationResumeState: () => resumeState,
+    ...opts?.deps,
   };
 
   const controller = new VoiceSessionController(deps);
@@ -179,6 +187,10 @@ function createHarness(opts?: {
       resumeState = v;
     },
     triggerBlocked: () => blockedCb?.(),
+    setPlaybackIdle: (idle: boolean) => {
+      playbackIdle = idle;
+      if (idle) idleCb?.();
+    },
     lastStatus: (): VoiceStatus | undefined =>
       onStatusChange.mock.calls.at(-1)?.[0],
   };
@@ -209,6 +221,85 @@ async function bringToListening(
 beforeEach(() => {
   vi.useFakeTimers();
   vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+describe("voice UI language sessions", () => {
+  it("reads language on open, network reconnect and a new text-to-voice session", async () => {
+    let language: "en" | "zh-TW" = "zh-TW";
+    const h = createHarness({ deps: { getLanguage: () => language } });
+    h.controller.start();
+    language = "en";
+    await bringToListening(h);
+    expect(JSON.parse(h.sockets[0].sent[0] as string).language).toBe("en");
+    h.sockets[0].triggerClose(1006);
+    language = "zh-TW";
+    await vi.advanceTimersByTimeAsync(1000);
+    await bringToListening(h, 1);
+    expect(JSON.parse(h.sockets[1].sent[0] as string).language).toBe("zh-TW");
+    h.controller.end();
+    language = "en";
+    h.controller.start();
+    await bringToListening(h, 2);
+    expect(JSON.parse(h.sockets[2].sent[0] as string).language).toBe("en");
+  });
+
+  it("switches language by closing only the socket and resumes current navigation", async () => {
+    let language: "en" | "zh-TW" = "zh-TW";
+    const resume = {
+      navigationId: "nav-language",
+      routeVersion: 4,
+      routeToken: "route-token",
+      lastKnownStepIndex: 7,
+      currentPosition: { latitude: 25, longitude: 121 },
+    };
+    const h = createHarness({
+      resumeState: resume,
+      deps: { getLanguage: () => language },
+    });
+    h.controller.start();
+    await bringToListening(h);
+    h.controller.setMuted(true);
+    const oldMessage = h.sockets[0].onmessage;
+    language = "en";
+    h.controller.reconnectForLanguageChange();
+    expect(h.lastStatus()?.status).toBe("reconnecting");
+    expect(h.sockets[0].closed).toBe(true);
+    expect(h.captureCalls[0].stop).toHaveBeenCalledOnce();
+    expect(h.playback.clear).toHaveBeenCalled();
+    expect(h.playback.dispose).not.toHaveBeenCalled();
+    expect(
+      h.sockets[0].sent.map((data) => JSON.parse(data as string).type),
+    ).not.toContain("session.end");
+    expect(
+      h.sockets[0].sent.map((data) => JSON.parse(data as string).type),
+    ).not.toContain("nav.cancel");
+    oldMessage?.({
+      data: JSON.stringify({ type: "nav.stop", reason: "session_end" }),
+    });
+    expect(h.onNavigationEvent).not.toHaveBeenCalled();
+    await bringToListening(h, 1);
+    expect(JSON.parse(h.sockets[1].sent[0] as string).language).toBe("en");
+    expect(
+      h.sockets[1].sent.map((data) => JSON.parse(data as string)),
+    ).toContainEqual({ type: "nav.resume", ...resume });
+    h.captureCalls.at(-1)?.onFrame(new ArrayBuffer(4));
+    expect(h.sockets[1].sent.every((data) => typeof data === "string")).toBe(
+      true,
+    );
+    h.controller.reconnectForLanguageChange();
+    expect(h.sockets).toHaveLength(2);
+  });
+
+  it("does not start idle voice on a language change; old clients omit language", () => {
+    const h = createHarness();
+    h.controller.reconnectForLanguageChange();
+    expect(h.sockets).toHaveLength(0);
+    h.controller.start();
+    h.sockets[0].triggerOpen();
+    expect(JSON.parse(h.sockets[0].sent[0] as string)).not.toHaveProperty(
+      "language",
+    );
+  });
 });
 
 afterEach(() => {
@@ -1065,5 +1156,266 @@ describe("VoiceSessionController", () => {
     const frame4 = new ArrayBuffer(10);
     h.captureCalls.at(-1)?.onFrame(frame4);
     expect(h.sockets[1].sent).toContain(frame4);
+  });
+});
+
+describe("route context v1", () => {
+  const ready = JSON.stringify({
+    type: "session.ready",
+    capabilities: { aiRouteContractVersion: 1, routeContextSync: true },
+  });
+  it("sends shared history and context on start; gates both audio directions until latest ack", async () => {
+    let routeToken = "candidate-a";
+    const status = vi.fn();
+    const h = createHarness({
+      deps: {
+        getConversationInput: () => ({
+          routeContractVersion: 1,
+          routeContext: { routeToken },
+        }),
+        getHistory: () => [
+          {
+            role: "assistant",
+            text: "搭公車",
+            tools: [{ name: "planAccessibleRoute", summary: "BUS" }],
+          },
+        ],
+        onRouteContextStatus: status,
+      },
+    });
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    await flush();
+    h.captureCalls[0].resolve();
+    await flush();
+    expect(JSON.parse(socket.sent[0] as string)).toMatchObject({
+      routeContext: { routeToken: "candidate-a" },
+      history: [{ text: "搭公車" }],
+    });
+    routeToken = "candidate-b";
+    h.controller.syncRouteContext();
+    const first = JSON.parse(socket.sent.at(-1) as string);
+    routeToken = "candidate-c";
+    h.controller.syncRouteContext();
+    const latest = JSON.parse(socket.sent.at(-1) as string);
+    expect(latest.selectionVersion).toBe(first.selectionVersion + 1);
+    const frame = new ArrayBuffer(8);
+    const sentCount = socket.sent.length;
+    socket.triggerMessage(frame);
+    h.captureCalls[0].onFrame(frame);
+    expect(h.playback.play).not.toHaveBeenCalled();
+    expect(socket.sent).toHaveLength(sentCount);
+    socket.triggerMessage(
+      JSON.stringify({ ...first, type: "route.context.ack", ok: true }),
+    );
+    socket.triggerMessage(frame);
+    expect(h.playback.play).not.toHaveBeenCalled();
+    socket.triggerMessage(
+      JSON.stringify({ ...latest, type: "route.context.ack", ok: true }),
+    );
+    socket.triggerMessage(frame);
+    h.captureCalls[0].onFrame(frame);
+    expect(h.playback.play).toHaveBeenCalledTimes(1);
+    expect(socket.sent.at(-1)).toBe(frame);
+    expect(status).toHaveBeenLastCalledWith("synced");
+    expect(
+      socket.sent
+        .filter((x) => typeof x === "string")
+        .map((x) => JSON.parse(x as string).type),
+    ).not.toContain("nav.cancel");
+  });
+  it("never treats timeout or failed ack as synchronization success", async () => {
+    const status = vi.fn();
+    const h = createHarness({ deps: { onRouteContextStatus: status } });
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    await flush();
+    h.captureCalls[0].resolve();
+    await flush();
+    h.controller.syncRouteContext();
+    const request = JSON.parse(socket.sent.at(-1) as string);
+    vi.advanceTimersByTime(10000);
+    socket.triggerMessage(
+      JSON.stringify({ ...request, type: "route.context.ack", ok: true }),
+    );
+    socket.triggerMessage(new ArrayBuffer(8));
+    expect(h.playback.play).not.toHaveBeenCalled();
+    expect(status).toHaveBeenLastCalledWith("failed");
+    h.controller.syncRouteContext();
+    const retry = JSON.parse(socket.sent.at(-1) as string);
+    expect(retry.selectionVersion).toBeGreaterThan(request.selectionVersion);
+    socket.triggerMessage(
+      JSON.stringify({
+        ...retry,
+        type: "route.context.ack",
+        ok: false,
+        reason: "INVALID_ROUTE_TOKEN",
+      }),
+    );
+    socket.triggerMessage(new ArrayBuffer(8));
+    expect(h.playback.play).not.toHaveBeenCalled();
+  });
+  it("does not send new controls to an old backend", async () => {
+    const h = createHarness();
+    h.controller.start();
+    await bringToListening(h);
+    h.controller.syncRouteContext();
+    expect(
+      h.sockets[0].sent.some(
+        (x) => typeof x === "string" && x.includes("route.context.set"),
+      ),
+    ).toBe(false);
+    h.sockets[0].triggerMessage(new ArrayBuffer(8));
+    expect(h.playback.play).not.toHaveBeenCalled();
+  });
+  it("preserves tool metadata, deduplicates call IDs and blocks stale route results", async () => {
+    let generation = 0;
+    const h = createHarness({ deps: { getRouteGeneration: () => generation } });
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    const call = {
+      type: "tool_call",
+      name: "planAccessibleRoute",
+      callId: "call-a",
+      turnId: "turn-1",
+    };
+    socket.triggerMessage(JSON.stringify(call));
+    const result = {
+      ...call,
+      type: "tool_result",
+      ok: true,
+      result: { ok: true },
+      summary: "BUS",
+    };
+    socket.triggerMessage(JSON.stringify(result));
+    socket.triggerMessage(JSON.stringify(result));
+    expect(h.onToolEvent).toHaveBeenCalledTimes(2);
+    expect(h.onToolEvent.mock.calls[1][0]).toMatchObject({
+      callId: "call-a",
+      turnId: "turn-1",
+      summary: "BUS",
+    });
+    socket.triggerMessage(JSON.stringify({ ...call, callId: "call-b" }));
+    generation++;
+    socket.triggerMessage(JSON.stringify({ ...result, callId: "call-b" }));
+    expect(h.onToolEvent).toHaveBeenCalledTimes(3);
+    expect(h.lastStatus()).toMatchObject({
+      status: "error",
+      code: "AI_ROUTE_UNAVAILABLE",
+    });
+    socket.triggerMessage(new ArrayBuffer(8));
+    expect(h.playback.play).not.toHaveBeenCalled();
+  });
+});
+
+describe("preview selection preserves the current spoken explanation", () => {
+  const ready = JSON.stringify({
+    type: "session.ready",
+    capabilities: { aiRouteContractVersion: 1, routeContextSync: true },
+  });
+  it("waits for both turn completion and audible playback, then syncs only the latest selection", async () => {
+    let token = "a";
+    const h = createHarness({
+      deps: {
+        getConversationInput: () => ({
+          routeContractVersion: 1,
+          routeContext: { routeToken: token },
+        }),
+      },
+    });
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    await flush();
+    h.captureCalls[0].resolve();
+    await flush();
+    h.setPlaybackIdle(false);
+    socket.triggerMessage(new ArrayBuffer(8));
+    token = "b";
+    h.controller.syncRouteContext({ deferUntilIdle: true });
+    token = "c";
+    h.controller.syncRouteContext({ deferUntilIdle: true });
+    expect(h.playback.clear).not.toHaveBeenCalled();
+    expect(
+      socket.sent.filter(
+        (x) => typeof x === "string" && x.includes("route.context.set"),
+      ),
+    ).toHaveLength(0);
+    socket.triggerMessage(new ArrayBuffer(8));
+    expect(h.playback.play).toHaveBeenCalledTimes(2);
+    const before = socket.sent.length;
+    h.captureCalls[0].onFrame(new ArrayBuffer(8));
+    expect(socket.sent).toHaveLength(before);
+    socket.triggerMessage(JSON.stringify({ type: "turn.complete" }));
+    expect(h.playback.clear).not.toHaveBeenCalled();
+    h.setPlaybackIdle(true);
+    const request = JSON.parse(socket.sent.at(-1) as string);
+    expect(request).toMatchObject({
+      type: "route.context.set",
+      selectionVersion: 1,
+      routeContext: { routeToken: "c" },
+    });
+    socket.triggerMessage(
+      JSON.stringify({ ...request, type: "route.context.ack", ok: true }),
+    );
+    h.captureCalls[0].onFrame(new ArrayBuffer(8));
+    expect(socket.sent.at(-1)).toBeInstanceOf(ArrayBuffer);
+  });
+  it("does not mistake an inter-chunk silence for the end of the answer", () => {
+    const h = createHarness();
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "tool_call",
+        name: "planAccessibleRoute",
+        callId: "c1",
+        turnId: "t1",
+      }),
+    );
+    h.controller.syncRouteContext({ deferUntilIdle: true });
+    h.setPlaybackIdle(true);
+    expect(h.playback.clear).not.toHaveBeenCalled();
+    socket.triggerMessage(JSON.stringify({ type: "turn.complete" }));
+    expect(h.playback.clear).toHaveBeenCalledTimes(1);
+  });
+  it("navigation or an explicit clear interrupts immediately; late drain cannot resend context", () => {
+    const h = createHarness();
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    h.setPlaybackIdle(false);
+    socket.triggerMessage(new ArrayBuffer(8));
+    h.controller.syncRouteContext({ deferUntilIdle: true });
+    h.controller.syncRouteContext();
+    expect(h.playback.clear).toHaveBeenCalledTimes(1);
+    const count = socket.sent.length;
+    h.setPlaybackIdle(true);
+    socket.triggerMessage(JSON.stringify({ type: "turn.complete" }));
+    expect(socket.sent).toHaveLength(count);
+  });
+  it("ending a session cancels a queued preview sync", () => {
+    const h = createHarness();
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(ready);
+    h.setPlaybackIdle(false);
+    socket.triggerMessage(new ArrayBuffer(8));
+    h.controller.syncRouteContext({ deferUntilIdle: true });
+    h.controller.end();
+    const count = socket.sent.length;
+    h.setPlaybackIdle(true);
+    expect(socket.sent).toHaveLength(count);
   });
 });

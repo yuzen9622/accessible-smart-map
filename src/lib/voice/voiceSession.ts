@@ -1,3 +1,4 @@
+import type { RouteConversationInput } from "@/lib/ai/routeConversation";
 import type { AccessibleRoute, NavInstruction } from "@/types/route";
 
 /**
@@ -19,9 +20,15 @@ import type { AccessibleRoute, NavInstruction } from "@/types/route";
 /* ------------------------------------------------------------------ */
 
 /** Client -> server: must be the first message, sent within 5s of open. */
-interface SessionStartMessage {
+interface SessionStartMessage extends Partial<RouteConversationInput> {
+  history?: {
+    role: "user" | "assistant";
+    text: string;
+    tools?: { name: string; summary: string }[];
+  }[];
   type: "session.start";
   token: string;
+  language?: "zh-TW" | "en";
   userLocation?: { latitude: number; longitude: number };
 }
 
@@ -77,6 +84,10 @@ export interface VoiceNavigationResumeState {
 /** Server -> client: auth + Gemini connect done, client may now send audio. */
 interface SessionReadyMessage {
   type: "session.ready";
+  capabilities?: {
+    aiRouteContractVersion?: number;
+    routeContextSync?: boolean;
+  };
 }
 
 interface TranscriptMessage {
@@ -95,11 +106,17 @@ interface TranscriptCorrectionMessage {
 }
 
 interface ToolCallMessage {
+  callId?: string;
+  turnId?: string;
+  summary?: string;
   type: "tool_call";
   name: string;
 }
 
 interface ToolResultMessage {
+  callId?: string;
+  turnId?: string;
+  summary?: string;
   type: "tool_result";
   name: string;
   ok: boolean;
@@ -372,6 +389,8 @@ export interface VoicePlayback {
   dispose(): void;
   resume(): Promise<boolean>;
   onBlocked(cb: () => void): void;
+  isIdle?(): boolean;
+  onIdle?(cb: () => void): void;
   setMuted?(muted: boolean): void;
 }
 
@@ -398,6 +417,9 @@ export interface VoiceStatus {
 }
 
 export interface VoiceToolEvent {
+  callId?: string;
+  turnId?: string;
+  summary?: string;
   type: "call" | "result";
   name: string;
   ok?: boolean;
@@ -420,6 +442,14 @@ export interface VoiceTranscriptCorrection {
 }
 
 export interface VoiceSessionDeps {
+  getLanguage?(): SessionStartMessage["language"];
+  getConversationInput?(): RouteConversationInput;
+  getHistory?(): SessionStartMessage["history"];
+  getRouteGeneration?(): number;
+  onRouteContextStatus?(
+    status: "deferred" | "pending" | "synced" | "failed" | "unsupported",
+  ): void;
+
   wsUrl: string;
   createSocket(url: string): VoiceSocket;
   refreshAuth(): Promise<string | null>;
@@ -448,6 +478,7 @@ export interface VoiceSessionDeps {
 /* ------------------------------------------------------------------ */
 
 export class VoiceSessionController {
+  private sessionLanguage: SessionStartMessage["language"];
   private status: VoiceStatus = { status: "idle" };
 
   /**
@@ -486,6 +517,71 @@ export class VoiceSessionController {
    * meaningful.
    */
   private hasBeenReady = false;
+  private deferredContext = false;
+  private modelTurnActive = false;
+  private contextSupported = false;
+  private contextBlocked = false;
+  private selectionVersion = 0;
+  private pendingContext: {
+    requestId: string;
+    selectionVersion: number;
+  } | null = null;
+  private contextTimer: ReturnType<typeof setTimeout> | null = null;
+  private initializedContext: string | null = null;
+  private toolCalls = new Map<
+    string,
+    { turnId?: string; generation: number }
+  >();
+  private completedCalls = new Set<string>();
+
+  syncRouteContext(options: { deferUntilIdle?: boolean } = {}): void {
+    if (!this.sessionActive) return;
+    if (
+      options.deferUntilIdle &&
+      !this.contextBlocked &&
+      (this.modelTurnActive || this.playback?.isIdle?.() === false)
+    ) {
+      this.deferredContext = true;
+      this.deps.onRouteContextStatus?.("deferred");
+      return;
+    }
+    this.deferredContext = false;
+    this.modelTurnActive = false;
+    this.playback?.clear();
+    this.toolCalls.clear();
+    this.contextBlocked = true;
+    if (!this.contextSupported) {
+      this.deps.onRouteContextStatus?.("unsupported");
+      return;
+    }
+    if (this.contextTimer) clearTimeout(this.contextTimer);
+    const selectionVersion = ++this.selectionVersion;
+    const requestId = `selection-${selectionVersion}`;
+    this.pendingContext = { requestId, selectionVersion };
+    this.deps.onRouteContextStatus?.("pending");
+    this.socket?.send(
+      JSON.stringify({
+        type: "route.context.set",
+        requestId,
+        selectionVersion,
+        routeContext: this.deps.getConversationInput?.().routeContext ?? null,
+      }),
+    );
+    this.contextTimer = setTimeout(() => {
+      this.pendingContext = null;
+      this.deps.onRouteContextStatus?.("failed");
+    }, 10000);
+  }
+
+  private flushDeferredContext(): void {
+    if (
+      this.deferredContext &&
+      !this.modelTurnActive &&
+      this.playback?.isIdle?.() !== false
+    ) {
+      this.syncRouteContext();
+    }
+  }
 
   constructor(private readonly deps: VoiceSessionDeps) {}
 
@@ -509,6 +605,7 @@ export class VoiceSessionController {
     this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
 
     this.playback = this.deps.createPlayback();
+    this.playback.onIdle?.(() => this.flushDeferredContext());
     this.playback.onBlocked(() => {
       if (!this.sessionActive) return;
       this.setStatus({ status: "playback-blocked" });
@@ -523,9 +620,24 @@ export class VoiceSessionController {
     this.terminate({ status: "ended" }, /* sendEndMessage */ true);
   }
 
+  /** Rebuild only the transport: session.end/nav.cancel would delete nav snapshots. */
+  reconnectForLanguageChange(): void {
+    if (
+      !this.sessionActive ||
+      this.deps.getLanguage?.() === this.sessionLanguage
+    )
+      return;
+    this.clearReconnectTimer();
+    this.stopCapture();
+    this.playback?.clear();
+    this.setStatus({ status: "reconnecting" });
+    this.connect();
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     this.playback?.setMuted?.(muted);
+    this.flushDeferredContext();
   }
 
   resumePlayback(): void {
@@ -606,7 +718,12 @@ export class VoiceSessionController {
    * generation is provably stale from this point on.
    */
   private terminate(status: VoiceStatus, sendEndMessage = false): void {
+    this.deferredContext = false;
+    this.modelTurnActive = false;
     this.generation += 1;
+    if (this.contextTimer) clearTimeout(this.contextTimer);
+    this.pendingContext = null;
+    this.toolCalls.clear();
     this.sessionActive = false;
     this.muted = false;
     this.clearReconnectTimer();
@@ -673,15 +790,33 @@ export class VoiceSessionController {
       old.close();
     }
 
+    this.deferredContext = false;
+    this.modelTurnActive = false;
     this.generation += 1;
     const gen = this.generation;
+    this.contextSupported = false;
+    this.contextBlocked = false;
+    this.selectionVersion = 0;
+    this.pendingContext = null;
+    if (this.contextTimer) clearTimeout(this.contextTimer);
+    this.toolCalls.clear();
+    this.completedCalls.clear();
 
     const socket = this.deps.createSocket(this.deps.wsUrl);
     this.socket = socket;
 
     socket.onopen = () => {
       if (gen !== this.generation) return; // stale
-      const message: SessionStartMessage = { type: "session.start", token };
+      const conversation = this.deps.getConversationInput?.();
+      this.sessionLanguage = this.deps.getLanguage?.();
+      this.initializedContext = conversation?.routeContext?.routeToken ?? null;
+      const message: SessionStartMessage = {
+        type: "session.start",
+        token,
+        ...conversation,
+        ...(this.sessionLanguage ? { language: this.sessionLanguage } : {}),
+        ...(this.deps.getHistory ? { history: this.deps.getHistory() } : {}),
+      };
       if (location) message.userLocation = location;
       socket.send(JSON.stringify(message));
     };
@@ -693,6 +828,8 @@ export class VoiceSessionController {
     if (gen !== this.generation) return; // stale socket
 
     if (data instanceof ArrayBuffer) {
+      if (this.contextBlocked) return;
+      this.modelTurnActive = true;
       // Downlink audio: never JSON-parsed, forwarded to playback in
       // arrival order (§5.9).
       this.playback?.play(data);
@@ -730,6 +867,15 @@ export class VoiceSessionController {
   private dispatchEvent(gen: number, message: ServerEventMessage): void {
     switch (message.type) {
       case "session.ready": {
+        const capabilities = (message as SessionReadyMessage).capabilities;
+        this.contextSupported =
+          capabilities?.aiRouteContractVersion === 1 &&
+          capabilities.routeContextSync === true;
+        this.contextBlocked =
+          !this.contextSupported && this.initializedContext !== null;
+        this.deps.onRouteContextStatus?.(
+          this.contextSupported ? "synced" : "unsupported",
+        );
         const isReconnect = this.hasBeenReady;
         this.hasBeenReady = true;
         this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS; // reset backoff on success
@@ -745,10 +891,35 @@ export class VoiceSessionController {
         // announcing the same navigation instead of starting from scratch.
         if (isReconnect) this.sendNavigationResume();
         this.startCapture(gen);
+        if (
+          (this.deps.getConversationInput?.().routeContext?.routeToken ??
+            null) !== this.initializedContext
+        )
+          this.syncRouteContext();
+        return;
+      }
+      case "route.context.ack": {
+        const ack = message as {
+          requestId?: string;
+          selectionVersion?: number;
+          ok?: boolean;
+        };
+        if (
+          !this.pendingContext ||
+          ack.requestId !== this.pendingContext.requestId ||
+          ack.selectionVersion !== this.pendingContext.selectionVersion
+        )
+          return;
+        if (this.contextTimer) clearTimeout(this.contextTimer);
+        this.pendingContext = null;
+        this.contextBlocked = ack.ok !== true;
+        this.deps.onRouteContextStatus?.(ack.ok === true ? "synced" : "failed");
         return;
       }
       case "transcript": {
+        if (this.contextBlocked) return;
         const m = message as TranscriptMessage;
+        this.modelTurnActive = true;
         this.deps.onTranscript({
           role: m.role,
           text: m.text,
@@ -758,6 +929,7 @@ export class VoiceSessionController {
         return;
       }
       case "transcript.correction": {
+        if (this.contextBlocked) return;
         const m = message as TranscriptCorrectionMessage;
         this.deps.onTranscriptCorrection?.({
           role: m.role ?? "user",
@@ -768,25 +940,70 @@ export class VoiceSessionController {
       }
       case "tool_call": {
         const m = message as ToolCallMessage;
-        this.deps.onToolEvent({ type: "call", name: m.name });
+        if (this.contextBlocked) return;
+        this.modelTurnActive = true;
+        if (m.callId && !this.completedCalls.has(m.callId))
+          this.toolCalls.set(m.callId, {
+            turnId: m.turnId,
+            generation: this.deps.getRouteGeneration?.() ?? 0,
+          });
+        this.deps.onToolEvent({
+          type: "call",
+          name: m.name,
+          callId: m.callId,
+          turnId: m.turnId,
+        });
         return;
       }
       case "tool_result": {
         const m = message as ToolResultMessage;
-        this.deps.onToolEvent({
-          type: "result",
-          name: m.name,
-          ok: m.ok,
-          durationMs: m.durationMs,
-          result: m.result,
-          args: m.args,
-        });
+        if (this.contextBlocked) return;
+        const call = m.callId ? this.toolCalls.get(m.callId) : undefined;
+        if (m.callId && this.completedCalls.has(m.callId)) return;
+        const routeTool =
+          m.name === "planAccessibleRoute" || m.name === "plan_route";
+        if (
+          routeTool &&
+          (!this.contextSupported ||
+            !m.callId ||
+            !m.turnId ||
+            !call ||
+            call.turnId !== m.turnId ||
+            call.generation !== (this.deps.getRouteGeneration?.() ?? 0))
+        ) {
+          this.terminate(
+            { status: "error", code: "AI_ROUTE_UNAVAILABLE" },
+            true,
+          );
+          return;
+        }
+        if (m.callId) this.completedCalls.add(m.callId);
+        try {
+          this.deps.onToolEvent({
+            type: "result",
+            callId: m.callId,
+            turnId: m.turnId,
+            summary: m.summary,
+            name: m.name,
+            ok: m.ok,
+            durationMs: m.durationMs,
+            result: m.result,
+            args: m.args,
+          });
+        } catch {
+          this.terminate(
+            { status: "error", code: "AI_ROUTE_UNAVAILABLE" },
+            true,
+          );
+        }
         return;
       }
       case "interrupted": {
+        this.modelTurnActive = false;
         // §5.10: interrupted always clears playback immediately.
         this.playback?.clear();
         this.deps.onInterrupted?.();
+        this.flushDeferredContext();
         if (
           this.status.status === "model-speaking" ||
           this.status.status === "listening"
@@ -796,7 +1013,10 @@ export class VoiceSessionController {
         return;
       }
       case "turn.complete": {
+        if (this.contextBlocked) return;
+        this.modelTurnActive = false;
         this.deps.onTurnComplete?.();
+        this.flushDeferredContext();
         if (this.status.status === "model-speaking") {
           this.setStatus({ status: "listening" });
         }
@@ -884,7 +1104,7 @@ export class VoiceSessionController {
 
   private sendAudio(gen: number, frame: ArrayBuffer): void {
     if (gen !== this.generation) return; // stale capture, discarded
-    if (this.muted) return; // muted: discard microphone frames
+    if (this.muted || this.contextBlocked || this.deferredContext) return; // muted: discard microphone frames
     // §6: never send binary before `ready` — only listening/model-speaking
     // are reachable post-ready states in which uplink audio is valid.
     if (
@@ -898,6 +1118,11 @@ export class VoiceSessionController {
   private handleClose(gen: number, code: number, reason: string): void {
     if (gen !== this.generation) return; // stale socket's close — no-op
 
+    if (this.contextTimer) clearTimeout(this.contextTimer);
+    this.pendingContext = null;
+    this.contextBlocked = true;
+    this.deferredContext = false;
+    this.modelTurnActive = false;
     // §6: any close, current-generation, immediately releases mic + playback.
     this.stopCapture();
     this.playback?.clear();

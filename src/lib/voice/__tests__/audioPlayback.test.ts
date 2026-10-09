@@ -8,6 +8,7 @@ interface FakeAudioBuffer {
 
 class FakeAudioBufferSourceNode {
   buffer: FakeAudioBuffer | null = null;
+  onended: (() => void) | null = null;
   connect = vi.fn();
   start = vi.fn();
 }
@@ -272,5 +273,49 @@ describe("createPlayback — setMuted()", () => {
     playback2.setMuted(false);
     playback2.play(int16Frame([5, 6]));
     expect(ctx2.createBufferSource).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("createPlayback — audible queue completion", () => {
+  it("reports idle only after every scheduled PCM buffer has ended", () => {
+    const ctx = new FakeAudioContext();
+    const playback = createPlayback(makeDeps(ctx));
+    const onIdle = vi.fn();
+    playback.onIdle(onIdle);
+    expect(playback.isIdle()).toBe(true);
+    playback.play(int16Frame([1, 2]));
+    playback.play(int16Frame([3, 4]));
+    const first = ctx.createBufferSource.mock.results[0]
+      .value as FakeAudioBufferSourceNode;
+    const second = ctx.createBufferSource.mock.results[1]
+      .value as FakeAudioBufferSourceNode;
+    expect(playback.isIdle()).toBe(false);
+    first.onended?.();
+    expect(playback.isIdle()).toBe(false);
+    expect(onIdle).not.toHaveBeenCalled();
+    second.onended?.();
+    expect(playback.isIdle()).toBe(true);
+    expect(onIdle).toHaveBeenCalledTimes(1);
+    second.onended?.();
+    expect(onIdle).toHaveBeenCalledTimes(1);
+  });
+  it("does not announce a natural drain for cleared or disposed audio", () => {
+    const ctx = new FakeAudioContext();
+    const playback = createPlayback(makeDeps(ctx));
+    const onIdle = vi.fn();
+    playback.onIdle(onIdle);
+    playback.play(int16Frame([1, 2]));
+    const old = ctx.createBufferSource.mock.results[0]
+      .value as FakeAudioBufferSourceNode;
+    playback.clear();
+    old.onended?.();
+    expect(playback.isIdle()).toBe(true);
+    expect(onIdle).not.toHaveBeenCalled();
+    playback.play(int16Frame([3, 4]));
+    const pending = ctx.createBufferSource.mock.results[1]
+      .value as FakeAudioBufferSourceNode;
+    playback.dispose();
+    pending.onended?.();
+    expect(onIdle).not.toHaveBeenCalled();
   });
 });

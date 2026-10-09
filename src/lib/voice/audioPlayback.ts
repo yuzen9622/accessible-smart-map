@@ -25,6 +25,8 @@ export interface Playback {
   dispose(): void;
   resume(): Promise<boolean>;
   onBlocked(cb: () => void): void;
+  isIdle(): boolean;
+  onIdle(cb: () => void): void;
   setMuted(muted: boolean): void;
 }
 
@@ -45,6 +47,8 @@ export function createPlayback(
   let playHead = 0;
   let disposed = false;
   let muted = false;
+  const pendingNodes = new Set<AudioBufferSourceNode>();
+  let idleCallback: (() => void) | null = null;
   let blockedCallback: (() => void) | null = null;
 
   const notifyIfBlocked = (ctx: AudioContext): void => {
@@ -86,11 +90,18 @@ export function createPlayback(
     node.connect(ctx.destination);
     const now = ctx.currentTime;
     if (playHead < now) playHead = now;
+    pendingNodes.add(node);
+    node.onended = () => {
+      // A closed/replaced context may still deliver ended callbacks.
+      if (!pendingNodes.delete(node) || context !== ctx || disposed) return;
+      if (pendingNodes.size === 0) idleCallback?.();
+    };
     node.start(playHead);
     playHead += audioBuffer.duration;
   };
 
   const clear = (): void => {
+    pendingNodes.clear();
     if (context) {
       try {
         void context.close();
@@ -107,6 +118,7 @@ export function createPlayback(
     disposed = true;
     clear();
     blockedCallback = null;
+    idleCallback = null;
   };
 
   const resume = async (): Promise<boolean> => {
@@ -130,5 +142,16 @@ export function createPlayback(
     }
   };
 
-  return { play, clear, dispose, resume, onBlocked, setMuted };
+  return {
+    play,
+    clear,
+    dispose,
+    resume,
+    onBlocked,
+    setMuted,
+    isIdle: () => pendingNodes.size === 0,
+    onIdle: (callback) => {
+      idleCallback = callback;
+    },
+  };
 }

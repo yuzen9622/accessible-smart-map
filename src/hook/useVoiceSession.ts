@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import useComputeRoute from "@/hook/useComputeRoute";
+import { toast } from "sonner";
+import i18n from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import {
+  getRouteConversationInput,
+  getVoiceHistory,
+} from "@/lib/ai/routeConversation";
 import { refreshAccessToken } from "@/lib/authRefresh";
 import { END_POINT } from "@/lib/config";
 import { createCapture } from "@/lib/voice/audioCapture";
@@ -17,6 +23,7 @@ import {
 } from "@/lib/voice/voiceSession";
 import { createVoiceBindings } from "@/lib/voice/voiceSessionBindings";
 import useAuthStore from "@/stores/useAuthStore";
+import useChatStore from "@/stores/useChatStore";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import useVoiceStore, {
@@ -92,7 +99,7 @@ function getNavigationResumeState(): VoiceNavigationResumeState | null {
     return null;
   }
 
-  const route = map.selectRoute?.route;
+  const route = map.activeNavigationRoute ?? map.selectRoute?.route;
   const navigationId = route?.navigationId ?? nav.navigationId;
   const routeToken = route?.routeToken;
   if (
@@ -152,20 +159,10 @@ export default function useVoiceSession(): UseVoiceSessionResult {
     VoiceNavigationEvent[]
   >([]);
 
-  // `handleComputeRoute` identity changes when the map/userLocation load;
-  // the bindings are built once, so the sink reads the latest via
-  // `handleComputeRouteRef` to avoid a stale (null-map) closure.
-  const { handleComputeRoute } = useComputeRoute();
-
   // Read inside the auth subscription below without re-subscribing on
   // every status change.
   const statusRef = useRef(status);
   statusRef.current = status;
-
-  // Always holds the latest `handleComputeRoute` so the lazily-created
-  // `computeRoute` sink below never calls a first-render-frozen closure.
-  const handleComputeRouteRef = useRef(handleComputeRoute);
-  handleComputeRouteRef.current = handleComputeRoute;
 
   // Identity captured when startSession() runs; compared against the auth
   // store on every change while the session is active (plan §5.8 rev13).
@@ -174,6 +171,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
   // Plan §3.3 (rev3): all transcript aggregation, turn-boundary sealing and
   // mic-level zeroing wiring lives in this pure module, constructed once so
   // React re-renders never replace its aggregator/prev-status state.
+  const contextInputPausedRef = useRef(false);
   const bindingsRef = useRef<ReturnType<typeof createVoiceBindings> | null>(
     null,
   );
@@ -182,13 +180,30 @@ export default function useVoiceSession(): UseVoiceSessionResult {
       publishTranscripts: (entries) =>
         setTranscripts(entries as VoiceTranscriptEntry[]),
       publishStatus: (next) => {
+        if (next.code === "AI_ROUTE_UNAVAILABLE")
+          toast.error("目前無法將這份 AI 路線載入地圖，請手動規劃新行程。");
         statusRef.current = next;
         setStatusState(next);
       },
       publishTool: (event) => setActiveTool(event),
-      setMicLevel: (level) => useVoiceStore.getState().setMicLevel(level),
-      computeRoute: ({ origin, destination }) => {
-        void handleComputeRouteRef.current({ origin, destination });
+      setMicLevel: (level) =>
+        useVoiceStore
+          .getState()
+          .setMicLevel(contextInputPausedRef.current ? 0 : level),
+      persistTurn: (entries, summaries) => {
+        const history = entries
+          .filter((entry) => entry.text)
+          .map((entry) => ({
+            role:
+              entry.role === "model"
+                ? ("assistant" as const)
+                : ("user" as const),
+            content: entry.text,
+            ...(entry.role === "model" ? { tool_summaries: summaries } : {}),
+          }));
+        useChatStore
+          .getState()
+          .setChatHistory((previous) => [...previous, ...history]);
       },
     });
   }
@@ -203,6 +218,33 @@ export default function useVoiceSession(): UseVoiceSessionResult {
       getToken: () => useAuthStore.getState().session?.accessToken,
       getAuthIdentity: () => useAuthStore.getState().user?._id ?? null,
       getUserLocation,
+      getConversationInput: getRouteConversationInput,
+      getHistory: getVoiceHistory,
+      getLanguage: getAppLanguage,
+      getRouteGeneration: () => useMapStore.getState().routeGeneration,
+      onRouteContextStatus: (status) => {
+        contextInputPausedRef.current =
+          status === "deferred" || status === "pending" || status === "failed";
+        if (contextInputPausedRef.current)
+          useVoiceStore.getState().setMicLevel(0);
+        if (status === "deferred") return;
+        if (status === "pending")
+          toast.loading("正在同步選中路線，請稍候再提問。", {
+            id: "voice-route-context",
+          });
+        else toast.dismiss("voice-route-context");
+        if (status === "failed")
+          toast.error("路線脈絡同步失敗，請重試同步後再提問。", {
+            id: "voice-route-context",
+            duration: Infinity,
+            action: {
+              label: "重試同步",
+              onClick: () => controllerRef.current?.syncRouteContext(),
+            },
+          });
+        if (status === "unsupported")
+          toast.info("此環境尚未支援語音路線同步，請改用手動路線規劃。");
+      },
       createCapture: (onFrame) =>
         createCapture(bindings.wrapCaptureFrame(onFrame)),
       createPlayback: () => createPlayback(),
@@ -217,6 +259,34 @@ export default function useVoiceSession(): UseVoiceSessionResult {
       getNavigationResumeState,
     });
   }
+
+  useEffect(() => {
+    const reconnect = () => controllerRef.current?.reconnectForLanguageChange();
+    i18n.on("languageChanged", reconnect);
+    return () => {
+      i18n.off("languageChanged", reconnect);
+    };
+  }, []);
+
+  useEffect(
+    () =>
+      useMapStore.subscribe((state, previous) => {
+        const startingNavigation =
+          state.isNavigating &&
+          (!previous.isNavigating ||
+            state.activeNavigationRoute !== previous.activeNavigationRoute);
+        if (startingNavigation) controllerRef.current?.syncRouteContext();
+        else if (state.routeGeneration !== previous.routeGeneration) {
+          controllerRef.current?.syncRouteContext({
+            deferUntilIdle:
+              !state.isNavigating &&
+              !!state.selectRoute &&
+              state.invalidRouteTokens === previous.invalidRouteTokens,
+          });
+        }
+      }),
+    [],
+  );
 
   // §5.8 rev13: a session already in progress must end as soon as the
   // token disappears or the signed-in identity changes underneath it —
@@ -256,6 +326,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
   }, [bindings]);
 
   const endSession = useCallback(() => {
+    toast.dismiss("voice-route-context");
     controllerRef.current?.end();
   }, []);
 

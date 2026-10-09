@@ -11,7 +11,7 @@ function makeSinks() {
     publishStatus: vi.fn(),
     publishTool: vi.fn(),
     setMicLevel: vi.fn(),
-    computeRoute: vi.fn(),
+    persistTurn: vi.fn(),
   } satisfies BindingSinks;
 }
 

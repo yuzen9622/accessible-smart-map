@@ -9,8 +9,8 @@
  */
 
 import { executeAction } from "@/lib/ai/actionExecutor";
+import { type ToolSummary, toolSummary } from "@/lib/ai/routeConversation";
 import { mapToolToActions } from "@/lib/ai/toolActionMapper";
-import type { LatLng } from "@/types";
 import { isMicActiveStatus, wrapFrameHandler } from "./audioLevel";
 import {
   type AggEntry,
@@ -38,8 +38,7 @@ export interface BindingSinks {
   publishTool(event: VoiceToolEvent): void;
   /** Bind to `useVoiceStore.getState().setMicLevel`. */
   setMicLevel(level: number): void;
-  /** Bind to the hook's `handleComputeRoute` caller (from `useComputeRoute`). */
-  computeRoute(params: { origin: LatLng; destination: LatLng }): void;
+  persistTurn?(entries: AggEntry[], summaries: ToolSummary[]): void;
 }
 
 export interface VoiceBindings {
@@ -69,6 +68,8 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   let agg: AggState = emptyAggState();
   let currentStatus: VoiceStatusName = "idle";
   let muted = false;
+  let summaries: ToolSummary[] = [];
+  let persisted = 0;
 
   function onTranscript(transcript: TranscriptFragment): void {
     agg = appendFragment(agg, transcript);
@@ -83,6 +84,9 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   function onTurnComplete(): void {
     agg = sealRole(agg, "model");
     sinks.publishTranscripts(agg.entries);
+    sinks.persistTurn?.(agg.entries.slice(persisted), summaries);
+    persisted = agg.entries.length;
+    summaries = [];
   }
 
   function onInterrupted(): void {
@@ -105,16 +109,11 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
     sinks.publishTool(event);
 
     if (event.type === "result" && event.result != null) {
+      const summary = toolSummary(event.name, event.summary);
+      if (summary && summaries.length < 8) summaries.push(summary);
       const actions = mapToolToActions(event.name, event.result, event.args);
       for (const action of actions) {
         if (action.type === "close-chat") continue;
-        if (action.type === "compute-route") {
-          sinks.computeRoute({
-            origin: action.origin,
-            destination: action.destination,
-          });
-          continue;
-        }
         executeAction(action);
       }
     }
@@ -142,6 +141,8 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
 
   function reset(): void {
     agg = emptyAggState();
+    summaries = [];
+    persisted = 0;
     currentStatus = "idle";
     muted = false;
     sinks.publishTranscripts([]);

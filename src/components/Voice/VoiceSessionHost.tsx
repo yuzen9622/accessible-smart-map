@@ -25,7 +25,9 @@ import type { NavInstruction } from "@/types/route";
 import VoiceFloatingIndicator from "./VoiceFloatingIndicator";
 
 function routeTokenFromMap(): string | null {
-  const token = useMapStore.getState().selectRoute?.route.routeToken;
+  const map = useMapStore.getState();
+  const token = (map.activeNavigationRoute ?? map.selectRoute?.route)
+    ?.routeToken;
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
@@ -129,10 +131,15 @@ export default function VoiceSessionHost() {
     setNavigationRoute(routeTokenFromMap());
     const unsubscribe = useMapStore.subscribe((state, previous) => {
       if (
+        state.activeNavigationRoute !== previous.activeNavigationRoute ||
         state.selectRoute?.route.routeToken !==
-        previous.selectRoute?.route.routeToken
+          previous.selectRoute?.route.routeToken
       ) {
-        setNavigationRoute(routeTokenFromMap());
+        if (
+          !state.isNavigating ||
+          state.activeNavigationRoute !== previous.activeNavigationRoute
+        )
+          setNavigationRoute(routeTokenFromMap());
       }
     });
     return unsubscribe;
@@ -227,8 +234,10 @@ export default function VoiceSessionHost() {
           );
           nav.setNavigationSource("voice");
           nav.setNavigationIdentity(
-            map.selectRoute?.route.navigationId ?? null,
-            map.selectRoute?.route.routeVersion ?? 0,
+            (map.activeNavigationRoute ?? map.selectRoute?.route)
+              ?.navigationId ?? null,
+            (map.activeNavigationRoute ?? map.selectRoute?.route)
+              ?.routeVersion ?? 0,
           );
           nav.setInstructions(instructions);
           nav.setCurrentStepIndex(navigationEvent.currentStepIndex);
@@ -241,7 +250,7 @@ export default function VoiceSessionHost() {
           nav.setVoiceEnabled(false);
           lastSentPositionRef.current = null;
           serverStoppedNavigationRef.current = false;
-          startNavigation();
+          if (!map.isNavigating) startNavigation();
           if (map.userLocation) {
             const heading = nav.userHeading ?? nav.gpsHeading;
             lastSentPositionRef.current = map.userLocation;
@@ -262,9 +271,11 @@ export default function VoiceSessionHost() {
           break;
         case "nav.progress": {
           const currentNavigationId =
-            map.selectRoute?.route.navigationId ?? nav.navigationId;
+            (map.activeNavigationRoute ?? map.selectRoute?.route)
+              ?.navigationId ?? nav.navigationId;
           const currentRouteVersion =
-            map.selectRoute?.route.routeVersion ?? nav.routeVersion;
+            (map.activeNavigationRoute ?? map.selectRoute?.route)
+              ?.routeVersion ?? nav.routeVersion;
           if (
             nav.navigationSource === "voice" &&
             !nav.arrived &&
@@ -368,9 +379,11 @@ export default function VoiceSessionHost() {
             isNavigating: map.isNavigating,
             arrived: nav.arrived,
             navigationId:
-              map.selectRoute?.route.navigationId ?? nav.navigationId,
+              (map.activeNavigationRoute ?? map.selectRoute?.route)
+                ?.navigationId ?? nav.navigationId,
             routeVersion:
-              map.selectRoute?.route.routeVersion ?? nav.routeVersion,
+              (map.activeNavigationRoute ?? map.selectRoute?.route)
+                ?.routeVersion ?? nav.routeVersion,
           });
           if (!accepted) break;
           nav.pushAdvisories(navigationEvent.advisories);
