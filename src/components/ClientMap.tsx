@@ -214,6 +214,10 @@ export default function ClientMap() {
     [i18n.language, attachSpriteFallback, restoreDimension],
   );
 
+  useEffect(() => {
+    if (map?.isStyleLoaded()) applyMapLanguage(map, i18n.language);
+  }, [map, i18n.language]);
+
   // Cross-fade whenever the mode changes. Subscribing to the store state (not
   // patching each setter) covers all three writers: the 2D/3D button,
   // setIsNavigating, and confirmNavExit.
@@ -433,7 +437,6 @@ export default function ClientMap() {
 
   return (
     <MapView
-      key={i18n.language}
       initialViewState={{
         longitude: initialCenter?.lng ?? 121.55,
         latitude: initialCenter?.lat ?? 25.03,

@@ -54,6 +54,7 @@ export function useAppTranslation(ns?: string | string[]) {
       void ret.i18n.changeLanguage(userConfig.language);
       updateUserConfig({ language: userConfig.language as LanguageEnum });
     }
+    document.documentElement.lang = userConfig.language;
   }, [userConfig.language, ret.i18n, updateUserConfig]);
   useEffect(() => {
     // 只有在語言不同時才切換，避免重複呼叫
@@ -62,11 +63,19 @@ export function useAppTranslation(ns?: string | string[]) {
       languages.includes(lang) &&
       languages.includes(userConfig.language)
     ) {
-      redirect(`/${userConfig.language}`);
+      // A router navigation remounts the language layout and ends voice/navigation.
+      // Keep the live page while updating the locale URL through Next's History API.
+      const segments = path.split("/");
+      segments[1] = userConfig.language;
+      window.history.replaceState(
+        null,
+        "",
+        `${segments.join("/")}${window.location.search}${window.location.hash}`,
+      );
     } else if (!languages.includes(lang)) {
       redirect(`/${fallbackLng}`);
     }
-  }, [lang, userConfig.language]);
+  }, [lang, path, userConfig.language]);
   return ret;
 }
 
