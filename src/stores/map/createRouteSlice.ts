@@ -2,6 +2,58 @@
 import type { MapSliceCreator, MapStore, RouteSlice } from "./types";
 
 export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
+  activeNavigationRoute: null,
+  routeGeneration: 0,
+  planId: null,
+  selectedRouteId: null,
+  effectivePreferences: null,
+  aiRouteMetadata: null,
+  invalidRouteTokens: [],
+  invalidateRouteToken: (token) =>
+    set({
+      invalidRouteTokens: [...get().invalidRouteTokens, token],
+      routeGeneration: get().routeGeneration + 1,
+    }),
+  applyAiRoutePlan: (plan) => {
+    const index = plan.routes.findIndex(
+      (route) => route.routeId === plan.selectedRouteId,
+    );
+    if (index < 0) return;
+    set({
+      routeGeneration: get().routeGeneration + 1,
+      planId: plan.planId,
+      selectedRouteId: plan.selectedRouteId,
+      effectivePreferences: plan.effectivePreferences,
+      aiRouteMetadata: {
+        alerts: plan.alerts,
+        arrivalEntrance: plan.arrivalEntrance,
+      },
+      origin: {
+        kind: "coordinate",
+        address: plan.origin.name,
+        position: plan.origin,
+      },
+      destination: {
+        kind: "coordinate",
+        address: plan.destination.name,
+        position: plan.destination,
+      },
+      originName: plan.origin.name,
+      destinationName: plan.destination.name,
+      computeRoutes: plan.routes,
+      selectRoute: { index, route: plan.routes[index] },
+      metroAlerts: plan.metroAlerts ?? null,
+      transitAlerts: plan.transitAlerts ?? null,
+      routeWaypoints: [],
+      routeInfoShow: true,
+      activeBusLeg: null,
+      liveBusPositions: [],
+      sheetMode: "route",
+      routeSubPanel: "none",
+      sidebarCollapsed: false,
+      chatOpen: false,
+    });
+  },
   origin: null,
   setOrigin: (origin) => set({ origin }),
   destination: null,
@@ -11,28 +63,51 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   destinationName: "",
   setDestinationName: (name) => set({ destinationName: name }),
   computeRoutes: null,
-  setComputeRoutes: (routes) =>
-    set(
-      routes
-        ? { computeRoutes: routes }
-        : {
-            computeRoutes: null,
-            metroAlerts: null,
-            transitAlerts: null,
-            routeWaypoints: [],
-          },
-    ),
+  setComputeRoutes: (routes) => {
+    const state = get();
+    const selected = routes?.find(
+      (route) => route === state.selectRoute?.route,
+    );
+    set({
+      routeGeneration: state.routeGeneration + 1,
+      computeRoutes: routes,
+      selectRoute:
+        selected && routes
+          ? { index: routes.indexOf(selected), route: selected }
+          : null,
+      selectedRouteId: selected?.routeId ?? null,
+      ...(selected
+        ? {}
+        : { planId: null, effectivePreferences: null, aiRouteMetadata: null }),
+      ...(!routes
+        ? { metroAlerts: null, transitAlerts: null, routeWaypoints: [] }
+        : {}),
+    });
+  },
   selectRoute: null,
   setRouteSelect: (route) => {
     if (!route) {
-      set({ selectRoute: null, activeBusLeg: null, liveBusPositions: [] });
+      set({
+        selectRoute: null,
+        selectedRouteId: null,
+        routeGeneration: get().routeGeneration + 1,
+        activeBusLeg: null,
+        liveBusPositions: [],
+      });
       return;
     }
     const prev = get().selectRoute;
+    const selected =
+      route.route ?? get().computeRoutes?.[route.index ?? -1] ?? prev?.route;
+    if (!selected) return;
     const next = {
+      selectedRouteId: selected.routeId,
+      routeGeneration:
+        get().routeGeneration + (selected === prev?.route ? 0 : 1),
       selectRoute: {
         ...prev,
         ...route,
+        route: selected,
       } as MapStore["selectRoute"],
     };
     if (prev?.index === route.index) {
@@ -64,6 +139,12 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   // place view clear those themselves.
   endRouteSession: () =>
     set({
+      routeGeneration: get().routeGeneration + 1,
+      planId: null,
+      selectedRouteId: null,
+      effectivePreferences: null,
+      aiRouteMetadata: null,
+      invalidRouteTokens: [],
       origin: null,
       originName: "",
       destination: null,

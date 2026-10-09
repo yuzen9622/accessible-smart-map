@@ -24,20 +24,28 @@ import type { NavInstruction } from "@/types/route";
  * same whether the user is walking or driving it. */
 function directionIcon(step: NavInstruction): LucideIcon {
   switch (step.relativeDirection) {
+    case "ahead":
     case "正前方":
       return ArrowUp;
+    case "ahead-left":
     case "左前方":
       return ArrowUpLeft;
+    case "ahead-right":
     case "右前方":
       return ArrowUpRight;
+    case "left":
     case "左側":
       return CornerUpLeft;
+    case "right":
     case "右側":
       return CornerUpRight;
+    case "behind-left":
     case "左後方":
       return Undo2;
+    case "behind-right":
     case "右後方":
       return Redo2;
+    case "behind":
     case "正後方":
       return ArrowDown;
     default:

@@ -465,6 +465,14 @@ export type NavInstructionType =
   | "depart"
   | "arrive";
 export type RelativeDirection =
+  | "ahead"
+  | "ahead-right"
+  | "right"
+  | "behind-right"
+  | "behind"
+  | "behind-left"
+  | "left"
+  | "ahead-left"
   | "正前方"
   | "左前方"
   | "右前方"
@@ -476,6 +484,8 @@ export type RelativeDirection =
   | null;
 
 export interface NavInstruction {
+  stairs?: boolean;
+  cumulativeDistanceM?: number;
   text: string;
   type: NavInstructionType;
   bearing: number | null;
@@ -555,7 +565,7 @@ export interface NavInstructionsData {
 export interface NavInstructionsRequest {
   routeToken: string;
   userHeading?: number;
-  language?: string;
+  language?: "zh-TW" | "en";
 }
 
 export type RerouteReason =
@@ -566,6 +576,7 @@ export type RerouteReason =
   | "MANUAL";
 
 export interface AccessibleRouteRerouteRequest {
+  language?: "zh-TW" | "en";
   routeToken: string;
   currentPosition: {
     latitude: number;
@@ -1008,4 +1019,30 @@ export interface LiveBusPositionsResponse {
   code: number;
   message: string;
   data: LiveBusPositionsData;
+}
+
+export interface EffectiveRoutePreferences {
+  mode: "normal" | "wheelchair" | "elderly" | "visual_impaired";
+  travelMode: "walk" | "transit" | "drive" | "motorcycle";
+  transitPreference: "none" | "bus" | "rail" | "metro";
+  maxTransfers: number;
+  avoidStairs: boolean;
+  requireElevator: boolean;
+  departureTime?: string;
+  [key: string]: unknown;
+}
+
+export interface AiRoutePlan {
+  routeContractVersion: 1;
+  ok: true;
+  planId: string;
+  selectedRouteId: string;
+  origin: { name: string; lat: number; lng: number };
+  destination: { name: string; lat: number; lng: number };
+  routes: AccessibleRoute[];
+  effectivePreferences: EffectiveRoutePreferences;
+  metroAlerts?: MetroAlertResult[];
+  transitAlerts?: MatchedAlert[];
+  alerts?: unknown;
+  arrivalEntrance?: unknown;
 }

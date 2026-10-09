@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import { localRerouteCoordinator } from "./localRerouteCoordinator";
@@ -8,9 +9,13 @@ import { localRerouteCoordinator } from "./localRerouteCoordinator";
  */
 export function startNavigation(): void {
   const map = useMapStore.getState();
-  const nav = useNavStore.getState();
-  const navigationId =
-    nav.navigationId ?? map.selectRoute?.route.navigationId ?? null;
+  const route = map.selectRoute?.route;
+  if (!route?.routeToken || map.invalidRouteTokens.includes(route.routeToken)) {
+    toast.error("這份路線目前無法啟用導航，請重新規劃。");
+    return;
+  }
+  useMapStore.setState({ activeNavigationRoute: route });
+  const navigationId = route.navigationId ?? null;
   localRerouteCoordinator.startSession(navigationId);
   map.setIsNavigating(true);
 }

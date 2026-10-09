@@ -204,6 +204,8 @@ export function resolveWaypoints(
       } else {
         idx = prevIdx;
       }
+    } else if (ins.legIndex != null) {
+      idx = prevIdx;
     } else {
       const fallbackIdx = ins.polylineIndex ?? prevIdx;
       idx = Math.max(0, Math.min(last, fallbackIdx));
@@ -212,8 +214,15 @@ export function resolveWaypoints(
     const ci = Math.max(idx, prevIdx);
     prevIdx = ci;
     return {
-      coord: path[ci] ?? null,
-      alongM: cumM[ci] ?? 0,
+      coord:
+        ins.legIndex != null && (!range || range.count === 0)
+          ? null
+          : (path[ci] ?? null),
+      alongM:
+        ins.cumulativeDistanceM != null &&
+        Number.isFinite(ins.cumulativeDistanceM)
+          ? ins.cumulativeDistanceM
+          : (cumM[ci] ?? 0),
     };
   });
 }

@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useAppTranslation } from "@/i18n/client";
 import { getRouteInstructions } from "@/lib/api/a11y";
+import { ApiError } from "@/lib/fetch";
 import {
   bearingDeg,
   buildCumulativePath,
@@ -142,7 +144,9 @@ export default function useNavigation() {
   const { i18n } = useAppTranslation();
   const lang = i18n.language === "en" ? "en" : "zh-TW";
 
-  const route = useMapStore((s) => s.selectRoute?.route ?? null);
+  const route = useMapStore(
+    (s) => s.activeNavigationRoute ?? s.selectRoute?.route ?? null,
+  );
   const userLocation = useMapStore((s) => s.userLocation);
   const compassPermission = useNavStore((s) => s.compassPermission);
   const navigationSource = useNavStore((s) => s.navigationSource);
@@ -284,7 +288,11 @@ export default function useNavigation() {
     // The instructions endpoint is keyed by routeToken only; without it there
     // is nothing to ask for, so a takeover runs on what it carried.
     const routeToken = route.routeToken;
-    if (!routeToken) return;
+    if (
+      !routeToken ||
+      useMapStore.getState().invalidRouteTokens.includes(routeToken)
+    )
+      return;
 
     getRouteInstructions({
       routeToken,
@@ -332,7 +340,20 @@ export default function useNavigation() {
           );
         }
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (
+          error instanceof ApiError &&
+          error.reason === "INVALID_ROUTE_TOKEN"
+        ) {
+          useMapStore.getState().invalidateRouteToken(routeToken);
+          useMapStore.getState().setIsNavigating(false);
+          useNavStore.getState().reset();
+          toast.error("路線已過期，請重新規劃。");
+        } else {
+          toast.error("無法取得導航指引，請稍後再試。");
+        }
+      });
     return () => {
       cancelled = true;
     };

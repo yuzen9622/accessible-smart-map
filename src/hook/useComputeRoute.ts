@@ -95,9 +95,11 @@ export default function useComputeRoute() {
         return false;
       }
 
+      let generation = -1;
       try {
         setIsLoading(true);
         setComputeRoutes(null);
+        generation = useMapStore.getState().routeGeneration;
         setRouteInfoShow(true);
 
         const response = await getAccessibleRoute({
@@ -117,6 +119,8 @@ export default function useComputeRoute() {
             ? { latitude: userLocation.lat, longitude: userLocation.lng }
             : undefined,
         });
+
+        if (useMapStore.getState().routeGeneration !== generation) return false;
 
         if (!response.data?.routes?.length) {
           // Was `closeRouteDrawer()` — that clears origin/destination/mode
@@ -185,6 +189,7 @@ export default function useComputeRoute() {
         }
         return true;
       } catch (error) {
+        if (useMapStore.getState().routeGeneration !== generation) return false;
         // Same reasoning as the no-routes branch above — keep the form
         // filled in so a network hiccup doesn't cost the user their inputs,
         // but still drop the stale result so it doesn't keep drawing on

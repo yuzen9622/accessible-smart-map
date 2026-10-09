@@ -56,7 +56,7 @@ export function normalizeRerouteReplacement(
 export function applyRouteReplacement(replacement: RouteReplacement): boolean {
   const map = useMapStore.getState();
   const nav = useNavStore.getState();
-  const currentRoute = map.selectRoute?.route;
+  const currentRoute = map.activeNavigationRoute ?? map.selectRoute?.route;
   const currentNavigationId = currentRoute?.navigationId ?? null;
   const currentVersion = currentRoute?.routeVersion ?? 0;
   if (
@@ -78,19 +78,27 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
     routeToken: replacement.routeToken,
     warnings: replacement.warnings,
   };
-  const selectedIndex = map.selectRoute?.index ?? 0;
-  const computeRoutes = map.computeRoutes
-    ? map.computeRoutes.map((item, index) =>
-        index === selectedIndex ? route : item,
-      )
-    : null;
+  const viewingReplaced =
+    map.selectRoute?.route.navigationId === replacement.navigationId;
+  const computeRoutes =
+    map.computeRoutes?.map((item) =>
+      item.navigationId === replacement.navigationId ? route : item,
+    ) ?? null;
+  const selectedIndex = computeRoutes?.indexOf(route) ?? -1;
   const totalM = replacement.instructions.reduce(
     (sum, instruction) => sum + (instruction.distanceM ?? 0),
     0,
   );
 
   useMapStore.setState({
-    selectRoute: { index: selectedIndex, route },
+    activeNavigationRoute: map.activeNavigationRoute ? route : null,
+    ...(viewingReplaced
+      ? {
+          selectRoute: { index: Math.max(0, selectedIndex), route },
+          selectedRouteId: route.routeId,
+          routeGeneration: map.routeGeneration + 1,
+        }
+      : {}),
     computeRoutes,
   });
   useNavStore.setState({
@@ -121,7 +129,9 @@ export function handleVoiceRerouteEvent(
   event: VoiceRerouteCoordinatorEvent,
 ): boolean | null {
   const nav = useNavStore.getState();
-  const currentRoute = useMapStore.getState().selectRoute?.route;
+  const currentRoute =
+    useMapStore.getState().activeNavigationRoute ??
+    useMapStore.getState().selectRoute?.route;
   const currentNavigationId = currentRoute?.navigationId ?? null;
   const currentVersion = currentRoute?.routeVersion ?? 0;
   const matchesCurrentVoiceRoute =

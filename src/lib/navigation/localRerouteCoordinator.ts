@@ -4,6 +4,7 @@ import {
   applyRouteReplacement,
   normalizeRerouteReplacement,
 } from "@/lib/navigation/rerouteCoordinator";
+import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavigationSource } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
@@ -51,7 +52,7 @@ export interface LocalRerouteCoordinatorDeps {
 function defaultReadContext(): LocalRerouteContext {
   const map = useMapStore.getState();
   const nav = useNavStore.getState();
-  const route = map.selectRoute?.route;
+  const route = map.activeNavigationRoute ?? map.selectRoute?.route;
   const routeNavigationId = route?.navigationId ?? null;
   const routeVersion = route?.routeVersion ?? 0;
   const hasMatchingRuntimeIdentity =
@@ -318,6 +319,10 @@ export class LocalRerouteCoordinator {
           previousRouteVersion: context.routeVersion,
           reason,
           clientRequestId: requestId,
+          language:
+            useAuthStore.getState().userConfig.language === "en"
+              ? "en"
+              : "zh-TW",
         },
         abortController.signal,
       );

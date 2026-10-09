@@ -84,7 +84,18 @@ export async function rerouteAccessibleRoute(
 export async function getRouteInstructions(request: NavInstructionsRequest) {
   const response = await fetchRequest(
     `${END_POINT}/api/v1/a11y/route/instructions`,
-    { method: "POST", body: request },
+    {
+      method: "POST",
+      body: {
+        routeToken: request.routeToken,
+        ...(request.userHeading === undefined
+          ? {}
+          : { userHeading: request.userHeading }),
+        ...(request.language === undefined
+          ? {}
+          : { language: request.language }),
+      },
+    },
   );
   return response as ApiResponse<NavInstructionsData>;
 }

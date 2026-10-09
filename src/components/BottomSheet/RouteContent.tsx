@@ -37,6 +37,8 @@ const RouteExplanationPanel = dynamic(() => import("./RouteExplanationPanel"), {
 
 export default function RouteContent() {
   const { t } = useAppTranslation();
+  const preferences = useMapStore((s) => s.effectivePreferences);
+  const invalidTokens = useMapStore((s) => s.invalidRouteTokens);
   const {
     computeRoutes,
     setComputeRoutes,
@@ -131,10 +133,28 @@ export default function RouteContent() {
         <h1 className="text-lg font-bold">{t("routeResultsTitle")}</h1>
       </div>
 
+      {preferences && (
+        <p className="text-sm text-muted-foreground">
+          {t("routeAppliedPreferences")}: {t(`routeMode_${preferences.mode}`)} ·{" "}
+          {t(`routeTravel_${preferences.travelMode}`)} ·{" "}
+          {t(`routeTransit_${preferences.transitPreference}`)}
+          {preferences.avoidStairs && ` · ${t("routeAvoidStairs")}`}
+          {preferences.requireElevator && ` · ${t("routeRequireElevator")}`}
+          {preferences.departureTime && ` · ${preferences.departureTime}`}
+        </p>
+      )}
+      {selectRoute?.route.routeToken &&
+        invalidTokens.includes(selectRoute.route.routeToken) && (
+          <p role="alert">{t("routeTokenExpired")}</p>
+        )}
       {/* Start Navigation Button */}
       {selectRoute && (
         <Button
           onClick={handleStartNav}
+          disabled={
+            !selectRoute.route.routeToken ||
+            invalidTokens.includes(selectRoute.route.routeToken)
+          }
           className="w-full rounded-xl h-12 text-base gap-2"
         >
           <Navigation className="h-5 w-5" />

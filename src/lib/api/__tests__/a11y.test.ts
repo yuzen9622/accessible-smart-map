@@ -3,6 +3,7 @@ import {
   createHazardReport,
   getHazardReport,
   getMyHazardReports,
+  getRouteInstructions,
   rerouteAccessibleRoute,
 } from "@/lib/api/a11y";
 import { END_POINT } from "@/lib/config";
@@ -336,4 +337,30 @@ describe("rerouteAccessibleRoute", () => {
       ).rejects.toMatchObject({ code, message: `reroute failed ${code}` });
     },
   );
+});
+
+it("requests instructions with only token, heading and language, never the full route", async () => {
+  const fetchMock = vi.fn(async () =>
+    jsonResponse({
+      ok: true,
+      data: { instructions: [], totalSteps: 0, warnings: [] },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const request = {
+    routeToken: "fixture-token",
+    userHeading: 45,
+    language: "en" as const,
+    route: { secretGeometry: true },
+    origin: { lat: 25, lng: 121 },
+  };
+  await getRouteInstructions(request);
+  const init = (
+    fetchMock.mock.calls as unknown as [string, RequestInit][]
+  )[0][1];
+  expect(JSON.parse(init.body as string)).toEqual({
+    routeToken: "fixture-token",
+    userHeading: 45,
+    language: "en",
+  });
 });

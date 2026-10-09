@@ -85,3 +85,28 @@ describe("stepIcon — walking and transit legs", () => {
     expect(stepIcon(undefined)).toBe(ArrowUp);
   });
 });
+
+it.each([
+  "ahead",
+  "ahead-left",
+  "ahead-right",
+  "left",
+  "right",
+  "behind-left",
+  "behind-right",
+  "behind",
+] as const)("supports English direction %s", (direction) => {
+  const pairs = {
+    ahead: "正前方",
+    "ahead-left": "左前方",
+    "ahead-right": "右前方",
+    left: "左側",
+    right: "右側",
+    "behind-left": "左後方",
+    "behind-right": "右後方",
+    behind: "正後方",
+  } as const;
+  expect(stepIcon(instruction({ relativeDirection: direction }))).toBe(
+    stepIcon(instruction({ relativeDirection: pairs[direction] })),
+  );
+});

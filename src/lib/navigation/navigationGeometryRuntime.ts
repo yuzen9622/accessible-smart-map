@@ -36,7 +36,9 @@ export function observeLocalNavigationGeometry(
   runtime: NavigationGeometryRuntime,
 ): () => void {
   const sync = () => {
-    const route = useMapStore.getState().selectRoute?.route;
+    const route =
+      useMapStore.getState().activeNavigationRoute ??
+      useMapStore.getState().selectRoute?.route;
     const nav = useNavStore.getState();
     if (nav.navigationSource === "voice") {
       runtime.path = null;
@@ -57,7 +59,11 @@ export function observeLocalNavigationGeometry(
 
   sync();
   const unsubscribeMap = useMapStore.subscribe((state, previous) => {
-    if (state.selectRoute?.route !== previous.selectRoute?.route) sync();
+    if (
+      state.activeNavigationRoute !== previous.activeNavigationRoute ||
+      state.selectRoute?.route !== previous.selectRoute?.route
+    )
+      sync();
   });
   const unsubscribeNav = useNavStore.subscribe((state, previous) => {
     if (

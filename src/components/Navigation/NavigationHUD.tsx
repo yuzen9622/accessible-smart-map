@@ -94,9 +94,10 @@ const REROUTE_REASON_KEY: Record<NavRerouteReason, string> = {
  */
 export default function NavigationHUD() {
   const { t, i18n } = useAppTranslation();
-  const { selectRoute, userLocation } = useMapStore(
+  const { route, userLocation } = useMapStore(
     useShallow((s) => ({
-      selectRoute: s.selectRoute,
+      // Keep nested references stable: useShallow only compares one level.
+      route: s.activeNavigationRoute ?? s.selectRoute?.route,
       userLocation: s.userLocation,
     })),
   );
@@ -128,8 +129,6 @@ export default function NavigationHUD() {
     isAudioActive,
     toggleAudio,
   } = useNavigationAudio();
-
-  const route = selectRoute?.route;
 
   const activeNavWarnings = useMemo(() => {
     const list: string[] = [];

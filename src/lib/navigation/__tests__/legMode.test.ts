@@ -335,6 +335,65 @@ describe("resolveWaypoints with per-leg and fallback steps", () => {
     expect(wps[1].alongM).toBeGreaterThan(900);
   });
 
+  it("uses server cumulative distance and leg-local coordinates across multiple WALK legs", () => {
+    const leg = (start: number): RouteLeg => ({
+      type: "WALK",
+      from: "A",
+      to: "B",
+      distanceM: 120,
+      minutesEst: 2,
+      a11yFacilities: [],
+      polyline: [
+        [start, 25],
+        [start + 0.001, 25],
+      ],
+    });
+    const legs = [leg(121.5), leg(121.51)];
+    const wps = resolveWaypoints(
+      [
+        instruction("WALK", {
+          legIndex: 0,
+          polylineIndex: 0,
+          cumulativeDistanceM: 0,
+        }),
+        instruction("WALK", {
+          legIndex: 1,
+          polylineIndex: 0,
+          cumulativeDistanceM: 120,
+          stairs: true,
+        }),
+      ],
+      buildCumulativePath(legs),
+    );
+    expect(wps[1]).toEqual({ coord: { lng: 121.51, lat: 25 }, alongM: 120 });
+  });
+
+  it("does not reinterpret a missing leg's local index as an index in another leg", () => {
+    const leg: RouteLeg = {
+      type: "WALK",
+      from: "A",
+      to: "B",
+      distanceM: 120,
+      minutesEst: 2,
+      a11yFacilities: [],
+      polyline: [
+        [121.5, 25],
+        [121.51, 25],
+      ],
+    };
+    const wps = resolveWaypoints(
+      [
+        instruction("WALK", {
+          legIndex: 1,
+          polylineIndex: 1,
+          cumulativeDistanceM: 120,
+        }),
+      ],
+      buildCumulativePath([leg, { ...leg, polyline: [] }]),
+    );
+    expect(wps[0]).toEqual({ coord: null, alongM: 120 });
+  });
+
   // An unanchored instruction used to fall back to the route's last point,
   // which put it past every later maneuver and broke step selection.
   it("inherits the previous maneuver point for an unanchored instruction", () => {

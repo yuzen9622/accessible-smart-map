@@ -37,6 +37,7 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
       // reason, back when the two shared one field.)
       set({
         isNavigating: false,
+        activeNavigationRoute: null,
         sheetMode: "route",
         routeSubPanel: "none",
         is3D: false,
@@ -74,7 +75,7 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
     if (!intent) return;
     // End navigation first — setIsNavigating(false) sets sheetMode to "route",
     // but the intent callback below will override it to the desired target.
-    set({ isNavigating: false, is3D: false });
+    set({ isNavigating: false, activeNavigationRoute: null, is3D: false });
     const { map } = get();
     if (map) {
       const legs = get().selectRoute?.route.legs ?? [];

@@ -11,7 +11,9 @@ import type {
 import type { A11yEnum } from "@/types/index";
 import type {
   AccessibleRoute,
+  AiRoutePlan,
   BusLeg,
+  EffectiveRoutePreferences,
   LiveBus,
   MatchedAlert,
   MetroAlertResult,
@@ -73,6 +75,16 @@ export interface MapInstanceSlice {
 }
 
 export interface RouteSlice {
+  activeNavigationRoute: AccessibleRoute | null;
+  routeGeneration: number;
+  planId: string | null;
+  selectedRouteId: string | null;
+  effectivePreferences: EffectiveRoutePreferences | null;
+  aiRouteMetadata: Pick<AiRoutePlan, "alerts" | "arrivalEntrance"> | null;
+  invalidRouteTokens: string[];
+  invalidateRouteToken: (token: string) => void;
+  applyAiRoutePlan: (plan: AiRoutePlan) => void;
+
   origin: PlaceDetail | null;
   setOrigin: (origin: PlaceDetail | null) => void;
   destination: PlaceDetail | null;
