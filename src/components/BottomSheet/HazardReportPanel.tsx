@@ -18,6 +18,7 @@ import { createHazardReport } from "@/lib/api/a11y";
 import { reverseGeocode } from "@/lib/api/placeSearch";
 import { haversineMeters } from "@/lib/geo";
 import { hazardResubmitPreset } from "@/lib/hazard-review";
+import type { HazardReportContext } from "@/stores/map/types";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
 import type { HazardReport, HazardSeverity } from "@/types/route";
@@ -88,25 +89,31 @@ const SEVERITIES: Array<{
   },
 ];
 
-export default function HazardReportPanel({
+type HazardReportPanelProps = { onClose: () => void; hideHeader?: boolean };
+
+export default function HazardReportPanel(props: HazardReportPanelProps) {
+  const context = useMapStore((s) => s.pendingReportContext);
+  // A new entry replaces the whole form before it can render stale position,
+  // type or description; responsive copies share the same entry context.
+  return (
+    <HazardReportForm
+      key={JSON.stringify(context)}
+      {...props}
+      initialContext={context}
+    />
+  );
+}
+
+function HazardReportForm({
   onClose,
   hideHeader,
-}: {
-  onClose: () => void;
-  hideHeader?: boolean;
-}) {
+  initialContext: pendingReportContext,
+}: HazardReportPanelProps & { initialContext: HazardReportContext | null }) {
   const { t, i18n } = useAppTranslation();
   const hazardTypeLabelId = useId();
   const severityLabelId = useId();
   const descriptionId = useId();
-  const { userLocation, pendingReportContext, setPendingReportContext } =
-    useMapStore(
-      useShallow((s) => ({
-        userLocation: s.userLocation,
-        pendingReportContext: s.pendingReportContext,
-        setPendingReportContext: s.setPendingReportContext,
-      })),
-    );
+  const userLocation = useMapStore((s) => s.userLocation);
   const { user, requestAuthDialog } = useAuthStore(
     useShallow((s) => ({
       user: s.user,
@@ -130,21 +137,15 @@ export default function HazardReportPanel({
     lng: number;
   } | null>(null);
   const reportLocation =
-    retryLocation ?? reportContext?.location ?? userLocation;
+    retryLocation ?? (reportContext ? reportContext.location : userLocation);
   const [result, setResult] = useState<{
     reportId: string;
     report?: HazardReport;
     merged?: boolean;
   } | null>(null);
 
-  // A place detail's "我知道 → 回報" link on an unconfirmed a11y item hands
-  // off a pre-filled description and target location this way. Snapshot it
-  // above before clearing the store so GPS updates cannot replace the chosen
-  // place while this report remains open.
-  useEffect(() => {
-    if (!reportContext) return;
-    setPendingReportContext(null);
-  }, [reportContext, setPendingReportContext]);
+  // Both responsive panels can mount at different times. Keep the shared
+  // handoff for this report session; a new entry replaces it in the store.
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

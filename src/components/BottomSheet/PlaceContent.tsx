@@ -83,7 +83,6 @@ export default function PlaceContent() {
     isSavedPlace,
     map,
     setActiveRailPanel,
-    setPendingReportContext,
   } = useMapStore(
     useShallow((s) => ({
       infoShow: s.infoShow,
@@ -98,7 +97,6 @@ export default function PlaceContent() {
       isSavedPlace: s.isSavedPlace,
       map: s.map,
       setActiveRailPanel: s.setActiveRailPanel,
-      setPendingReportContext: s.setPendingReportContext,
     })),
   );
 
@@ -628,26 +626,19 @@ export default function PlaceContent() {
                 {item.available === null && (
                   <button
                     type="button"
-                    className="self-start text-xs font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-300"
+                    disabled={!placePosition}
+                    className="self-start text-xs font-medium underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-300 disabled:opacity-50"
                     onClick={() => {
                       const placeName = isPlace && place ? place.name : "";
-                      setPendingReportContext({
+                      setSheetMode("home");
+                      setActiveRailPanel("hazard", {
                         description: t("a11yReportPrefill", {
                           defaultValue: "{{facility}}：{{place}}",
                           facility: item.label,
                           place: placeName,
                         }),
-                        location: placePosition ?? userLocation,
+                        location: placePosition,
                       });
-                      // sheetMode stays "place" (a MODE_PANELS value) after
-                      // opening from a place detail page, and BottomSheet
-                      // renders by sheetMode over activeRailPanel whenever a
-                      // mode panel is active — so setting only
-                      // activeRailPanel here was a silent no-op, the click
-                      // just did nothing. setSheetMode("home") first is the
-                      // same handoff handleRailClick already does elsewhere.
-                      setSheetMode("home");
-                      setActiveRailPanel("hazard");
                     }}
                   >
                     {t("a11yIKnowReport", "我知道 → 回報")}

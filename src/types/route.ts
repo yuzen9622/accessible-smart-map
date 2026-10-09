@@ -609,6 +609,8 @@ export interface HazardReport {
   expectedUntil?: string | null;
   reportedLocation: HazardGeoPoint;
   description?: string;
+  /** Existence flag for the backend photo endpoint; no storage URL is needed. */
+  hasPhoto?: boolean;
   photoUrl?: string;
   status: "pending" | "verified" | "rejected" | "expired";
   exifValidation?: {
@@ -627,6 +629,7 @@ export interface HazardReport {
     reasonCode: string;
     reason: string;
     observations?: string[];
+    visibleHazards?: string[];
     limitations?: string[];
     requiredEvidence?: (
       | "wider_view"

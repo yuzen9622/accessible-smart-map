@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  Camera,
+  CircleCheck,
+  CircleHelp,
+  Clock3,
+  RefreshCw,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAppTranslation } from "@/i18n/client";
@@ -12,9 +19,11 @@ import {
   hazardReviewStatus,
   type ReviewPollNotice,
 } from "@/lib/hazard-review";
+import { reportPresentation, reportTones } from "@/lib/report-presentation";
 import useAuthStore from "@/stores/useAuthStore";
 import type { HazardReport } from "@/types/route";
 import { Button } from "../ui/button";
+import HazardReviewDetails from "./HazardReviewDetails";
 
 export function HazardReportResultContent({
   report,
@@ -43,47 +52,49 @@ export function HazardReportResultContent({
 }) {
   const { t } = useAppTranslation();
   const expired = report && hazardExpired(report);
+  const presentation = report
+    ? reportPresentation(report)
+    : { label: "reportStateReviewing", tone: "blue" as const };
+  const StatusIcon =
+    presentation.tone === "green"
+      ? CircleCheck
+      : presentation.tone === "blue"
+        ? Clock3
+        : CircleHelp;
   return (
-    <section
-      className="space-y-3 rounded-xl border border-border p-3"
-      aria-live="polite"
-    >
-      <h3 className="font-semibold">
-        {t(report ? hazardReviewStatus(report) : "hazardReviewUncertain")}
-      </h3>
-      <p className="text-xs break-all">
-        {t("hazardReportId")}: {reportId}
-      </p>
-      {merged && <p className="text-sm">{t("hazardReviewMerged")}</p>}
-      {!expired && report?.aiReview?.reason && (
-        <p className="text-sm">{report.aiReview.reason}</p>
-      )}
-      {!expired && !report?.aiReview && report?.aiVerification?.reason && (
-        <p className="text-sm">{report.aiVerification.reason}</p>
-      )}
-      {!expired &&
-        [...new Set(report?.aiReview?.observations)].map((text) => (
-          <p key={text} className="text-sm">
-            {text}
-          </p>
-        ))}
-      {!expired &&
-        [...new Set(report?.aiReview?.limitations)].map((text) => (
-          <p key={text} className="text-xs text-muted-foreground">
-            {text}
-          </p>
-        ))}
-      {!expired &&
-        report?.aiReview?.requiredEvidence?.map((evidence) => (
-          <p key={evidence} className="text-sm">
-            {t(`hazardEvidence_${evidence}`)}
-          </p>
-        ))}
+    <section className="space-y-4" aria-live="polite">
+      <div
+        className={`rounded-2xl border p-4 ${reportTones[presentation.tone]}`}
+      >
+        <div className="flex items-center gap-2.5">
+          <StatusIcon className="size-5 shrink-0" />
+          <h3 className="text-base font-semibold">{t(presentation.label)}</h3>
+        </div>
+        <p className="mt-2 text-sm leading-6">
+          {t(report ? hazardReviewStatus(report) : "hazardReviewUncertain")}
+        </p>
+        {!expired &&
+          (report?.aiReview?.reason || report?.aiVerification?.reason) && (
+            <p className="mt-3 border-t border-current/15 pt-3 text-base leading-7">
+              {report.aiReview?.reason || report.aiVerification?.reason}
+            </p>
+          )}
+      </div>
+      {merged && <p className="text-sm leading-6">{t("hazardReviewMerged")}</p>}
+      {report && !expired && <HazardReviewDetails report={report} />}
+
       {notice !== "idle" && (
-        <p className="text-sm">{t(`hazardPoll_${notice}`)}</p>
+        <p className="rounded-xl bg-muted p-3 text-sm leading-6">
+          {t(`hazardPoll_${notice}`)}
+        </p>
       )}
       {!expired && (
-        <Button variant="outline" onClick={onRefresh}>
+        <Button
+          variant="ghost"
+          className="min-h-11 rounded-full text-muted-foreground"
+          onClick={onRefresh}
+        >
+          <RefreshCw className="size-4" />
           {t("hazardReviewRefresh")}
         </Button>
       )}
@@ -91,7 +102,11 @@ export function HazardReportResultContent({
         <Button onClick={onNewSubmission}>{t("hazardReviewResubmit")}</Button>
       )}
       {report && hazardCanResubmit(report) && (
-        <Button onClick={() => onResubmit(report)}>
+        <Button
+          className="min-h-11 w-full rounded-xl"
+          onClick={() => onResubmit(report)}
+        >
+          <Camera className="size-4" />
           {t("hazardReviewResubmit")}
         </Button>
       )}
@@ -105,6 +120,12 @@ export function HazardReportResultContent({
             {t("confirmHazard")}
           </Button>
         ))}
+      <details className="text-xs text-muted-foreground">
+        <summary className="min-h-11 cursor-pointer py-3">
+          {t("hazardReportId")}
+        </summary>
+        <p className="break-all pb-2 font-mono">{reportId}</p>
+      </details>
     </section>
   );
 }
@@ -115,6 +136,7 @@ type HazardReportResultProps = {
   merged?: boolean;
   onResubmit: (report: HazardReport) => void;
   onNewSubmission?: () => void;
+  onReportUpdate?: (report: HazardReport) => void;
 };
 
 export default function HazardReportResult(props: HazardReportResultProps) {
@@ -128,6 +150,7 @@ function HazardReportResultSession({
   merged,
   onResubmit,
   onNewSubmission,
+  onReportUpdate,
 }: HazardReportResultProps) {
   const { t } = useAppTranslation();
   const user = useAuthStore((s) => s.user);
@@ -171,7 +194,10 @@ function HazardReportResultSession({
           throw new Error("Missing report");
         return response.data.report;
       },
-      onReport: setReport,
+      onReport: (next) => {
+        setReport(next);
+        onReportUpdate?.(next);
+      },
       onNotice: setNotice,
     });
     poller.current = instance;
@@ -180,7 +206,7 @@ function HazardReportResultSession({
       instance.dispose();
       poller.current = null;
     };
-  }, [reportId]);
+  }, [reportId, onReportUpdate]);
   const owner = knownOwner.current ?? report?.reporterId;
   // Keep the existing public/IP-identity voting policy. A new anonymous
   // submission's receipt locally identifies its author; public GET never does.

@@ -69,6 +69,7 @@ export function hazardCanResubmit(report: HazardReport, now = Date.now()) {
     !hazardExpired(report, now) &&
     [
       "hazardReviewNeedsEvidence",
+      "hazardReviewUnsupported",
       "hazardReviewFailed",
       "hazardReviewLegacyStalled",
     ].includes(hazardReviewStatus(report, now))

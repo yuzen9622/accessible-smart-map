@@ -2,11 +2,22 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const effects = vi.hoisted(() => [] as (() => void)[]);
+vi.mock("react", async (original) => ({
+  ...(await original<typeof import("react")>()),
+  useEffect: (effect: () => void) => {
+    effects.push(effect);
+  },
+}));
+vi.mock("@/lib/api/placeSearch", () => ({
+  reverseGeocode: vi.fn(async () => null),
+}));
+
 const mockMapState = vi.hoisted(() => ({
   userLocation: { lat: 25.033, lng: 121.5654 },
   pendingReportContext: null as null | {
     description: string;
-    location: { lat: number; lng: number };
+    location: { lat: number; lng: number } | null;
   },
   setPendingReportContext: vi.fn(),
 }));
@@ -53,6 +64,37 @@ describe("HazardReportPanel report location", () => {
     );
 
     expect(html).toContain("25.01230, 121.54320");
+    expect(html).not.toContain("25.03300, 121.56540");
+  });
+
+  it("keeps the selected place when the second responsive panel mounts after the first panel's effects", () => {
+    effects.length = 0;
+    mockMapState.pendingReportContext = {
+      description: "selected place",
+      location: { lat: 25.0123, lng: 121.5432 },
+    };
+    mockMapState.setPendingReportContext.mockImplementation((context) => {
+      mockMapState.pendingReportContext = context;
+    });
+    renderToStaticMarkup(
+      React.createElement(HazardReportPanel, { onClose: () => undefined }),
+    );
+    for (const effect of effects.splice(0)) effect();
+    const html = renderToStaticMarkup(
+      React.createElement(HazardReportPanel, { onClose: () => undefined }),
+    );
+    expect(html).toContain("25.01230, 121.54320");
+    expect(html).not.toContain("25.03300, 121.56540");
+  });
+
+  it("does not substitute GPS when the selected-place context has no location", () => {
+    mockMapState.pendingReportContext = {
+      description: "missing coordinates",
+      location: null,
+    };
+    const html = renderToStaticMarkup(
+      React.createElement(HazardReportPanel, { onClose: () => undefined }),
+    );
     expect(html).not.toContain("25.03300, 121.56540");
   });
 

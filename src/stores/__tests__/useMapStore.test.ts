@@ -336,3 +336,33 @@ describe("useMapStore route session lifecycle", () => {
     expect(s.routeSubPanel).toBe("none");
   });
 });
+
+describe("hazard report entry context", () => {
+  const context = {
+    description: "selected place",
+    location: { lat: 25.0123, lng: 121.5432 },
+  };
+  it("sets the panel and selected location in the same store update", () => {
+    const snapshots: unknown[] = [];
+    const unsubscribe = useMapStore.subscribe((state) =>
+      snapshots.push({
+        panel: state.activeRailPanel,
+        context: state.pendingReportContext,
+      }),
+    );
+    useMapStore.getState().setActiveRailPanel("hazard", context);
+    unsubscribe();
+    expect(snapshots).toEqual([{ panel: "hazard", context }]);
+  });
+  it("clears the selected place when starting a generic rail report", () => {
+    useMapStore.getState().setActiveRailPanel("hazard", context);
+    useMapStore.getState().setActiveRailPanel("search");
+    useMapStore.getState().setActiveRailPanel("hazard");
+    expect(useMapStore.getState().pendingReportContext).toBeNull();
+  });
+  it("clears the selected place when starting a route report", () => {
+    useMapStore.getState().setActiveRailPanel("hazard", context);
+    useMapStore.getState().setRouteSubPanel("hazard");
+    expect(useMapStore.getState().pendingReportContext).toBeNull();
+  });
+});

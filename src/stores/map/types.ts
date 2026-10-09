@@ -214,11 +214,9 @@ export interface A11ySlice {
   setNearbyParking: (items: ParkingNearbyItem[]) => void;
   selectedParking: ParkingNearbyItem | null;
   setSelectedParking: (item: ParkingNearbyItem | null) => void;
-  /** Set when an unconfirmed a11y checklist item's "我知道 → 回報" link opens
-   * the hazard report panel; `HazardReportPanel` consumes it once so both the
-   * pre-filled description and selected place survive the panel handoff. */
+  /** Selected-place context retained across responsive panel mounts.
+   * Enter through setActiveRailPanel("hazard", context); generic entries reset it. */
   pendingReportContext: HazardReportContext | null;
-  setPendingReportContext: (context: HazardReportContext | null) => void;
 }
 
 export interface SheetSlice {
@@ -239,7 +237,10 @@ export interface SheetSlice {
   confirmNavExit: () => void;
   cancelNavExit: () => void;
   activeRailPanel: RailPanel;
-  setActiveRailPanel: (panel: RailPanel) => void;
+  setActiveRailPanel: (
+    panel: RailPanel,
+    reportContext?: HazardReportContext,
+  ) => void;
   routeSubPanel: RouteSubPanel;
   setRouteSubPanel: (panel: RouteSubPanel) => void;
   /**

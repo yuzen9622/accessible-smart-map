@@ -112,8 +112,11 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
     set({ pendingNavExit: null });
   },
   activeRailPanel: "search" as RailPanel,
-  setActiveRailPanel: (panel) => {
+  setActiveRailPanel: (panel, reportContext) => {
     const update: Partial<MapStore> = { activeRailPanel: panel };
+    if (panel === "hazard") {
+      update.pendingReportContext = reportContext ?? null;
+    }
     if (panel !== "none") {
       update.sidebarCollapsed = false;
     }
@@ -123,7 +126,11 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
     set(update);
   },
   routeSubPanel: "none" as RouteSubPanel,
-  setRouteSubPanel: (panel) => set({ routeSubPanel: panel }),
+  setRouteSubPanel: (panel) =>
+    set({
+      routeSubPanel: panel,
+      ...(panel === "hazard" ? { pendingReportContext: null } : {}),
+    }),
   resumeRouteSession: () => {
     const target = routeResumeTarget(get().computeRoutes);
     set({ routeSubPanel: "none" });
