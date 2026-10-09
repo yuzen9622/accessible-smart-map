@@ -75,3 +75,8 @@ export const StationDetailContent = dynamic(
     ssr: false,
   },
 );
+
+export const MyReportsPanel = dynamic(() => import("./MyReportsPanel"), {
+  loading: () => <HazardReportSkeleton />,
+  ssr: false,
+});

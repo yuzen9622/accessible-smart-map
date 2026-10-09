@@ -105,5 +105,6 @@ export const RAIL_CONTENT_PANELS = new Set<RailPanel>([
   "saved",
   "environment",
   "hazard",
+  "my-reports",
   "welfare",
 ]);

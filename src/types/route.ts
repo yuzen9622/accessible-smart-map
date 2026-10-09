@@ -620,6 +620,25 @@ export interface HazardReport {
     distanceM?: number;
     minutesAgo?: number;
   };
+  aiReview?: {
+    version: 2;
+    state: "queued" | "processing" | "completed" | "failed" | "cancelled";
+    decision?: "supported" | "needs_evidence" | "unsupported";
+    reasonCode: string;
+    reason: string;
+    observations?: string[];
+    limitations?: string[];
+    requiredEvidence?: (
+      | "wider_view"
+      | "clearer_image"
+      | "matching_hazard"
+      | "map_reference"
+    )[];
+    delayed?: boolean;
+    queuedAt?: string;
+    startedAt?: string;
+    completedAt?: string;
+  };
   aiVerification?: {
     verdict: "verified" | "suspicious" | "rejected" | "skipped";
     confidence: number;

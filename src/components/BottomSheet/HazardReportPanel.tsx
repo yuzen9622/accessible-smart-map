@@ -17,10 +17,12 @@ import { useAppTranslation } from "@/i18n/client";
 import { createHazardReport } from "@/lib/api/a11y";
 import { reverseGeocode } from "@/lib/api/placeSearch";
 import { haversineMeters } from "@/lib/geo";
+import { hazardResubmitPreset } from "@/lib/hazard-review";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
-import type { HazardSeverity } from "@/types/route";
+import type { HazardReport, HazardSeverity } from "@/types/route";
 import { Button } from "../ui/button";
+import HazardReportResult from "./HazardReportResult";
 
 export const MAX_REPORT_PHOTO_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 export const ALLOWED_REPORT_PHOTO_TYPES = [
@@ -114,13 +116,26 @@ export default function HazardReportPanel({
 
   const [hazardType, setHazardType] = useState<
     "obstacle" | "construction" | "data_error"
-  >(pendingReportContext ? "data_error" : "obstacle");
+  >(
+    pendingReportContext?.hazardType ??
+      (pendingReportContext ? "data_error" : "obstacle"),
+  );
   const [severity, setSeverity] = useState<HazardSeverity>("difficult");
   const [description, setDescription] = useState(
     pendingReportContext?.description ?? "",
   );
   const [reportContext] = useState(pendingReportContext);
-  const reportLocation = reportContext?.location ?? userLocation;
+  const [retryLocation, setRetryLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const reportLocation =
+    retryLocation ?? reportContext?.location ?? userLocation;
+  const [result, setResult] = useState<{
+    reportId: string;
+    report?: HazardReport;
+    merged?: boolean;
+  } | null>(null);
 
   // A place detail's "我知道 → 回報" link on an unconfirmed a11y item hands
   // off a pre-filled description and target location this way. Snapshot it
@@ -133,6 +148,7 @@ export default function HazardReportPanel({
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitInFlight = useRef(false);
   const [address, setAddress] = useState<string | null>(null);
   const [addressFailed, setAddressFailed] = useState(false);
 
@@ -218,6 +234,7 @@ export default function HazardReportPanel({
   };
 
   const handleSubmit = useCallback(async () => {
+    if (submitInFlight.current) return;
     if (!reportLocation) {
       toast.error(t("locationRequired", "無法取得您的位置"));
       return;
@@ -228,7 +245,9 @@ export default function HazardReportPanel({
       return;
     }
 
+    submitInFlight.current = true;
     setIsSubmitting(true);
+    setRetryLocation({ lat: reportLocation.lat, lng: reportLocation.lng });
     try {
       const formData = new FormData();
       formData.append("hazardType", hazardType);
@@ -240,9 +259,13 @@ export default function HazardReportPanel({
       formData.append("photo", photo);
 
       const res = await createHazardReport(formData);
-      if (res.ok) {
-        toast.success(t("reportSuccess"));
-        onClose();
+      if (res.ok || res.success) {
+        const report = res.data?.report;
+        if (!report?._id) throw new Error(t("hazardReviewUncertain"));
+        setResult({ reportId: report._id, report, merged: res.data?.merged });
+        setPhoto(null);
+        setPhotoPreview(null);
+        if (fileRef.current) fileRef.current.value = "";
       } else {
         toast.error(res.message || t("reportFailed"));
       }
@@ -251,15 +274,27 @@ export default function HazardReportPanel({
         code?: number;
         message?: string;
         reason?: string;
+        data?: { reportId?: string };
       };
       const reason = apiError?.reason;
-      if (reason === "PHOTO_REQUIRED") {
+      if (reason === "REPORT_COMMIT_UNCERTAIN") {
+        toast.error(t("hazardReviewUncertain"));
+        if (apiError.data?.reportId) {
+          setResult({ reportId: apiError.data.reportId });
+          setPhoto(null);
+          setPhotoPreview(null);
+        }
+      } else if (reason === "IMAGE_INVALID") {
+        toast.error(t("hazardImageInvalid"));
+      } else if (reason === "IMAGE_UNSUPPORTED") {
+        toast.error(t("hazardImageUnsupported"));
+      } else if (reason === "PHOTO_REQUIRED") {
         toast.error(t("photoRequired", "請拍攝或上傳現場照片"));
       } else if (reason === "INVALID_PHOTO_TYPE") {
         toast.error(
           t("invalidImageType", "僅支援 JPG、PNG、WebP、HEIC 或 HEIF 格式照片"),
         );
-      } else if (reason === "PHOTO_TOO_LARGE") {
+      } else if (reason === "PHOTO_TOO_LARGE" || reason === "IMAGE_TOO_LARGE") {
         toast.error(t("imageTooLarge", "圖片大小不能超過 5MB"));
       } else if (reason === "EXIF_TOO_OLD") {
         toast.error(
@@ -275,9 +310,57 @@ export default function HazardReportPanel({
         toast.error(apiError?.message || t("reportFailed"));
       }
     } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
-  }, [hazardType, severity, description, photo, reportLocation, t, onClose]);
+  }, [hazardType, severity, description, photo, reportLocation, t]);
+
+  if (result)
+    return (
+      <div className="space-y-3">
+        <HazardReportResult
+          key={result.reportId}
+          initial={result.report}
+          reportId={result.reportId}
+          merged={result.merged}
+          onNewSubmission={() => {
+            setPhoto(null);
+            setPhotoPreview(null);
+            setDescription("");
+            setResult(null);
+          }}
+          onResubmit={(report) => {
+            const preset = hazardResubmitPreset(report);
+            setHazardType(preset.hazardType);
+            setRetryLocation(preset.location);
+            setDescription("");
+            setPhoto(null);
+            setPhotoPreview(null);
+            setResult(null);
+          }}
+        />
+        {user ? (
+          <Button
+            variant="outline"
+            onClick={() => {
+              const state = useMapStore.getState();
+              state.setSheetMode("home");
+              state.setActiveRailPanel("my-reports");
+              state.setMobileSheetSnap("full");
+            }}
+          >
+            {t("myReportsView")}
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {t("myReportsAnonymous")}
+          </p>
+        )}
+        <Button variant="outline" onClick={onClose}>
+          {t("hazardReviewClose")}
+        </Button>
+      </div>
+    );
 
   return (
     <div className="space-y-4">

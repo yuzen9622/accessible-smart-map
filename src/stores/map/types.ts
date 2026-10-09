@@ -37,6 +37,7 @@ export type RailPanel =
   | "parking"
   | "environment"
   | "hazard"
+  | "my-reports"
   | "welfare"
   | "saved";
 
@@ -53,6 +54,7 @@ export type RailPanel =
 export type RouteSubPanel = "none" | "explanation" | "environment" | "hazard";
 
 export interface HazardReportContext {
+  hazardType?: "obstacle" | "construction" | "data_error";
   description: string;
   location: LatLng | null;
 }

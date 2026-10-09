@@ -15,6 +15,7 @@ import {
 } from "@animateicons/react/lucide";
 import {
   Brain,
+  ClipboardList,
   Contrast,
   Database,
   KeyRound,
@@ -350,6 +351,22 @@ export default function AccountLogin({ active = true }: { active?: boolean }) {
               <DropdownMenuSeparator />
             </>
           )}
+
+          <DropdownMenuItem
+            onClick={() => {
+              const state = useMapStore.getState();
+              if (state.isNavigating) {
+                state.requestNavExit("my-reports");
+                return;
+              }
+              state.setSheetMode("home");
+              state.setActiveRailPanel("my-reports");
+              state.setMobileSheetSnap("full");
+            }}
+          >
+            <ClipboardList size={16} className="mr-2" />
+            {t("myReportsTitle")}
+          </DropdownMenuItem>
 
           {
             <>

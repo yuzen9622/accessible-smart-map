@@ -8,6 +8,11 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { confirmHazardReport, getNearbyHazardReports } from "@/lib/api/a11y";
 import { ApiError } from "@/lib/fetch";
+import {
+  hazardCanConfirm,
+  hazardExpired,
+  hazardReviewStatus,
+} from "@/lib/hazard-review";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
 import type { HazardReport } from "@/types/route";
@@ -30,13 +35,37 @@ export default function HazardWrapper() {
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   const [votingId, setVotingId] = useState<string | null>(null);
 
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const nextExpiry = Math.min(
+      ...hazards
+        .map((hazard) =>
+          hazard.expiredAt ? Date.parse(hazard.expiredAt) : Infinity,
+        )
+        .filter((expires) => expires > now),
+    );
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, Math.min(30_000, nextExpiry - Date.now())),
+    );
+    return () => clearTimeout(timer);
+  }, [hazards, now]);
+
   useEffect(() => {
     if (!userLocation) return;
-    getNearbyHazardReports(userLocation.lat, userLocation.lng, 1000)
+    const controller = new AbortController();
+    getNearbyHazardReports(
+      userLocation.lat,
+      userLocation.lng,
+      1000,
+      controller.signal,
+    )
       .then((res) => {
-        if (res.ok && res.data?.reports) setHazards(res.data.reports);
+        if (!controller.signal.aborted && res.ok && res.data?.reports)
+          setHazards(res.data.reports);
       })
       .catch(() => {});
+    return () => controller.abort();
   }, [userLocation]);
 
   const handleVote = async (
@@ -88,27 +117,31 @@ export default function HazardWrapper() {
 
   return (
     <>
-      {hazards.map((h) => {
-        const [lng, lat] = h.reportedLocation.coordinates;
-        return (
-          <Marker
-            key={h._id}
-            longitude={lng}
-            latitude={lat}
-            anchor="center"
-            onClick={(e) => {
-              e.originalEvent.stopPropagation();
-              setSelected(h);
-            }}
-          >
-            <div className="h-7 w-7 rounded-full bg-amber-500 flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform">
-              <AlertTriangle className="h-3.5 w-3.5 text-white" />
-            </div>
-          </Marker>
-        );
-      })}
+      {hazards
+        .filter((h) => !hazardExpired(h, now))
+        .map((h) => {
+          const [lng, lat] = h.reportedLocation.coordinates;
+          return (
+            <Marker
+              key={h._id}
+              longitude={lng}
+              latitude={lat}
+              anchor="center"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                setSelected(h);
+              }}
+            >
+              <div
+                className={`h-7 w-7 rounded-full ${h.status === "verified" ? "bg-amber-500" : "bg-neutral-400"} flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-white" />
+              </div>
+            </Marker>
+          );
+        })}
 
-      {selected && (
+      {selected && !hazardExpired(selected, now) && (
         <Popup
           longitude={selected.reportedLocation.coordinates[0]}
           latitude={selected.reportedLocation.coordinates[1]}
@@ -132,11 +165,16 @@ export default function HazardWrapper() {
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              {selected.status === "verified" ? t("confirmed") : t("pending")}
+              {t(hazardReviewStatus(selected, now))}
               {selected.confirmCount != null &&
                 ` · ${selected.confirmCount} ${t("confirmed")}`}
             </p>
-            {selected.status === "pending" &&
+            {selected.aiReview?.reason && (
+              <p className="text-xs text-muted-foreground">
+                {selected.aiReview.reason}
+              </p>
+            )}
+            {hazardCanConfirm(selected, now) &&
               selected.reporterId !== user?._id &&
               (votedIds.has(selected._id) ? (
                 <p className="text-xs italic text-muted-foreground">

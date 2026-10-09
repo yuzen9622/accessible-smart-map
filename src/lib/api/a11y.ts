@@ -162,11 +162,28 @@ export async function getNearbyHazardReports(
   return response as ApiResponse<{ reports: HazardReport[]; total: number }>;
 }
 
-export async function getMyHazardReports() {
-  const response = await authenticatedRequest(
-    `${END_POINT}/api/v1/a11y/reports/mine`,
+export async function getHazardReport(id: string, signal?: AbortSignal) {
+  const response = await fetchRequest(
+    `${END_POINT}/api/v1/a11y/reports/${encodeURIComponent(id)}`,
+    { signal },
   );
-  return response as ApiResponse<HazardReport[]>;
+  return response as ApiResponse<{ report: HazardReport }>;
+}
+
+export async function getMyHazardReports(
+  cursor?: string,
+  signal?: AbortSignal,
+) {
+  const query = cursor ? `?${new URLSearchParams({ cursor })}` : "";
+  const response = await authenticatedRequest(
+    `${END_POINT}/api/v1/a11y/reports/mine${query}`,
+    { signal },
+  );
+  return response as ApiResponse<{
+    reports: HazardReport[];
+    total: number;
+    nextCursor?: string | null;
+  }>;
 }
 
 export async function confirmHazardReport(

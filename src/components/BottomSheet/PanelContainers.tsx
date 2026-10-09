@@ -18,6 +18,7 @@ import {
   BusPanel,
   EnvironmentPanel,
   HazardReportPanel,
+  MyReportsPanel,
   NavigationContent,
   ParkingPanel,
   PlaceContent,
@@ -111,6 +112,8 @@ export function PanelTitle() {
           <Cloud className="h-4 w-4 text-sky-500" /> {t("environment")}
         </>
       );
+    case "my-reports":
+      return <>{t("myReportsTitle")}</>;
     case "hazard":
       return (
         <>
@@ -162,6 +165,8 @@ export function RailPanelOrHome({
       return <EnvironmentPanel onClose={closePanel} hideHeader />;
     case "hazard":
       return <HazardReportPanel onClose={closePanel} hideHeader />;
+    case "my-reports":
+      return <MyReportsPanel />;
     case "welfare":
       return <WelfarePanel onClose={closePanel} hideHeader />;
     // "search" and "none" are the home view itself — both mean "no

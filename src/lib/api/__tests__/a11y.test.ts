@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createHazardReport, rerouteAccessibleRoute } from "@/lib/api/a11y";
+import {
+  createHazardReport,
+  getHazardReport,
+  getMyHazardReports,
+  rerouteAccessibleRoute,
+} from "@/lib/api/a11y";
 import { END_POINT } from "@/lib/config";
 import { ApiError } from "@/lib/fetch";
 import useAuthStore from "@/stores/useAuthStore";
@@ -148,6 +153,102 @@ describe("createHazardReport", () => {
     await createHazardReport(formData);
 
     expect(capturedHeaders.Authorization).toBe("Bearer test-jwt-token");
+  });
+});
+
+describe("hazard v2 API contracts", () => {
+  it("GET by ID forwards abort signal and preserves public v2 report envelope", async () => {
+    const controller = new AbortController();
+    const report = {
+      _id: "r1",
+      aiReview: {
+        version: 2,
+        state: "queued",
+        reasonCode: "QUEUED",
+        reason: "Queued",
+      },
+    };
+    const mock = vi.fn(async () =>
+      jsonResponse({ ok: true, code: 200, data: { report } }),
+    );
+    vi.stubGlobal("fetch", mock);
+    expect((await getHazardReport("r1", controller.signal)).data).toEqual({
+      report,
+    });
+    expect(mock).toHaveBeenCalledWith(
+      `${END_POINT}/api/v1/a11y/reports/r1`,
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+  it("encodes mine cursors and forwards cancellation", async () => {
+    const controller = new AbortController();
+    const mock = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        data: { reports: [], total: 0, nextCursor: null },
+      }),
+    );
+    vi.stubGlobal("fetch", mock);
+    await getMyHazardReports("cursor&value", controller.signal);
+    expect(mock).toHaveBeenCalledWith(
+      `${END_POINT}/api/v1/a11y/reports/mine?cursor=cursor%26value`,
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+  it("mine returns reports/total/nextCursor, not an array", async () => {
+    const data = { reports: [{ _id: "r1" }], total: 2, nextCursor: "cursor" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ ok: true, code: 200, data })),
+    );
+    expect((await getMyHazardReports()).data).toEqual(data);
+  });
+  it.each([201, 200])(
+    "create %i preserves report and merged",
+    async (status) => {
+      const data = {
+        report: { _id: "r1", aiReview: { version: 2, state: "queued" } },
+        ...(status === 200 ? { merged: true } : {}),
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () =>
+          jsonResponse({ ok: true, code: status, data }, status),
+        ),
+      );
+      expect((await createHazardReport(new FormData())).data).toEqual(data);
+    },
+  );
+  it.each([
+    "IMAGE_INVALID",
+    "IMAGE_UNSUPPORTED",
+    "IMAGE_TOO_LARGE",
+    "REPORT_COMMIT_UNCERTAIN",
+  ])("preserves %s and optional uncertain reportId", async (reason) => {
+    const data = { reason, reportId: "uncertain-id" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ ok: false, code: 400, data }, 400)),
+    );
+    await expect(createHazardReport(new FormData())).rejects.toMatchObject({
+      reason,
+      data,
+    });
+  });
+  it("aborted GET rejection is preserved", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        if (init?.signal?.aborted)
+          throw new DOMException("Aborted", "AbortError");
+        throw new Error("signal missing");
+      }),
+    );
+    await expect(
+      getHazardReport("r1", controller.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 });
 
