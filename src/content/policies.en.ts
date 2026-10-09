@@ -87,8 +87,9 @@ export const privacyPolicyEn: Policy = {
       paragraphs: [
         "The Service uses Google Gemini for AI features, including text replies, live voice and some image verification. Depending on the feature, necessary conversation content, audio, photos, location or route context and accessibility preferences are sent through the backend to relevant providers. Memory text may also be processed by an embedding model to support retrieval.",
         "Before sending personal data to third-party AI, the Service must clearly explain the recipient, data involved and purpose, and obtain the required explicit consent. This policy does not replace in-app notices, choices or withdrawal mechanisms.",
-        "AI conversation history stays in frontend browser or device storage and is not written to the Service's backend database. Necessary conversation content is still sent through the backend to the AI service to generate replies; not storing it in a database does not mean no transmission or real-time processing occurs. Within the conversation and memory features, only information recorded by an AI memory-tool call is written to the memory database; this does not save the entire conversation. You can manage AI memory on supported settings screens. Turning memory off does not disable processing for the current AI interaction or delete previously saved memories. See section 7 for the scope of memory and account deletion. Avoid providing identity documents, medical records, passwords or other people's personal data that are unrelated to the feature.",
+        "Website and mobile AI history is kept in browser or device storage; the ordinary text-chat interface does not retain history on our backend. LINE conversations are cached on our server for 30 minutes to maintain context. Necessary content is still transmitted through the backend to the AI service. Information separately recorded by AI memory tools is stored in the memory database, rather than the entire conversation. You can manage memories in supported settings. Turning memory off does not stop current AI processing or delete existing memories. See section 7 for deletion scope. Avoid submitting unrelated identity documents, medical records, passwords or other people's personal data.",
         "The Service uses paid Google Gemini API services. Under Google's terms for those paid services, Google does not use submitted prompts (including related system instructions, cached content and files such as images or audio) or generated responses to improve its products or models. Google may still log or temporarily retain content for a limited period to prevent abuse, maintain security and comply with legal obligations. Exclusion from model improvement does not mean zero retention. This statement applies to paid Gemini API services and is not a blanket statement about other providers or other uses of data. Third-party processing regions and retention are described in sections 6 and 7.",
+        "The AI assistant uses the Gemini Interactions API to link multiple rounds of tool calls, and the associated interactions are stored by Google. The absence of history on our backend does not mean Google has no copy. Live voice uses Gemini Live and sends raw audio to Google for processing. Retention by these third-party services follows Google's applicable terms and service settings, rather than the conversation-history limits for our servers in the table below.",
       ],
     },
     {
@@ -113,12 +114,12 @@ export const privacyPolicyEn: Policy = {
             "Storage of report photos, which may be viewable through a URL.",
           ],
           [
-            "Google place services and other map or geospatial services",
+            "Google Places / Geocoding and other map or geospatial services",
             "Search text, coordinates, query areas or route information needed for places, maps and navigation.",
           ],
           [
             "LINE and your linked contacts",
-            "Binding identifiers, notifications, SOS location and related handling information for contact and location-sharing features.",
+            "The LINE Messaging API transmits linking identifiers, notification content, SOS locations and related information for contact and location sharing. Locations you provide through LINE are also processed by LINE.",
           ],
           [
             "Expo and device push-notification services",
@@ -160,7 +161,8 @@ export const privacyPolicyEn: Policy = {
         "Data is retained only as needed to provide the Service and meet its specified purposes, and is deleted, taken out of use or otherwise appropriately handled within the periods below. You may request deletion earlier. Any legal requirement for earlier deletion takes precedence.",
         "You can initiate account deletion in the mobile app settings. You may need to sign in again to verify your identity. Apple sign-in users may also need to authorize again so that related authorization can be revoked. After successful deletion, the backend removes the account and associated settings, contacts, SOS records, push tokens, primary memory records and reviews, among other associated records.",
         "To maintain hazard information, account deletion may first replace identifiers to remove the direct association with the original account. Content and photos are then handled under the schedule below and applicable personal-data deletion requests. Replacing identifiers does not fully anonymize photos, text or coordinates; expiry or removal from display does not mean a file has been deleted. You may separately request removal of personal data, and we will remove a photo or an entire report where necessary.",
-        "AI memories are deleted when you delete your account, when you manually delete them in settings, or automatically when a memory has not been used for 12 consecutive months. After deletion, we stop using that memory in subsequent interactions and clear related primary-system copies. Backups and third-party data follow their respective applicable retention rules. If deletion fails or lawful retention applies, we will explain the handling status and applicable reason.",
+        "When you manually delete an AI memory, its content and metadata such as categories are immediately removed from the primary database and no longer used in later interactions. The system also cleans up retrieval vectors and residual copies. A deletion-tracking record without memory content may be retained for at most 30 days to complete cleanup; it contains only memory, user and vector identifiers and timestamps. Account deletion also removes memories. Backups and third-party data follow their respective retention rules. If deletion fails or lawful retention applies, we will explain the status and reason.",
+        "Deleting our original photo and URL cannot remotely recall copies already downloaded by others or cached by browsers or intermediaries. Newly uploaded photos currently have a one-hour cache lifetime. Photos uploaded before this change had a one-year cache lifetime; existing cached copies may remain until that original period expires, even after the original file's cache settings are updated.",
         "These periods do not extend any obligation to delete data or stop processing earlier under applicable law. Where a specific legal obligation, dispute or security incident requires longer retention, it must be limited to necessary data and duration with restricted access, followed by deletion when the reason ends. The table applies to data managed by the Service. Data retained by third parties for independent security or legal obligations is handled under their applicable terms and law. For example, paid Google Gemini API services may retain content for a limited period for the purposes in section 4. We will assist with deletion requests to the relevant services where applicable.",
       ],
       table: {
@@ -168,15 +170,19 @@ export const privacyPolicyEn: Policy = {
         rows: [
           [
             "Accounts, settings and contacts",
-            "Retained while the account exists. Related personal data in primary systems is removed within 30 days after identity verification for an account-deletion request is completed.",
+            "Retained while the account exists, with related personal data in primary systems removed within 30 days after identity verification for deletion. Account deletion immediately removes the account, settings and contacts. A temporary deletion-tracking record supports cleanup of data written by requests still being processed when the account was deleted.",
           ],
           [
             "Ordinary navigation location",
-            "Used for real-time processing without a persistent movement history by default. Session location buffers are cleared when navigation ends. SOS, places deliberately saved by the user and the last location stored on the device are handled separately for their respective purposes.",
+            "Used for real-time processing without retaining an ordinary navigation movement history. Server-side route caches have a 30-minute expiry. General access logs record route templates without query contents or path-parameter values. SOS, deliberately saved places and the last location on the device are handled separately.",
           ],
           [
             "SOS location and events",
-            "Deleted within 30 days after the SOS is resolved. Under the current design, sharing links expire 24 hours after resolution; link expiry and record deletion are separate events.",
+            "The entire event and its location are deleted within 30 days after resolution. An active SOS with no location update for more than 24 hours is automatically resolved, recorded as a system resolution, and contacts are notified; failed notifications are retried. Automatic resolution does not confirm personal safety. Sharing links expire 24 hours after resolution; link expiry and record deletion are separate events.",
+          ],
+          [
+            "Contact locations shared through LINE",
+            "Coordinates held by the Service are cleared within 30 days after their last update. Messages and copies held by LINE follow its applicable terms.",
           ],
           [
             "Raw audio",
@@ -184,27 +190,27 @@ export const privacyPolicyEn: Policy = {
           ],
           [
             "AI conversation history",
-            "History is kept only in frontend browser or device storage and is not written to the Service's backend database. You can clear local conversation history. Memories separately recorded by AI tool calls follow the next row.",
+            "Website and mobile history remains in browser or device storage and can be cleared locally. The ordinary text-chat interface does not retain backend history. LINE conversations are cached on our server for 30 minutes; the policy limit for conversation history on our servers is 30 days. Separately recorded AI memories follow the next row, and Google-side interaction retention is described in section 4.",
           ],
           [
             "AI long-term memory",
-            "Memories are deleted along with your account, and you can also manually delete individual memories. The system automatically clears each memory after 12 consecutive months without use, measured from creation if never used.",
+            "You can manually delete memories, and account deletion also removes them. Each memory is automatically cleared after 12 consecutive months without use or update, measured from the later of its last use and last update, or creation if neither has occurred. A memory with a separate expiry is also cleared when it expires.",
           ],
           [
             "Report photos, EXIF and identifiable content",
-            "Original photos and identifiable data are cleared within 90 days after report expiry or closure, whichever occurs first. Personal-data deletion requests can also be made while a report is active. Statistics retained for longer must be separately and effectively de-identified.",
+            "Within 90 days after expiry or closure (currently including rejection), whichever occurs first, cleanup first removes reporter, voter and reviewer identities, descriptions, original EXIF values, AI reasoning and labels, then deletes cloud photos and their URLs. Type, location, severity, status, vote counts and timestamps remain for statistics. Retaining location does not establish complete anonymization; personal-data removal can still be requested. Cleaned reports disappear from My Reports and can no longer be voted on or reviewed. Approving a previously rejected report cancels the rejection-based period; a later closure starts it again. The original expiry-based period still applies.",
           ],
           [
             "General operational logs",
-            "Retained for at most 30 days from creation. Full conversations, precise locations and sign-in credentials should not be logged.",
+            "Retained for at most 30 days from creation, enforced through deployment-platform or log-collection settings. Full conversations, precise locations and sign-in credentials should not be logged.",
           ],
           [
             "Necessary security audit logs",
-            "Retained for at most 90 days from creation, subject to the specific investigation or legal-preservation exceptions in this section.",
+            "Retained for at most 90 days from creation through security-log system settings, subject to the specific investigation or legal-preservation exceptions in this section.",
           ],
           [
             "Backups",
-            "Each backup is deleted or overwritten within 90 days of creation. Established deletion requests must be reapplied when restoring data.",
+            "Each backup is deleted or overwritten within 90 days of creation through database and backup-service settings. Established deletion requests must be reapplied when restoring data.",
           ],
         ],
       },
