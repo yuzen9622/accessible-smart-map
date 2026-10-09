@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ToolActivity } from "@/stores/useChatStore";
 import { toolDoneLabel, toolLoadingLabel } from "./toolLabels";
 
@@ -86,14 +87,18 @@ function readString(value: unknown): string | undefined {
  * 從工具參數擠出一句人看得懂的補充。起訖點優先（路線類工具最有資訊量），
  * 其次是 `DETAIL_KEYS`。抽不到就回 `undefined`，row 只顯示工具名稱。
  */
-export function summarizeToolArgs(args: unknown): string | undefined {
+export function summarizeToolArgs(
+  args: unknown,
+  t: TFunction,
+): string | undefined {
   const parsed = parseArgs(args);
   if (!parsed) return undefined;
 
   const origin = readString(parsed.origin);
   const destination = readString(parsed.destination);
   if (origin || destination) {
-    const from = origin === CURRENT_LOCATION ? "目前位置" : origin;
+    const from =
+      origin === CURRENT_LOCATION ? t("chatbot.trace.currentLocation") : origin;
     if (from && destination) return truncate(`${from} → ${destination}`);
     return truncate((destination ?? from) as string);
   }
@@ -106,12 +111,15 @@ export function summarizeToolArgs(args: unknown): string | undefined {
 }
 
 /** 工具呼叫串 → trace 的每一列。順序即發生順序。 */
-export function buildTraceRows(activities: ToolActivity[]): TraceRow[] {
+export function buildTraceRows(
+  activities: ToolActivity[],
+  t: TFunction,
+): TraceRow[] {
   return activities.map((activity, index) => ({
     id: `${activity.name}-${index}`,
     name: activity.name,
-    label: toolDoneLabel(activity.name),
-    detail: summarizeToolArgs(activity.args),
+    label: toolDoneLabel(activity.name, t),
+    detail: summarizeToolArgs(activity.args, t),
     status: activity.status,
   }));
 }
@@ -119,17 +127,21 @@ export function buildTraceRows(activities: ToolActivity[]): TraceRow[] {
 /**
  * 耗時字串。刻意不用「4.0 秒」這種尾數——整數就寫整數。
  */
-export function formatThinkingDuration(ms: number): string {
+export function formatThinkingDuration(ms: number, t: TFunction): string {
   if (!Number.isFinite(ms) || ms < 0) return "";
-  if (ms < 1000) return "不到 1 秒";
+  if (ms < 1000) return t("chatbot.trace.lessThanSecond");
   const totalSeconds = ms / 1000;
   if (totalSeconds < 60) {
     const rounded = Math.round(totalSeconds * 10) / 10;
-    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} 秒`;
+    return t("chatbot.trace.seconds", {
+      seconds: Number.isInteger(rounded) ? rounded : rounded.toFixed(1),
+    });
   }
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.round(totalSeconds % 60);
-  return seconds ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分`;
+  return seconds
+    ? t("chatbot.trace.minutesSeconds", { minutes, seconds })
+    : t("chatbot.trace.minutes", { minutes });
 }
 
 /**
@@ -144,26 +156,29 @@ export function describeThinking({
   isStreaming,
   hasContent,
   thinkingMs,
+  t,
 }: {
   activities: ToolActivity[];
   isStreaming: boolean;
   hasContent: boolean;
   thinkingMs?: number;
+  t: TFunction;
 }): ThinkingHeader {
   const running = activities.find((a) => a.status === "running");
   const working = isStreaming && (!hasContent || !!running);
 
   if (working) {
-    if (running) return { working, label: toolLoadingLabel(running.name) };
-    if (activities.length) return { working, label: "正在整理答覆…" };
-    return { working, label: "思考中…" };
+    if (running) return { working, label: toolLoadingLabel(running.name, t) };
+    if (activities.length)
+      return { working, label: t("chatbot.trace.organizing") };
+    return { working, label: t("chatbot.thinking") };
   }
 
   const duration =
-    thinkingMs === undefined ? "" : formatThinkingDuration(thinkingMs);
+    thinkingMs === undefined ? "" : formatThinkingDuration(thinkingMs, t);
   const base = activities.length
-    ? `已完成 ${activities.length} 項查詢`
-    : "已完成思考";
+    ? t("chatbot.trace.completedQueries", { count: activities.length })
+    : t("chatbot.trace.completedThinking");
   return { working, label: duration ? `${base} · ${duration}` : base };
 }
 

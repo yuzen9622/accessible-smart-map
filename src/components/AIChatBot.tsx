@@ -212,6 +212,7 @@ function ToolResultsBox({ activities }: { activities: ToolActivity[] }) {
 }
 
 function MessageBubble({ message }: { message: ChatBubble }) {
+  const { t } = useAppTranslation();
   const isUser = message.role === "user";
   const activities = message.toolActivities ?? [];
   // 所有已完成的工具都嘗試渲染；ToolResultView 對無法渲染的工具回 null
@@ -225,9 +226,10 @@ function MessageBubble({ message }: { message: ChatBubble }) {
     isStreaming: !!message.isStreaming,
     hasContent: !!message.content,
     thinkingMs: message.thinkingMs,
+    t,
   });
   const showTrace = !isUser && shouldShowTrace({ activities, header });
-  const traceRows = buildTraceRows(activities);
+  const traceRows = buildTraceRows(activities, t);
 
   return (
     <motion.div

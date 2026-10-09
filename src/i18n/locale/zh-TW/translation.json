@@ -169,6 +169,125 @@
   "assistFirstMessage": "你好！我是無障礙智慧地圖的 AI 助理，有什麼我能幫你的嗎？附近無障礙設施或者是問題回饋？請隨時提出！",
   "assistThinking": " AI 助理思考中",
   "chatbot": {
+    "trace": {
+      "organizing": "正在整理答覆…",
+      "completedQueries": "已完成 {{count}} 項查詢",
+      "completedThinking": "已完成思考",
+      "currentLocation": "目前位置",
+      "running": "進行中",
+      "done": "已完成",
+      "lessThanSecond": "不到 1 秒",
+      "seconds": "{{seconds}} 秒",
+      "minutes": "{{minutes}} 分",
+      "minutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
+      "unknownLoading": "正在{{name}}…",
+      "tools": {
+        "findGooglePlaces": {
+          "label": "搜尋周邊地點",
+          "loading": "正在搜尋周邊地點…"
+        },
+        "findA11yPlaces": {
+          "label": "查詢無障礙設施",
+          "loading": "正在查詢周邊無障礙設施…"
+        },
+        "getA11yFacilityDetails": {
+          "label": "查詢無障礙設施詳情",
+          "loading": "正在查詢無障礙設施詳情…"
+        },
+        "findCampusAccessibility": {
+          "label": "查詢校園無障礙",
+          "loading": "正在查詢校園無障礙資訊…"
+        },
+        "getCampusAccessibilityDetails": {
+          "label": "查詢校區設施詳情",
+          "loading": "正在查詢校區設施詳情…"
+        },
+        "planAccessibleRoute": {
+          "label": "規劃無障礙路線",
+          "loading": "正在為你規劃無障礙路線…"
+        },
+        "getNavInstructions": {
+          "label": "產生導航指引",
+          "loading": "正在產生導航指引…"
+        },
+        "getBusRoute": {
+          "label": "查詢公車路線",
+          "loading": "正在查詢公車路線…"
+        },
+        "getBusRouteDetail": {
+          "label": "查詢公車路線詳情",
+          "loading": "正在查詢公車路線詳情…"
+        },
+        "getBusArrival": {
+          "label": "查詢公車預估到站時間",
+          "loading": "正在查詢公車到站時間…"
+        },
+        "getBusTimetable": {
+          "label": "查詢公車時刻表",
+          "loading": "正在查詢公車時刻表…"
+        },
+        "trackBuses": {
+          "label": "追蹤公車即時動態",
+          "loading": "正在追蹤公車即時動態…"
+        },
+        "findNearbyBusStops": {
+          "label": "查詢附近公車站牌",
+          "loading": "正在查詢附近公車站牌…"
+        },
+        "getAirQuality": {
+          "label": "查詢空氣品質",
+          "loading": "正在查詢空氣品質…"
+        },
+        "getEnvironmentInfo": {
+          "label": "查詢周邊環境資訊",
+          "loading": "正在查詢周邊環境資訊…"
+        },
+        "getNearbyHazards": {
+          "label": "查詢附近障礙物",
+          "loading": "正在查詢附近路況與障礙物…"
+        },
+        "findNearbyParking": {
+          "label": "查詢身障停車位",
+          "loading": "正在尋找身障停車位…"
+        },
+        "saveMemory": {
+          "label": "記錄偏好設定",
+          "loading": "正在記住你的偏好…"
+        },
+        "deleteMemory": {
+          "label": "刪除偏好設定",
+          "loading": "正在刪除記憶…"
+        },
+        "searchAccessibilityGuide": {
+          "label": "查詢無障礙指南",
+          "loading": "正在查詢無障礙指南…"
+        },
+        "webSearch": {
+          "label": "網路搜尋",
+          "loading": "正在搜尋網路資訊…"
+        },
+        "planRoute": {
+          "label": "規劃路線",
+          "loading": "正在規劃路線…"
+        },
+        "getTrainTimetable": {
+          "label": "查詢火車時刻表",
+          "loading": "正在查詢火車時刻表…"
+        },
+        "getStationTimetable": {
+          "label": "查詢車站發車時刻",
+          "loading": "正在查詢車站發車時刻…"
+        },
+        "getMetroAlerts": {
+          "label": "查詢捷運營運狀態",
+          "loading": "正在查詢捷運營運狀態…"
+        },
+        "getTransitAlerts": {
+          "label": "查詢大眾運輸警報",
+          "loading": "正在查詢大眾運輸警報…"
+        }
+      }
+    },
     "voice": {
       "micLabel": "語音對話",
       "loginRequired": "請先登入才能使用語音對話",

@@ -1,12 +1,36 @@
-import { describe, expect, it } from "vitest";
+import { createInstance } from "i18next";
+import { beforeAll, describe, expect, it } from "vitest";
+import en from "@/i18n/locale/en/translation.json";
+import zhTW from "@/i18n/locale/zh-TW/translation.json";
 import type { ToolActivity } from "@/stores/useChatStore";
 import {
-  buildTraceRows,
-  describeThinking,
-  formatThinkingDuration,
+  buildTraceRows as buildTraceRowsTranslated,
+  describeThinking as describeThinkingTranslated,
+  formatThinkingDuration as formatThinkingDurationTranslated,
   shouldShowTrace,
-  summarizeToolArgs,
+  summarizeToolArgs as summarizeToolArgsTranslated,
 } from "../thinkingTrace";
+
+const translations = createInstance();
+beforeAll(async () => {
+  await translations.init({
+    resources: { en: { translation: en }, "zh-TW": { translation: zhTW } },
+    lng: "zh-TW",
+    fallbackLng: "zh-TW",
+    interpolation: { escapeValue: false },
+  });
+});
+const zh = translations.getFixedT("zh-TW");
+const english = translations.getFixedT("en");
+const buildTraceRows = (activities: ToolActivity[]) =>
+  buildTraceRowsTranslated(activities, zh);
+const summarizeToolArgs = (args: unknown) =>
+  summarizeToolArgsTranslated(args, zh);
+const formatThinkingDuration = (ms: number) =>
+  formatThinkingDurationTranslated(ms, zh);
+const describeThinking = (
+  input: Omit<Parameters<typeof describeThinkingTranslated>[0], "t">,
+) => describeThinkingTranslated({ ...input, t: zh });
 
 function activity(
   name: string,
@@ -239,5 +263,142 @@ describe("shouldShowTrace", () => {
       thinkingMs: 2000,
     });
     expect(shouldShowTrace({ activities, header })).toBe(true);
+  });
+});
+
+describe("English thinking trace", () => {
+  it("refreshes stored tool history when the active UI language changes", async () => {
+    const activities = [activity("findGooglePlaces", "done")];
+    const render = () => ({
+      rows: buildTraceRowsTranslated(activities, translations.t),
+      header: describeThinkingTranslated({
+        activities,
+        isStreaming: false,
+        hasContent: true,
+        thinkingMs: 51700,
+        t: translations.t,
+      }),
+    });
+    expect(render().header.label).toBe("已完成 1 項查詢 · 51.7 秒");
+    try {
+      await translations.changeLanguage("en");
+      expect(render().header.label).toBe("Completed 1 query · 51.7 s");
+      expect(render().rows[0].label).toBe("Search nearby places");
+    } finally {
+      await translations.changeLanguage("zh-TW");
+    }
+    expect(render().rows[0].label).toBe("搜尋周邊地點");
+  });
+
+  it("translates the screenshot summary and tool labels while preserving place names", () => {
+    const activities = [
+      activity("findGooglePlaces", "done", { query: "station" }),
+      activity("findGooglePlaces", "done", { query: "metro station" }),
+      activity("planAccessibleRoute", "done", {
+        origin: "current_location",
+        destination: "捷運豐樂公園站",
+      }),
+    ];
+    expect(
+      describeThinkingTranslated({
+        activities,
+        isStreaming: false,
+        hasContent: true,
+        thinkingMs: 51700,
+        t: english,
+      }).label,
+    ).toBe("Completed 3 queries · 51.7 s");
+    const rows = buildTraceRowsTranslated(activities, english);
+    expect(rows.map((row) => row.label)).toEqual([
+      "Search nearby places",
+      "Search nearby places",
+      "Plan an accessible route",
+    ]);
+    expect(rows[2].detail).toBe("Current location → 捷運…");
+    expect(buildTraceRowsTranslated(activities, zh)[0].label).toBe(
+      "搜尋周邊地點",
+    );
+  });
+
+  it("uses singular and plural counts and omits absent durations", () => {
+    for (const [count, label] of [
+      [1, "Completed 1 query"],
+      [2, "Completed 2 queries"],
+    ] as const) {
+      expect(
+        describeThinkingTranslated({
+          activities: Array.from({ length: count }, () =>
+            activity("webSearch", "done"),
+          ),
+          isStreaming: false,
+          hasContent: true,
+          t: english,
+        }).label,
+      ).toBe(label);
+    }
+    expect(
+      describeThinkingTranslated({
+        activities: [],
+        isStreaming: false,
+        hasContent: true,
+        thinkingMs: 1500,
+        t: english,
+      }).label,
+    ).toBe("Finished thinking · 1.5 s");
+  });
+
+  it("translates thinking, answer preparation, running tools, and unknown tools", () => {
+    for (const [activities, expected] of [
+      [[], "Thinking…"],
+      [[activity("webSearch", "done")], "Preparing your answer…"],
+      [
+        [activity("planAccessibleRoute", "running")],
+        "Planning an accessible route…",
+      ],
+      [[activity("someNewTool", "running")], "Running someNewTool…"],
+    ] as [ToolActivity[], string][]) {
+      expect(
+        describeThinkingTranslated({
+          activities,
+          isStreaming: true,
+          hasContent: false,
+          t: english,
+        }).label,
+      ).toBe(expected);
+    }
+    expect(
+      buildTraceRowsTranslated([activity("someNewTool", "done")], english)[0]
+        .label,
+    ).toBe("someNewTool");
+  });
+
+  it.each([
+    [999, "Less than 1 second"],
+    [1000, "1 s"],
+    [60000, "1 min"],
+    [65000, "1 min 5 s"],
+  ])("translates %i ms as %s", (ms, expected) => {
+    expect(formatThinkingDurationTranslated(ms as number, english)).toBe(
+      expected,
+    );
+  });
+
+  it("has English labels and loading text for every supported tool", () => {
+    expect(Object.keys(en.chatbot.trace.tools).sort()).toEqual(
+      Object.keys(zhTW.chatbot.trace.tools).sort(),
+    );
+    for (const name of Object.keys(zhTW.chatbot.trace.tools)) {
+      expect(
+        buildTraceRowsTranslated([activity(name, "done")], english)[0].label,
+      ).not.toMatch(/[\u3400-\u9fff]/);
+      expect(
+        describeThinkingTranslated({
+          activities: [activity(name, "running")],
+          isStreaming: true,
+          hasContent: false,
+          t: english,
+        }).label,
+      ).not.toMatch(/[\u3400-\u9fff]/);
+    }
   });
 });

@@ -110,6 +110,126 @@
   "assistFirstMessage": "Hello! I'm the Accessible Smart Map AI Assistant. How can I help you? Looking for nearby accessible facilities or have some feedback? Feel free to ask!",
   "assistThinking": "AI Assistant is thinking",
   "chatbot": {
+    "trace": {
+      "organizing": "Preparing your answer…",
+      "completedQueries_one": "Completed {{count}} query",
+      "completedQueries_other": "Completed {{count}} queries",
+      "completedThinking": "Finished thinking",
+      "currentLocation": "Current location",
+      "running": "In progress",
+      "done": "Completed",
+      "lessThanSecond": "Less than 1 second",
+      "seconds": "{{seconds}} s",
+      "minutes": "{{minutes}} min",
+      "minutesSeconds": "{{minutes}} min {{seconds}} s",
+      "unknownLoading": "Running {{name}}…",
+      "tools": {
+        "findGooglePlaces": {
+          "label": "Search nearby places",
+          "loading": "Searching nearby places…"
+        },
+        "findA11yPlaces": {
+          "label": "Find accessible facilities",
+          "loading": "Finding nearby accessible facilities…"
+        },
+        "getA11yFacilityDetails": {
+          "label": "Get accessible facility details",
+          "loading": "Getting accessible facility details…"
+        },
+        "findCampusAccessibility": {
+          "label": "Find campus accessibility",
+          "loading": "Checking campus accessibility…"
+        },
+        "getCampusAccessibilityDetails": {
+          "label": "Get campus facility details",
+          "loading": "Getting campus facility details…"
+        },
+        "planAccessibleRoute": {
+          "label": "Plan an accessible route",
+          "loading": "Planning an accessible route…"
+        },
+        "getNavInstructions": {
+          "label": "Get navigation directions",
+          "loading": "Getting navigation directions…"
+        },
+        "getBusRoute": {
+          "label": "Find bus routes",
+          "loading": "Finding bus routes…"
+        },
+        "getBusRouteDetail": {
+          "label": "Get bus route details",
+          "loading": "Getting bus route details…"
+        },
+        "getBusArrival": {
+          "label": "Check bus arrivals",
+          "loading": "Checking bus arrivals…"
+        },
+        "getBusTimetable": {
+          "label": "Check bus timetables",
+          "loading": "Checking bus timetables…"
+        },
+        "trackBuses": {
+          "label": "Track live buses",
+          "loading": "Tracking live buses…"
+        },
+        "findNearbyBusStops": {
+          "label": "Find nearby bus stops",
+          "loading": "Finding nearby bus stops…"
+        },
+        "getAirQuality": {
+          "label": "Check air quality",
+          "loading": "Checking air quality…"
+        },
+        "getEnvironmentInfo": {
+          "label": "Check local environment",
+          "loading": "Checking the local environment…"
+        },
+        "getNearbyHazards": {
+          "label": "Find nearby hazards",
+          "loading": "Checking nearby road conditions and hazards…"
+        },
+        "findNearbyParking": {
+          "label": "Find accessible parking",
+          "loading": "Finding accessible parking…"
+        },
+        "saveMemory": {
+          "label": "Save preferences",
+          "loading": "Saving your preferences…"
+        },
+        "deleteMemory": {
+          "label": "Delete preferences",
+          "loading": "Deleting memories…"
+        },
+        "searchAccessibilityGuide": {
+          "label": "Search accessibility guides",
+          "loading": "Searching accessibility guides…"
+        },
+        "webSearch": {
+          "label": "Search the web",
+          "loading": "Searching the web…"
+        },
+        "planRoute": {
+          "label": "Plan a route",
+          "loading": "Planning a route…"
+        },
+        "getTrainTimetable": {
+          "label": "Check train timetables",
+          "loading": "Checking train timetables…"
+        },
+        "getStationTimetable": {
+          "label": "Check station departures",
+          "loading": "Checking station departures…"
+        },
+        "getMetroAlerts": {
+          "label": "Check metro service status",
+          "loading": "Checking metro service status…"
+        },
+        "getTransitAlerts": {
+          "label": "Check transit alerts",
+          "loading": "Checking transit alerts…"
+        }
+      }
+    },
     "voice": {
       "micLabel": "Voice conversation",
       "loginRequired": "Please log in to use voice conversation",

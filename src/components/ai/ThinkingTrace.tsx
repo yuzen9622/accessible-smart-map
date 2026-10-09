@@ -4,6 +4,7 @@ import { Check, ChevronDown, Sparkles } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import useReducedMotion from "@/hook/useReducedMotion";
+import { useAppTranslation } from "@/i18n/client";
 import { toolToOrbState } from "@/lib/ai/orbState";
 import type { ThinkingHeader, TraceRow } from "@/lib/ai/thinkingTrace";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ export default function ThinkingTrace({
   header: ThinkingHeader;
   className?: string;
 }) {
+  const { t } = useAppTranslation();
   const reducedMotion = useReducedMotion();
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
 
@@ -188,7 +190,9 @@ export default function ThinkingTrace({
                       </span>
                     )}
                     <span className="sr-only">
-                      {row.status === "running" ? "進行中" : "已完成"}
+                      {row.status === "running"
+                        ? t("chatbot.trace.running")
+                        : t("chatbot.trace.done")}
                     </span>
                   </li>
                 ))}
