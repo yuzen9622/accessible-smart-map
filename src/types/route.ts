@@ -632,7 +632,15 @@ export interface HazardGeoPoint {
 
 export type HazardSeverity = "blocking" | "difficult" | "minor";
 
+/** Safety-only projection: contains no user text, photos, or author identity. */
+export type SafetyHazardReport = Pick<
+  HazardReport,
+  "_id" | "hazardType" | "severity" | "reportedLocation" | "expiredAt"
+> & { status: "verified" };
+
 export interface HazardReport {
+  /** Permission hint; never infer or disclose a private reporter identity. */
+  canBlockAuthor?: boolean;
   _id: string;
   reporterId?: string;
   hazardType: "obstacle" | "construction" | "data_error";

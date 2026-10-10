@@ -20,6 +20,9 @@ import { haversineMeters } from "@/lib/geo";
 import { hazardResubmitPreset } from "@/lib/hazard-review";
 import type { HazardReportContext } from "@/stores/map/types";
 import useAuthStore from "@/stores/useAuthStore";
+import useContentSafetyStore, {
+  captureSafetyAccount,
+} from "@/stores/useContentSafetyStore";
 import useMapStore from "@/stores/useMapStore";
 import type { HazardReport, HazardSeverity } from "@/types/route";
 import { Button } from "../ui/button";
@@ -93,11 +96,12 @@ type HazardReportPanelProps = { onClose: () => void; hideHeader?: boolean };
 
 export default function HazardReportPanel(props: HazardReportPanelProps) {
   const context = useMapStore((s) => s.pendingReportContext);
+  const accountEpoch = useContentSafetyStore((s) => s.accountEpoch);
   // A new entry replaces the whole form before it can render stale position,
   // type or description; responsive copies share the same entry context.
   return (
     <HazardReportForm
-      key={JSON.stringify(context)}
+      key={`${accountEpoch}:${JSON.stringify(context)}`}
       {...props}
       initialContext={context}
     />
@@ -246,6 +250,7 @@ function HazardReportForm({
       return;
     }
 
+    const currentAccount = captureSafetyAccount(true);
     submitInFlight.current = true;
     setIsSubmitting(true);
     setRetryLocation({ lat: reportLocation.lat, lng: reportLocation.lng });
@@ -260,6 +265,7 @@ function HazardReportForm({
       formData.append("photo", photo);
 
       const res = await createHazardReport(formData);
+      if (!currentAccount()) return;
       if (res.ok || res.success) {
         const report = res.data?.report;
         if (!report?._id) throw new Error(t("hazardReviewUncertain"));
@@ -271,6 +277,7 @@ function HazardReportForm({
         toast.error(res.message || t("reportFailed"));
       }
     } catch (err: unknown) {
+      if (!currentAccount()) return;
       const apiError = err as {
         code?: number;
         message?: string;
@@ -312,7 +319,7 @@ function HazardReportForm({
       }
     } finally {
       submitInFlight.current = false;
-      setIsSubmitting(false);
+      if (currentAccount()) setIsSubmitting(false);
     }
   }, [hazardType, severity, description, photo, reportLocation, t]);
 

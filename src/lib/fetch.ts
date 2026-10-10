@@ -8,6 +8,10 @@ interface RequestOptions<T> {
   body?: T;
   headers?: Record<string, string>;
   requireAuth?: boolean;
+  /** Bind a sensitive request and every auth retry to its originating account. */
+  isCurrentSession?: () => boolean;
+  /** Business permission failures must not discard a valid login. */
+  preserveSessionOnForbidden?: boolean;
   signal?: AbortSignal;
   /**
    * Some authenticated endpoints reuse 401 for a business-logic error
@@ -61,6 +65,8 @@ export async function fetchRequest<T>(
     requireAuth = false,
     signal,
     skipAuthRetry = false,
+    isCurrentSession,
+    preserveSessionOnForbidden = false,
     __retried,
     ...rest
   } = options as InternalRequestOptions<T>;
@@ -68,8 +74,15 @@ export async function fetchRequest<T>(
   // before any await — this is the "session ref right before the retry
   // fires" that the retry-still-401 path invalidates via compare-and-commit.
   const sessionAtEntry = useAuthStore.getState().session;
+  const assertCurrentSession = () => {
+    if (isCurrentSession && !isCurrentSession()) {
+      throw new DOMException("Account changed", "AbortError");
+    }
+  };
+  assertCurrentSession();
   if (requireAuth) {
     const token = await getAccessToken();
+    assertCurrentSession();
     headers.Authorization = `Bearer ${token}`;
   }
   const init: RequestInit = {
@@ -106,8 +119,14 @@ export async function fetchRequest<T>(
           message: response.statusText,
         }
   ) as ApiResponse<unknown>;
+  assertCurrentSession();
   const isSuccess = data.ok === true || data.success === true;
-  if (!isSuccess && data.code === 403 && requireAuth) {
+  if (
+    !isSuccess &&
+    data.code === 403 &&
+    requireAuth &&
+    !preserveSessionOnForbidden
+  ) {
     // Token revoked server-side (e.g. password changed elsewhere via
     // tokenVersion bump) — refreshing would fail too, so invalidate the
     // session immediately instead of leaving the UI stuck in a stale
@@ -141,6 +160,7 @@ export async function fetchRequest<T>(
       return data;
     }
     const newAccessToken = await refreshAccessToken();
+    assertCurrentSession();
     if (newAccessToken) {
       // The coordinator already committed the new token to the store, so
       // the retried call's own `requireAuth` block above will pick it up
@@ -150,6 +170,8 @@ export async function fetchRequest<T>(
         body,
         headers,
         requireAuth,
+        isCurrentSession,
+        preserveSessionOnForbidden,
         signal,
         ...rest,
         __retried: true,
@@ -172,4 +194,31 @@ export async function authenticatedRequest<T>(
   options: Omit<RequestOptions<T>, "requireAuth"> = {},
 ) {
   return fetchRequest(url, { ...options, requireAuth: true });
+}
+
+/** Public content is personalized only when an account is signed in. */
+export function personalizedRequest<T>(
+  url: string,
+  options: RequestOptions<T> = {},
+) {
+  // A request-local epoch includes anonymous sessions and A → B → A changes.
+  // Keep this in the transport to avoid importing the safety store into the
+  // auth-store → API → transport dependency cycle.
+  let accountUnchanged = true;
+  const unsubscribe = useAuthStore.subscribe((next, previous) => {
+    if (
+      next.user?._id !== previous.user?._id ||
+      Boolean(next.session?.accessToken) !==
+        Boolean(previous.session?.accessToken)
+    ) {
+      accountUnchanged = false;
+    }
+  });
+  return fetchRequest(url, {
+    ...options,
+    isCurrentSession: () =>
+      accountUnchanged && (options.isCurrentSession?.() ?? true),
+    requireAuth: Boolean(useAuthStore.getState().session?.accessToken),
+    preserveSessionOnForbidden: true,
+  }).finally(unsubscribe);
 }

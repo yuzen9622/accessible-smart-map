@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import ContentSafetyMenu from "@/components/content-safety/ContentSafetyMenu";
 import { useAppTranslation } from "@/i18n/client";
 import {
   createReview,
@@ -20,6 +21,7 @@ import {
   updateReview,
 } from "@/lib/api/review";
 import useAuthStore from "@/stores/useAuthStore";
+import useContentSafetyStore from "@/stores/useContentSafetyStore";
 import type {
   PlaceReviewType,
   ReviewItem,
@@ -102,7 +104,21 @@ function StarRating({
 
 const PAGE_SIZE = 10;
 
-export default function PlaceReviewSection({
+export default function PlaceReviewSection(props: {
+  placeId: string;
+  placeType: PlaceReviewType;
+}) {
+  const epoch = useContentSafetyStore((s) => s.accountEpoch);
+  const revision = useContentSafetyStore((s) => s.revision);
+  return (
+    <PlaceReviewSession
+      key={`${props.placeId}:${props.placeType}:${epoch}:${revision}`}
+      {...props}
+    />
+  );
+}
+
+function PlaceReviewSession({
   placeId,
   placeType,
 }: {
@@ -182,7 +198,10 @@ export default function PlaceReviewSection({
     setRatings(EMPTY_RATINGS);
     setComment("");
     loadFirstPage(controller.signal);
-    return () => controller.abort();
+    return () => {
+      activePlaceKeyRef.current = "";
+      controller.abort();
+    };
   }, [loadFirstPage, placeKey]);
 
   const handleLoadMore = useCallback(async () => {
@@ -439,9 +458,16 @@ export default function PlaceReviewSection({
                       </span>
                     </div>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(review.createdAt).toLocaleDateString()}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(review.createdAt).toLocaleDateString()}
+                    </span>
+                    <ContentSafetyMenu
+                      target={{ targetType: "review", targetId: review._id }}
+                      isOwn={isOwn}
+                      canBlock={Boolean(review.userId)}
+                    />
+                  </div>
                 </div>
                 {review.comment && (
                   <p className="text-sm leading-relaxed">{review.comment}</p>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Marker, Popup } from "react-map-gl/maplibre";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import ContentSafetyMenu from "@/components/content-safety/ContentSafetyMenu";
 import { useAppTranslation } from "@/i18n/client";
 import { confirmHazardReport, getNearbyHazardReports } from "@/lib/api/a11y";
 import { ApiError } from "@/lib/fetch";
@@ -14,6 +15,7 @@ import {
   hazardReviewStatus,
 } from "@/lib/hazard-review";
 import useAuthStore from "@/stores/useAuthStore";
+import useContentSafetyStore from "@/stores/useContentSafetyStore";
 import useMapStore from "@/stores/useMapStore";
 import type { HazardReport } from "@/types/route";
 
@@ -25,6 +27,12 @@ const VOTE_ERROR_MESSAGE_KEYS: Record<string, string> = {
 };
 
 export default function HazardWrapper() {
+  const epoch = useContentSafetyStore((s) => s.accountEpoch);
+  const revision = useContentSafetyStore((s) => s.revision);
+  return <HazardSession key={`${epoch}:${revision}`} />;
+}
+
+function HazardSession() {
   const { t } = useAppTranslation();
   const { userLocation } = useMapStore(
     useShallow((s) => ({ userLocation: s.userLocation })),
@@ -151,6 +159,13 @@ export default function HazardWrapper() {
           className="[&_.maplibregl-popup-content]:rounded-xl [&_.maplibregl-popup-content]:p-3 [&_.maplibregl-popup-content]:shadow-lg"
         >
           <div className="space-y-1 min-w-[160px]">
+            <div className="flex justify-end pr-4">
+              <ContentSafetyMenu
+                target={{ targetType: "hazard_report", targetId: selected._id }}
+                canBlock={selected.canBlockAuthor === true}
+                isOwn={Boolean(user?._id && selected.reporterId === user._id)}
+              />
+            </div>
             <p className="text-sm font-semibold flex items-center gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
               {t(

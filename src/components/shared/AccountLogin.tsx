@@ -70,6 +70,11 @@ const EmergencyContactsManager = dynamic(
   () => import("@/components/Sos/EmergencyContactsManager"),
   { ssr: false },
 );
+const BlockedUsersPanel = dynamic(
+  () => import("@/components/settings/BlockedUsersPanel"),
+  { ssr: false },
+);
+
 const AccountSecurityPanel = dynamic(
   () => import("@/components/settings/AccountSecurityPanel"),
   { ssr: false },
@@ -644,6 +649,7 @@ export default function AccountLogin({ active = true }: { active?: boolean }) {
                   {settingsTab === "safety" && user && (
                     <div className="rounded-2xl border border-border/60 bg-background p-5 space-y-4">
                       <EmergencyContactsManager />
+                      <BlockedUsersPanel />
                     </div>
                   )}
                   {settingsTab === "safety" && !user && requiresLoginPrompt}

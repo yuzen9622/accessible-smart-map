@@ -2,7 +2,18 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+const account = vi.hoisted(() => ({ epoch: 0 }));
+vi.mock("@/stores/useContentSafetyStore", () => ({
+  default: (selector: (s: { accountEpoch: number }) => unknown) =>
+    selector({ accountEpoch: account.epoch }),
+  captureSafetyAccount: () => () => true,
+}));
+
 const effects = vi.hoisted(() => [] as (() => void)[]);
+vi.mock("@/components/content-safety/ContentSafetyMenu", () => ({
+  default: () => null,
+}));
+
 vi.mock("react", async (original) => ({
   ...(await original<typeof import("react")>()),
   useEffect: (effect: () => void) => {
@@ -53,6 +64,13 @@ import {
 } from "@/components/BottomSheet/HazardReportPanel";
 
 describe("HazardReportPanel report location", () => {
+  it("discards the entire receipt/form session on account transitions including an unchanged target", () => {
+    const first = HazardReportPanel({ onClose: vi.fn() });
+    account.epoch++;
+    const second = HazardReportPanel({ onClose: vi.fn() });
+    expect(second.key).not.toBe(first.key);
+  });
+
   it("uses the selected place instead of the user's GPS after a place handoff", () => {
     mockMapState.pendingReportContext = {
       description: "無障礙坡道：測試地點",

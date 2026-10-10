@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import ContentSafetyMenu from "@/components/content-safety/ContentSafetyMenu";
 import { useAppTranslation } from "@/i18n/client";
 import { confirmHazardReport, getHazardReport } from "@/lib/api/a11y";
 import {
@@ -21,6 +22,9 @@ import {
 } from "@/lib/hazard-review";
 import { reportPresentation, reportTones } from "@/lib/report-presentation";
 import useAuthStore from "@/stores/useAuthStore";
+import useContentSafetyStore, {
+  captureSafetyAccount,
+} from "@/stores/useContentSafetyStore";
 import type { HazardReport } from "@/types/route";
 import { Button } from "../ui/button";
 import HazardReviewDetails from "./HazardReviewDetails";
@@ -37,6 +41,8 @@ export function HazardReportResultContent({
   voting,
   voted,
   canVote,
+  contentBlocked,
+  onContentBlocked,
 }: {
   report?: HazardReport;
   reportId: string;
@@ -49,8 +55,16 @@ export function HazardReportResultContent({
   voting?: boolean;
   voted?: boolean;
   canVote?: boolean;
+  contentBlocked?: boolean;
+  onContentBlocked?: () => void;
 }) {
   const { t } = useAppTranslation();
+  if (contentBlocked)
+    return (
+      <p role="status" className="rounded-xl bg-muted p-4 text-sm">
+        {t("safetyBlocked")}
+      </p>
+    );
   const expired = report && hazardExpired(report);
   const presentation = report
     ? reportPresentation(report)
@@ -63,6 +77,15 @@ export function HazardReportResultContent({
         : CircleHelp;
   return (
     <section className="space-y-4" aria-live="polite">
+      {report?.status === "verified" && !expired && canVote && (
+        <div className="flex justify-end">
+          <ContentSafetyMenu
+            target={{ targetType: "hazard_report", targetId: report._id }}
+            canBlock={report.canBlockAuthor === true}
+            onBlocked={onContentBlocked}
+          />
+        </div>
+      )}
       <div
         className={`rounded-2xl border p-4 ${reportTones[presentation.tone]}`}
       >
@@ -140,8 +163,11 @@ type HazardReportResultProps = {
 };
 
 export default function HazardReportResult(props: HazardReportResultProps) {
-  // Reset all local state before rendering a different ID, not after an effect.
-  return <HazardReportResultSession key={props.reportId} {...props} />;
+  // Parent entry panels reset their initial receipt on the same account epoch.
+  const epoch = useContentSafetyStore((s) => s.accountEpoch);
+  return (
+    <HazardReportResultSession key={`${props.reportId}:${epoch}`} {...props} />
+  );
 }
 
 function HazardReportResultSession({
@@ -163,6 +189,7 @@ function HazardReportResultSession({
   const [notice, setNotice] = useState<ReviewPollNotice>("idle");
   const [voting, setVoting] = useState(false);
   const [voted, setVoted] = useState(false);
+  const [contentBlocked, setContentBlocked] = useState(false);
   const [now, setNow] = useState(Date.now());
   // UI expiry and legacy-stall transitions must also happen for terminal
   // reports, without making more API requests.
@@ -218,15 +245,16 @@ function HazardReportResultSession({
   const confirm = async () => {
     if (!canVote || !report || !hazardCanConfirm(report) || voting || voted)
       return;
+    const currentAccount = captureSafetyAccount(true);
     setVoting(true);
     try {
       const response = await confirmHazardReport(reportId, "confirm");
-      if (!live.current) return;
+      if (!live.current || !currentAccount()) return;
       if (!(response.ok || response.success)) throw new Error("Vote failed");
       setVoted(true);
       toast.success(t("hazardVoteConfirmSuccess"));
     } catch (error) {
-      if (!live.current) return;
+      if (!live.current || !currentAccount()) return;
       const reason = (error as { reason?: string }).reason;
       const messages: Record<string, string> = {
         SELF_CONFIRMATION: "hazardVoteSelfConfirmation",
@@ -239,7 +267,7 @@ function HazardReportResultSession({
         t(reason && messages[reason] ? messages[reason] : "hazardVoteFailed"),
       );
     } finally {
-      if (live.current) setVoting(false);
+      if (live.current && currentAccount()) setVoting(false);
     }
   };
   return (
@@ -255,6 +283,11 @@ function HazardReportResultSession({
       voting={voting}
       voted={voted}
       canVote={canVote}
+      contentBlocked={contentBlocked}
+      onContentBlocked={() => {
+        poller.current?.dispose();
+        setContentBlocked(true);
+      }}
     />
   );
 }

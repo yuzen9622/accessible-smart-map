@@ -7,9 +7,13 @@ import type { HazardReport } from "@/types/route";
 const hooks = vi.hoisted(() => ({
   slots: [] as unknown[],
   cursor: 0,
+  epoch: 0,
   effects: [] as (() => void)[],
   cleanups: [] as (() => void)[],
   user: undefined as { _id: string } | undefined,
+}));
+vi.mock("@/components/content-safety/ContentSafetyMenu", () => ({
+  default: () => null,
 }));
 vi.mock("react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react")>()),
@@ -38,6 +42,14 @@ vi.mock("react", async (importOriginal) => ({
         hooks.cleanups[index] = effect() ?? (() => {});
       });
     }
+  },
+}));
+vi.mock("@/stores/useContentSafetyStore", () => ({
+  default: (selector: (state: { accountEpoch: number }) => unknown) =>
+    selector({ accountEpoch: hooks.epoch }),
+  captureSafetyAccount: () => {
+    const epoch = hooks.epoch;
+    return () => epoch === hooks.epoch;
   },
 }));
 vi.mock("@/stores/useAuthStore", () => ({
@@ -105,6 +117,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   vi.clearAllMocks();
+  hooks.epoch = 0;
 });
 function setup() {
   vi.useFakeTimers();
@@ -114,6 +127,20 @@ function setup() {
   hooks.user = { _id: "owner" };
 }
 describe("result session identity and reset", () => {
+  it("account epoch resets votes and blocked state before rendering the same report ID", async () => {
+    setup();
+    hooks.user = { _id: "independent" };
+    vi.mocked(confirmHazardReport).mockResolvedValue({ ok: true } as Awaited<
+      ReturnType<typeof confirmHazardReport>
+    >);
+    render().onConfirm();
+    await Promise.resolve();
+    expect(render().voted).toBe(true);
+    hooks.epoch++;
+    expect(render("first", undefined).report).toBeUndefined();
+    expect(render("first", undefined).voted).toBe(false);
+  });
+
   it("keeps known owner after public GET omits identity without newly requiring login", async () => {
     setup();
     const publicReport = { ...initial, reporterId: undefined };

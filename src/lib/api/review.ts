@@ -1,5 +1,5 @@
 import { END_POINT } from "@/lib/config";
-import { authenticatedRequest, fetchRequest } from "@/lib/fetch";
+import { authenticatedRequest, personalizedRequest } from "@/lib/fetch";
 import type { ApiResponse } from "@/types/response";
 import type {
   CreateReviewInput,
@@ -21,7 +21,7 @@ export async function getPlaceReviews(
     page: String(params.page ?? 1),
     limit: String(params.limit ?? 10),
   });
-  const response = await fetchRequest(
+  const response = await personalizedRequest(
     `${BASE}?${query.toString()}`,
     signal ? { signal } : undefined,
   );
@@ -36,7 +36,7 @@ export async function getReviewSummary(
     placeId: params.placeId,
     placeType: params.placeType,
   });
-  const response = await fetchRequest(
+  const response = await personalizedRequest(
     `${BASE}/summary?${query.toString()}`,
     signal ? { signal } : undefined,
   );

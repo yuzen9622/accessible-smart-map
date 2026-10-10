@@ -17,6 +17,7 @@ import { useAppTranslation } from "@/i18n/client";
 import { getNearbyHazardReports, getNearbyParking } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
 import { cn, geoCoords } from "@/lib/utils";
+import useContentSafetyStore from "@/stores/useContentSafetyStore";
 import useMapStore from "@/stores/useMapStore";
 import { A11yEnum } from "@/types";
 import {
@@ -27,7 +28,16 @@ import {
 import { AccessibilityIcon } from "../ui/accessibility-icon";
 import { Badge } from "../ui/badge";
 
-export default function A11yPanel({
+export default function A11yPanel(props: {
+  onClose?: () => void;
+  hideHeader?: boolean;
+}) {
+  const epoch = useContentSafetyStore((s) => s.accountEpoch);
+  const revision = useContentSafetyStore((s) => s.revision);
+  return <A11yPanelSession key={`${epoch}:${revision}`} {...props} />;
+}
+
+function A11yPanelSession({
   onClose,
   hideHeader,
 }: {

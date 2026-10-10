@@ -20,7 +20,7 @@ import { NumberTicker } from "@/components/motion/number-ticker";
 import useComputeRoute from "@/hook/useComputeRoute";
 import useNavigationAudio from "@/hook/useNavigationAudio";
 import { useAppTranslation } from "@/i18n/client";
-import { getNearbyHazardReports } from "@/lib/api/a11y";
+import { getSafetyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
 import { selectAdvisoryAnnouncement } from "@/lib/navigation/advisorySpeech";
 import {
@@ -36,7 +36,7 @@ import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
 import {
   formatDistance,
-  type HazardReport,
+  type SafetyHazardReport,
   type SlimOsmA11y,
 } from "@/types/route";
 import {
@@ -247,15 +247,29 @@ export default function NavigationHUD() {
   }, [routeFacilities, userLocation]);
 
   // ---- Nearby hazard reports (polled while navigating) ----
-  const [hazards, setHazards] = useState<HazardReport[]>([]);
+  const [hazards, setHazards] = useState<SafetyHazardReport[]>([]);
   useEffect(() => {
     let cancelled = false;
+    let request: AbortController | null = null;
     const poll = () => {
       const loc = useMapStore.getState().userLocation;
       if (!loc) return;
-      getNearbyHazardReports(loc.lat, loc.lng, HAZARD_ALERT_M)
+      request?.abort();
+      const controller = new AbortController();
+      request = controller;
+      getSafetyHazardReports(
+        loc.lat,
+        loc.lng,
+        HAZARD_ALERT_M,
+        controller.signal,
+      )
         .then((res) => {
-          if (!cancelled && res.ok && res.data?.reports)
+          if (
+            !cancelled &&
+            !controller.signal.aborted &&
+            res.ok &&
+            res.data?.reports
+          )
             setHazards(res.data.reports);
         })
         .catch(() => {});
@@ -264,6 +278,7 @@ export default function NavigationHUD() {
     const timer = setInterval(poll, HAZARD_POLL_MS);
     return () => {
       cancelled = true;
+      request?.abort();
       clearInterval(timer);
     };
   }, []);
@@ -272,6 +287,7 @@ export default function NavigationHUD() {
     if (!userLocation || hazards.length === 0) return null;
     let best: { type: string; distance: number } | null = null;
     for (const h of hazards) {
+      if (h.expiredAt && Date.parse(h.expiredAt) <= Date.now()) continue;
       const d = haversineMeters(userLocation, {
         lat: h.reportedLocation.coordinates[1],
         lng: h.reportedLocation.coordinates[0],

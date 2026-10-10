@@ -4,6 +4,7 @@ import {
   authenticatedRequest,
   fetchRequest,
   getAccessToken,
+  personalizedRequest,
 } from "@/lib/fetch";
 import type { IBathroom, metroA11yData } from "@/types";
 import type { ApiResponse } from "@/types/response";
@@ -20,6 +21,7 @@ import type {
   NavInstructionsRequest,
   OsmPlaceDetail,
   ParkingNearbyItem,
+  SafetyHazardReport,
   WelfareInstitution,
 } from "@/types/route";
 
@@ -160,13 +162,30 @@ export async function createHazardReport(formData: FormData) {
   return data;
 }
 
-export async function getNearbyHazardReports(
+/** Anonymous safety signals remain available even when a content author is blocked. */
+export async function getSafetyHazardReports(
   lat: number,
   lng: number,
   radius = 500,
   signal?: AbortSignal,
 ) {
   const response = await fetchRequest(
+    `${END_POINT}/api/v1/a11y/reports/safety?${new URLSearchParams({ lat: String(lat), lng: String(lng), radius: String(radius) })}`,
+    { signal },
+  );
+  return response as ApiResponse<{
+    reports: SafetyHazardReport[];
+    total: number;
+  }>;
+}
+
+export async function getNearbyHazardReports(
+  lat: number,
+  lng: number,
+  radius = 500,
+  signal?: AbortSignal,
+) {
+  const response = await personalizedRequest(
     `${END_POINT}/api/v1/a11y/reports?lat=${lat}&lng=${lng}&radius=${radius}`,
     signal ? { signal } : undefined,
   );
@@ -174,7 +193,7 @@ export async function getNearbyHazardReports(
 }
 
 export async function getHazardReport(id: string, signal?: AbortSignal) {
-  const response = await fetchRequest(
+  const response = await personalizedRequest(
     `${END_POINT}/api/v1/a11y/reports/${encodeURIComponent(id)}`,
     { signal },
   );
