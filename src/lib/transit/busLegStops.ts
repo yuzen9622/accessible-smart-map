@@ -200,6 +200,8 @@ export function resolveLegRide(
 export function busLegKey(prefix: string, leg: BusLeg): string {
   return JSON.stringify([
     prefix,
+    leg.planContext?.routeToken ?? null,
+    leg.planContext?.legIndex ?? null,
     leg.tdxCity ?? leg.cityCode ?? "",
     leg.subRouteName ?? leg.routeName,
     leg.subRouteUid ?? null,
@@ -268,6 +270,36 @@ export function fallbackStopRows(
   leg: BusLeg,
   { pending = false }: { pending?: boolean } = {},
 ): BusLegStopRow[] {
+  if (leg.scheduledTrip?.stops.length) {
+    return leg.scheduledTrip.stops.map((stop, i, stops) => {
+      const time =
+        i === 0
+          ? (stop.departureAt ?? stop.arrivalAt)
+          : (stop.arrivalAt ?? stop.departureAt);
+      return {
+        seq: i + 1,
+        name: stop.name,
+        stationUid: stop.stopUid,
+        estimateMinutes: null,
+        statusLabel:
+          typeof time === "number" && Number.isFinite(time)
+            ? new Date(time).toLocaleTimeString("en-GB", {
+                timeZone: "Asia/Taipei",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "",
+        state: "upcoming" as const,
+        kind:
+          i === 0
+            ? ("board" as const)
+            : i === stops.length - 1
+              ? ("alight" as const)
+              : ("intermediate" as const),
+        pending: false,
+      };
+    });
+  }
   const middle = leg.intermediateStops ?? [];
   const names = [
     { name: leg.departureStop, kind: "board" as StopRowKind },

@@ -76,6 +76,7 @@ export function LegDetail({
   pointCtx,
   isSelected,
   engine,
+  routeToken,
   routeIndex = 0,
   legIndex = 0,
 }: {
@@ -85,6 +86,7 @@ export function LegDetail({
   pointCtx: PointLabelContext;
   isSelected: boolean;
   engine?: AccessibleRoute["engine"];
+  routeToken?: string;
   routeIndex?: number;
   legIndex?: number;
 }) {
@@ -139,6 +141,7 @@ export function LegDetail({
           </div>
           <BusLegStops
             leg={leg}
+            routeToken={routeToken}
             routeIndex={routeIndex}
             legIndex={legIndex}
             isSelected={isSelected}

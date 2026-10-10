@@ -34,10 +34,12 @@ const stop = (seq: number, name: string) => ({
   name,
   lat: 24.13,
   lng: 120.64,
-  estimateMinutes: null,
+  estimateMinutes: 5,
+  plateNumb: "KKA-1",
   statusLabel: "正常",
 });
 const leg = {
+  planContext: { routeToken: "plan", legIndex: 1 },
   type: "BUS",
   routeName: "99",
   direction: 0,

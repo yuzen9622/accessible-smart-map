@@ -112,7 +112,19 @@ function useNavigationBusTracking() {
       (leg): leg is BusLeg => leg.type === "BUS",
     );
     const ordinal = resolveActiveBusLegOrdinal(instructions, currentStepIndex);
-    const leg = ordinal == null ? undefined : busLegs[ordinal];
+    const rawLeg = ordinal == null ? undefined : busLegs[ordinal];
+    const route = selectRoute?.route;
+    const leg = rawLeg
+      ? {
+          ...rawLeg,
+          planContext: route?.routeToken
+            ? {
+                routeToken: route.routeToken,
+                legIndex: route.legs.indexOf(rawLeg),
+              }
+            : undefined,
+        }
+      : undefined;
     const nextKey = leg ? busLegKey(`nav:${ordinal}`, leg) : null;
 
     if (nextKey === lastKeyRef.current) return;
@@ -120,7 +132,7 @@ function useNavigationBusTracking() {
     setActiveBusLeg(nextKey && leg ? { key: nextKey, leg } : null);
   }, [
     isNavigating,
-    selectRoute?.route?.legs,
+    selectRoute?.route,
     instructions,
     currentStepIndex,
     setActiveBusLeg,

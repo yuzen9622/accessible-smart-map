@@ -31,6 +31,7 @@ const directions: RouteDetailDirection[] = [
 ];
 const legOf = (subRouteUid: string) =>
   ({
+    planContext: { routeToken: "plan", legIndex: 1 },
     type: "BUS",
     routeName: "99",
     tdxCity: "Taichung",
@@ -52,7 +53,10 @@ beforeEach(async () => {
   __clearRouteDetailCache();
   getBusRouteDetail.mockReset();
   getBusRouteDetail.mockResolvedValue({ ok: true, data: { directions } });
-  await fetchRouteDetailCached("99", "Taichung", { subRouteUid: "A" });
+  await fetchRouteDetailCached("99", "Taichung", {
+    subRouteUid: "A",
+    planContext: { routeToken: "plan", legIndex: 1 },
+  });
 });
 afterEach(() => vi.useRealTimers());
 

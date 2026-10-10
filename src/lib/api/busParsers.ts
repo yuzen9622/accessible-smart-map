@@ -155,6 +155,7 @@ export function parseBusRouteDirections(data: unknown): RouteDetailDirection[] {
           lng: stop.lng as number,
           estimateMinutes: stop.estimateMinutes,
           statusLabel: label(stop.statusLabel),
+          ...(plate(stop.plateNumb) ? { plateNumb: stop.plateNumb } : {}),
         },
       ];
     });

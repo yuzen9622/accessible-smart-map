@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { searchBusRoutes, searchBusStops } from "@/lib/api/transit";
+import {
+  getBusRouteDetail,
+  searchBusRoutes,
+  searchBusStops,
+} from "@/lib/api/transit";
 import { END_POINT } from "@/lib/config";
 
 function jsonResponse(
@@ -174,4 +178,39 @@ describe("searchBusStops", () => {
     expect(res.ok).toBe(true);
     expect(res.data?.stops[0].stopName).toBe("台中車站(台灣大道)");
   });
+});
+
+it("sends only the route capability and full leg index for a planned bus", async () => {
+  const fetchMock = vi.fn(async (_url: string | URL | Request) =>
+    jsonResponse({
+      ok: true,
+      data: {
+        directions: [
+          {
+            direction: 0,
+            stops: [
+              {
+                seq: 1,
+                name: "A",
+                lat: 25,
+                lng: 121,
+                estimateMinutes: 5,
+                statusLabel: "正常",
+                plateNumb: "BUS-10",
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const res = await getBusRouteDetail("99", "Taipei", "branch", undefined, {
+    routeToken: "plan-token",
+    legIndex: 2,
+  });
+  expect(String(fetchMock.mock.calls[0][0])).toBe(
+    `${END_POINT}/api/v1/a11y/accessible-route/bus-arrivals?routeToken=plan-token&legIndex=2`,
+  );
+  expect(res.data?.directions[0].stops[0].plateNumb).toBe("BUS-10");
 });

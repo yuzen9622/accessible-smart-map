@@ -14,17 +14,26 @@ import { getLegColor } from "@/types/route";
 import { TransitStops } from "./TransitStops";
 
 export function BusLegStops({
-  leg,
+  leg: rawLeg,
+  routeToken,
   routeIndex,
   legIndex,
   isSelected,
 }: {
   leg: BusLeg;
+  routeToken?: string;
   routeIndex: number;
   legIndex: number;
   isSelected: boolean;
 }) {
   const { t } = useAppTranslation();
+  const leg = useMemo(
+    () => ({
+      ...rawLeg,
+      planContext: routeToken ? { routeToken, legIndex } : undefined,
+    }),
+    [rawLeg, routeToken, legIndex],
+  );
   const key = busLegKey(`${routeIndex}:${legIndex}`, leg);
 
   const activeBusLeg = useMapStore((s) => s.activeBusLeg);
@@ -74,8 +83,7 @@ export function BusLegStops({
       return buildStopRows(ride.stops, currentSeq);
     }
 
-    // No ETAs to attach: placeholders while the lookup runs, "no information"
-    // once it has settled — never a service status we cannot back up.
+    // A failed or unavailable lookup keeps the original planned stop times.
     return fallbackStopRows(leg, {
       pending: status === "idle" || status === "loading",
     });
@@ -118,7 +126,10 @@ export function BusLegStops({
         isStopsOpen={isOpen}
         onStopsOpenChange={handleOpenChange}
         targetPlate={targetBus?.plateNumb}
-        liveEtaMinutes={targetBus?.estimateTime}
+        liveEtaMinutes={isOpen ? ride?.stops[0]?.estimateMinutes : null}
+        alightLiveEtaMinutes={
+          isOpen ? ride?.stops.at(-1)?.estimateMinutes : null
+        }
       />
     </div>
   );

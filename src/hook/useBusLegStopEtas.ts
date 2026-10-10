@@ -5,7 +5,7 @@ import {
   peekRouteDetailSnapshot,
   routeDetailKey,
 } from "@/lib/transit/busRouteDetailCache";
-import type { BusLeg } from "@/types/route";
+import type { BusLeg, BusPlanContext } from "@/types/route";
 
 export type BusLegEtaStatus = "idle" | "loading" | "ready" | "error";
 
@@ -28,10 +28,17 @@ const emptyState = (key: string, status: BusLegEtaStatus): EtaState => ({
   status,
 });
 
-function seed(routeName: string, city: string, uid?: string): EtaState {
-  const key = routeDetailKey(routeName, city, uid);
+function seed(
+  routeName: string,
+  city: string,
+  uid?: string,
+  planContext?: BusPlanContext,
+): EtaState {
+  const key = routeDetailKey(routeName, city, uid, planContext);
   const warm =
-    routeName && city ? peekRouteDetailSnapshot(routeName, city, uid) : null;
+    routeName && city
+      ? peekRouteDetailSnapshot(routeName, city, uid, planContext)
+      : null;
   return warm
     ? {
         key,
@@ -51,9 +58,8 @@ function seed(routeName: string, city: string, uid?: string): EtaState {
  * the refresh. Fetching only on expand is what made every stop render as
  * 「尚未發車」 for the first second.
  *
- * Every run of the line is returned rather than one: picking the run that
- * actually contains the ride is `resolveLegRide`' job, because `leg.direction`
- * does not reliably match TDX's numbering.
+ * The backend returns only this planned ride and decides which stop ETAs
+ * belong to its trip; a missing match retains the original scheduled times.
  *
  * Data is bound to its branch key and to the cache's receipt time: switching
  * leg or branch never exposes the previous one, and ETAs vanish once they are
@@ -69,19 +75,28 @@ export function useBusLegStopEtas(
   // The planner names the run it chose, so ask for that one.
   const routeName = leg?.subRouteName ?? leg?.routeName ?? "";
   const subRouteUid = leg?.subRouteUid;
-  const key = routeDetailKey(routeName, city, subRouteUid);
+  const planContext = leg?.planContext;
+  const routeToken = planContext?.routeToken;
+  const legIndex = planContext?.legIndex;
+  const key = routeDetailKey(routeName, city, subRouteUid, planContext);
 
   // Seed from an already-warm cache entry so the first render after expanding
   // shows real ETAs instead of a placeholder.
   const [state, setState] = useState<EtaState>(() =>
-    seed(routeName, city, subRouteUid),
+    seed(routeName, city, subRouteUid, planContext),
   );
 
   const pollRef = useRef(poll);
   pollRef.current = poll;
 
   useEffect(() => {
-    if (!enabled || !routeName || !city) {
+    if (
+      !enabled ||
+      !routeName ||
+      !city ||
+      !routeToken ||
+      legIndex === undefined
+    ) {
       setState(emptyState(key, "idle"));
       return;
     }
@@ -96,6 +111,7 @@ export function useBusLegStopEtas(
       const snapshot = await fetchRouteDetailSnapshot(routeName, city, {
         force,
         subRouteUid,
+        planContext: { routeToken, legIndex },
         signal: controller.signal,
       });
       // Superseded or cancelled: a late response must not overwrite newer state.
@@ -136,7 +152,10 @@ export function useBusLegStopEtas(
     // A warm cache entry means we already have data; don't flash a loading
     // state over it just because the effect re-ran. A cold one (or one from a
     // different branch) must clear whatever was showing.
-    const warm = peekRouteDetailSnapshot(routeName, city, subRouteUid);
+    const warm = peekRouteDetailSnapshot(routeName, city, subRouteUid, {
+      routeToken,
+      legIndex,
+    });
     setState(
       warm
         ? {
@@ -162,7 +181,7 @@ export function useBusLegStopEtas(
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, poll, routeName, city, subRouteUid, key]);
+  }, [enabled, poll, routeName, city, subRouteUid, key, routeToken, legIndex]);
 
   // Expire what is on screen at the cache's deadline. The receipt time is not
   // renewed by this: only a new response can bring data back.
@@ -179,6 +198,9 @@ export function useBusLegStopEtas(
     }, wait);
     return () => clearTimeout(timer);
   }, [stateKey, expiresAt]);
+
+  if (!enabled || !routeToken || legIndex === undefined)
+    return { directions: null, status: "idle" };
 
   // Render guard: nothing from another branch, nothing past its deadline.
   if (state.key !== key) {

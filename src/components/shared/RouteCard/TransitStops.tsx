@@ -72,6 +72,7 @@ export function TransitStops({
   onStopsOpenChange,
   targetPlate,
   liveEtaMinutes,
+  alightLiveEtaMinutes,
 }: {
   boardName?: string;
   alightName?: string;
@@ -89,6 +90,7 @@ export function TransitStops({
   targetPlate?: string;
   /** ETA tied to the exact vehicle named by the boarding-stop arrival feed. */
   liveEtaMinutes?: number | null;
+  alightLiveEtaMinutes?: number | null;
 }) {
   const { t } = useAppTranslation();
 
@@ -130,7 +132,11 @@ export function TransitStops({
           {t("labelColon")}
         </span>
         <span className="font-medium">{alightName}</span>
-        <EndpointTime scheduledTime={alightTime} t={t} />
+        <EndpointTime
+          scheduledTime={alightTime}
+          liveEtaMinutes={alightLiveEtaMinutes}
+          t={t}
+        />
       </div>
       {isSelected && (
         <A11yStationIcons

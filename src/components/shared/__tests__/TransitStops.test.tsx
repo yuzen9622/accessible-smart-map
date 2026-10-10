@@ -46,6 +46,7 @@ const rows: BusLegStopRow[] = [
 function renderStops(
   liveEtaMinutes?: number | null,
   isStopsOpen: boolean = true,
+  alightLiveEtaMinutes?: number | null,
 ) {
   return renderToStaticMarkup(
     <TransitStops
@@ -57,6 +58,7 @@ function renderStops(
       rows={rows}
       isStopsOpen={isStopsOpen}
       liveEtaMinutes={liveEtaMinutes}
+      alightLiveEtaMinutes={alightLiveEtaMinutes}
     />,
   );
 }
@@ -88,6 +90,13 @@ describe("TransitStops endpoint timing", () => {
     expect(html).toContain("預定 20:56");
     expect(html).not.toContain("20:42");
     expect(html).not.toContain("20:54");
+  });
+
+  it("renders independent live ETAs at both endpoints without requiring vehicle GPS", () => {
+    const html = renderStops(4, true, 14);
+    expect(html).toContain("即時・4 分鐘後");
+    expect(html).toContain("即時・14 分鐘後");
+    expect(html).not.toContain("預定 20:56");
   });
 
   it("uses an immediate-arrival message instead of zero minutes", () => {

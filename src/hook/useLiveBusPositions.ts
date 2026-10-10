@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { BusArrivalItem, RouteDetailStop } from "@/lib/api/transit";
-import { getBusArrival, getLiveBusPositions } from "@/lib/api/transit";
+import type { RouteDetailStop } from "@/lib/api/transit";
+import { getLiveBusPositions } from "@/lib/api/transit";
 import {
-  equalStopName,
   type ResolvedLegRide,
   resolveCurrentStopSeq,
   resolveLegRide,
@@ -23,15 +22,6 @@ const POLL_INTERVAL_MS = 15_000;
 const STALE_AFTER_MS = POLL_INTERVAL_MS + 10_000;
 
 /**
- * The name TDX answers to for this ride. A line's sub-routes (99 / 99延) have
- * separate stop lists and separate vehicles, and the planner tells us which one
- * it booked — querying the parent name returns both mixed together.
- */
-function tdxRouteName(leg: BusLeg): string {
-  return leg.subRouteName ?? leg.routeName;
-}
-
-/**
  * Whether a record belongs to the branch the ride was resolved to.
  *
  * A known branch requires a matching record ID, including when route-detail
@@ -50,73 +40,12 @@ function onResolvedBranch(
   return ride.singleBranchInDirection;
 }
 
-interface ArrivalTarget {
-  /** Plate of the next bus at the boarding stop, if TDX has dispatched one. */
-  plate?: string;
-  /** Soonest ETA (minutes) at the boarding stop for this leg's direction. */
-  eta: number | null;
-  subRouteUid?: string;
-}
-
-/**
- * The next vehicle at the boarding stop, from the arrival (ETA) feed.
- *
- * The backend maps TDX's plate into each arrival entry, so the soonest arrival
- * tells us both *when* the next bus comes and *which plate* it is. Only entries
- * for the resolved branch and direction, at exactly the boarding stop, with a
- * finite non-negative ETA and a real plate qualify; anything else (a null ETA
- * included) is not matched to a vehicle.
- */
-async function fetchArrival(
-  leg: BusLeg,
-  ride: ResolvedLegRide,
-  city: string,
-  signal: AbortSignal,
-): Promise<ArrivalTarget> {
-  try {
-    const res = await getBusArrival(
-      tdxRouteName(leg),
-      leg.departureStop,
-      ride.direction,
-      city,
-      signal,
-    );
-    if (!res.ok || !res.data?.arrivals) return { eta: null };
-
-    const next = res.data.arrivals
-      .filter(
-        (a: BusArrivalItem) =>
-          a.direction === ride.direction &&
-          equalStopName(a.stopName, leg.departureStop) &&
-          onResolvedBranch(ride, a.subRouteUid, leg.subRouteUid) &&
-          typeof a.estimateMinutes === "number" &&
-          Number.isFinite(a.estimateMinutes) &&
-          a.estimateMinutes >= 0 &&
-          Boolean(a.plateNumb) &&
-          a.plateNumb !== "-1",
-      )
-      .sort(
-        (a: BusArrivalItem, b: BusArrivalItem) =>
-          (a.estimateMinutes as number) - (b.estimateMinutes as number),
-      )[0];
-    if (!next) return { eta: null };
-
-    return {
-      plate: next.plateNumb,
-      eta: next.estimateMinutes,
-      subRouteUid: next.subRouteUid,
-    };
-  } catch {
-    return { eta: null };
-  }
-}
-
 /**
  * Resolve the single vehicle the user is about to board on this leg.
  *
  * Returns an empty array when no plate can be pinned: an unidentifiable bus is
  * worse than none, because a marker for "some vehicle on this line" reads as
- * "your vehicle". The only trustworthy signal is the arrival feed at the
+ * "your vehicle". The plate comes from the backend-matched planned trip at the
  * *boarding stop*; `leg.nearestBus` is a planning-time snapshot and is not
  * used.
  *
@@ -130,10 +59,11 @@ export async function fetchLeg(
   signal: AbortSignal,
 ): Promise<LiveBus[]> {
   const ref = legRouteDetailRef(leg);
-  if (!ref.city) return [];
+  if (signal.aborted || !ref.city || !leg.planContext) return [];
 
   const directions = await fetchRouteDetailCached(ref.routeName, ref.city, {
     subRouteUid: ref.subRouteUid,
+    planContext: leg.planContext,
     signal,
   });
   if (signal.aborted) return [];
@@ -141,11 +71,19 @@ export async function fetchLeg(
   const ride = resolveLegRide(directions ?? undefined, leg);
   if (!ride || ride.direction === 255) return [];
 
-  // ETA and positions are independent; run them together.
-  const [arrival, posRes] = await Promise.all([
-    fetchArrival(leg, ride, ref.city, signal),
-    getLiveBusPositions(ref.routeName, ref.city, ride.direction, signal),
-  ]);
+  const board = ride.stops[0];
+  const arrival = {
+    plate: board?.plateNumb,
+    eta: board?.estimateMinutes,
+    subRouteUid: ride.subRouteUid,
+  };
+  if (!arrival.plate || arrival.eta == null) return [];
+  const posRes = await getLiveBusPositions(
+    ref.routeName,
+    ref.city,
+    ride.direction,
+    signal,
+  );
   if (signal.aborted) return [];
 
   if (!arrival.plate || arrival.eta == null) return [];

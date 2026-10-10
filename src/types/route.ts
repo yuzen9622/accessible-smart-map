@@ -155,7 +155,27 @@ export interface WalkLeg {
   a11ySegments?: A11ySegment[];
 }
 
+export interface BusPlanContext {
+  routeToken: string;
+  /** Index in the complete route.legs array, including walking legs. */
+  legIndex: number;
+}
+
 export interface BusLeg {
+  /** Client-side request context, supplied by the containing planned route. */
+  planContext?: BusPlanContext;
+  scheduledTrip?: {
+    tripId: string;
+    boardingReadyAt: number;
+    stops: {
+      stopUid?: string;
+      name: string;
+      arrivalAt?: number;
+      departureAt?: number;
+      lat?: number;
+      lng?: number;
+    }[];
+  };
   type: "BUS";
   routeName: string;
   /**

@@ -1,6 +1,6 @@
 import type { LatLng } from "@/types";
 import type { ApiResponse } from "@/types/response";
-import type { LiveBusPositionsData } from "@/types/route";
+import type { BusPlanContext, LiveBusPositionsData } from "@/types/route";
 import type {
   BusDirection,
   BusRealtimeNearbyStop,
@@ -210,6 +210,7 @@ export async function searchBusStops(
 }
 
 export interface RouteDetailStop {
+  plateNumb?: string;
   stopUid?: string;
   seq: number;
   name: string;
@@ -235,11 +236,15 @@ export async function getBusRouteDetail(
   city: string,
   subRouteUid?: string,
   signal?: AbortSignal,
+  planContext?: BusPlanContext,
 ) {
   const params = new URLSearchParams({ routeName, city });
   if (subRouteUid) params.set("subRouteUid", subRouteUid);
+  const endpoint = planContext
+    ? `/api/v1/a11y/accessible-route/bus-arrivals?${new URLSearchParams({ routeToken: planContext.routeToken, legIndex: String(planContext.legIndex) })}`
+    : `/api/v1/transit/bus/route-detail?${params}`;
   const data = (await timedBusRequest(
-    `${END_POINT}/api/v1/transit/bus/route-detail?${params}`,
+    `${END_POINT}${endpoint}`,
     signal,
   )) as ApiResponse<{ directions: RouteDetailDirection[] }>;
   if (data.data)

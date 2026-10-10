@@ -1,6 +1,6 @@
 import type { RouteDetailDirection } from "@/lib/api/transit";
 import { getBusRouteDetail } from "@/lib/api/transit";
-import type { BusLeg } from "@/types/route";
+import type { BusLeg, BusPlanContext } from "@/types/route";
 
 /**
  * Process-wide cache for `/transit/bus/route-detail`.
@@ -41,8 +41,15 @@ export function routeDetailKey(
   routeName: string,
   city: string,
   subRouteUid?: string,
+  planContext?: BusPlanContext,
 ): string {
-  return JSON.stringify([city, routeName, subRouteUid ?? null]);
+  return JSON.stringify([
+    city,
+    routeName,
+    subRouteUid ?? null,
+    planContext?.routeToken ?? null,
+    planContext?.legIndex ?? null,
+  ]);
 }
 
 /** The route-detail identity of a leg — shared by every consumer of the cache. */
@@ -63,8 +70,11 @@ export function peekRouteDetailSnapshot(
   routeName: string,
   city: string,
   subRouteUid?: string,
+  planContext?: BusPlanContext,
 ): RouteDetailSnapshot | null {
-  const entry = cache.get(routeDetailKey(routeName, city, subRouteUid));
+  const entry = cache.get(
+    routeDetailKey(routeName, city, subRouteUid, planContext),
+  );
   if (!entry?.settled || !entry.snapshot) return null;
   if (Date.now() >= entry.snapshot.expiresAt) return null;
   return entry.snapshot;
@@ -75,9 +85,11 @@ export function peekRouteDetail(
   routeName: string,
   city: string,
   subRouteUid?: string,
+  planContext?: BusPlanContext,
 ): RouteDetailDirection[] | null {
   return (
-    peekRouteDetailSnapshot(routeName, city, subRouteUid)?.directions ?? null
+    peekRouteDetailSnapshot(routeName, city, subRouteUid, planContext)
+      ?.directions ?? null
   );
 }
 
@@ -115,10 +127,16 @@ function untilAborted<T>(
 export function fetchRouteDetailSnapshot(
   routeName: string,
   city: string,
-  opts?: { force?: boolean; subRouteUid?: string; signal?: AbortSignal },
+  opts?: {
+    force?: boolean;
+    subRouteUid?: string;
+    signal?: AbortSignal;
+    planContext?: BusPlanContext;
+  },
 ): Promise<RouteDetailSnapshot | null> {
   const subRouteUid = opts?.subRouteUid;
-  const key = routeDetailKey(routeName, city, subRouteUid);
+  const planContext = opts?.planContext;
+  const key = routeDetailKey(routeName, city, subRouteUid, planContext);
   const existing = cache.get(key);
 
   if (existing) {
@@ -141,7 +159,13 @@ export function fetchRouteDetailSnapshot(
 
   entry.promise = (async () => {
     try {
-      const res = await getBusRouteDetail(routeName, city, subRouteUid);
+      const res = await getBusRouteDetail(
+        routeName,
+        city,
+        subRouteUid,
+        undefined,
+        planContext,
+      );
       const directions = res.ok ? res.data?.directions : undefined;
       if (!directions) {
         drop();
@@ -168,7 +192,12 @@ export function fetchRouteDetailSnapshot(
 export async function fetchRouteDetailCached(
   routeName: string,
   city: string,
-  opts?: { force?: boolean; subRouteUid?: string; signal?: AbortSignal },
+  opts?: {
+    force?: boolean;
+    subRouteUid?: string;
+    signal?: AbortSignal;
+    planContext?: BusPlanContext;
+  },
 ): Promise<RouteDetailDirection[] | null> {
   return (
     (await fetchRouteDetailSnapshot(routeName, city, opts))?.directions ?? null
