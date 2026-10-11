@@ -501,6 +501,43 @@ img.adp-marker2 {
   height: 44px;
 }
 
+/* Hazard report popups are themed independently of MapLibre's white default. */
+.hazard-map-popup .maplibregl-popup-content {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+}
+
+.hazard-map-popup:is(
+    .maplibregl-popup-anchor-bottom,
+    .maplibregl-popup-anchor-bottom-left,
+    .maplibregl-popup-anchor-bottom-right
+  )
+  .maplibregl-popup-tip {
+  border-top-color: var(--popover);
+}
+
+.hazard-map-popup:is(
+    .maplibregl-popup-anchor-top,
+    .maplibregl-popup-anchor-top-left,
+    .maplibregl-popup-anchor-top-right
+  )
+  .maplibregl-popup-tip {
+  border-bottom-color: var(--popover);
+}
+
+.hazard-map-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--popover);
+}
+
+.hazard-map-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--popover);
+}
+
 /* ── AI 思考軌跡（ThinkingTrace）────────────────────────────
    改寫自 Beautiful UI 的 Thinking 組件（MIT, © 2026 Shane Levine,
    https://www.beautifului.dev）——見 AUTHORS.md。

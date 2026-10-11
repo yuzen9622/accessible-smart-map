@@ -1,11 +1,20 @@
 "use client";
 
-import { AlertTriangle, ThumbsDown, ThumbsUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Camera,
+  ChevronDown,
+  ThumbsDown,
+  ThumbsUp,
+  X,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Marker, Popup } from "react-map-gl/maplibre";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import HazardReportPhoto from "@/components/BottomSheet/HazardReportPhoto";
 import ContentSafetyMenu from "@/components/content-safety/ContentSafetyMenu";
+import { Button } from "@/components/ui/button";
 import { useAppTranslation } from "@/i18n/client";
 import { confirmHazardReport, getNearbyHazardReports } from "@/lib/api/a11y";
 import { ApiError } from "@/lib/fetch";
@@ -26,6 +35,27 @@ const VOTE_ERROR_MESSAGE_KEYS: Record<string, string> = {
   REPORT_EXPIRED: "hazardVoteReportExpired",
 };
 
+type PopupBounds = Pick<DOMRect, "top" | "right" | "bottom" | "left">;
+
+/** Camera pan needed to keep a bottom-anchored report card inside the map. */
+export function hazardPopupPan(
+  card: PopupBounds,
+  viewport: PopupBounds,
+): [number, number] {
+  const desktop = viewport.right - viewport.left >= 768;
+  const left = viewport.left + (desktop ? 84 : 16);
+  const right = viewport.right - 72; // Keep the map controls/SOS reachable.
+  const top = viewport.top + 16;
+  const bottom =
+    viewport.bottom -
+    (desktop ? 16 : (viewport.bottom - viewport.top) * 0.12 + 16);
+  const dx =
+    card.left < left ? card.left - left : Math.max(0, card.right - right);
+  const dy =
+    card.top < top ? card.top - top : Math.max(0, card.bottom - bottom);
+  return [dx, dy];
+}
+
 export default function HazardWrapper() {
   const epoch = useContentSafetyStore((s) => s.accountEpoch);
   const revision = useContentSafetyStore((s) => s.revision);
@@ -34,16 +64,51 @@ export default function HazardWrapper() {
 
 function HazardSession() {
   const { t } = useAppTranslation();
-  const { userLocation } = useMapStore(
-    useShallow((s) => ({ userLocation: s.userLocation })),
+  const { userLocation, map } = useMapStore(
+    useShallow((s) => ({ userLocation: s.userLocation, map: s.map })),
   );
   const user = useAuthStore((s) => s.user);
   const [hazards, setHazards] = useState<HazardReport[]>([]);
   const [selected, setSelected] = useState<HazardReport | null>(null);
   const [votedIds, setVotedIds] = useState<Set<string>>(new Set());
   const [votingId, setVotingId] = useState<string | null>(null);
-
   const [now, setNow] = useState(Date.now());
+  const popupContent = useRef<HTMLElement>(null);
+  const selectedId =
+    selected && !hazardExpired(selected, now) ? selected._id : undefined;
+
+  useEffect(() => {
+    const content = popupContent.current;
+    if (!selectedId || !map || !content) return;
+    const container = map.getContainer();
+    const keepInView = () => {
+      const card = content.getBoundingClientRect();
+      const viewport = container.getBoundingClientRect();
+      const [dx, dy] = hazardPopupPan(card, viewport);
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1)
+        map.panBy([dx, dy], { duration: 0 });
+    };
+    // Re-fit after photo/status content changes and viewport resizes, not
+    // every map movement: users must remain free to pan the map themselves.
+    let frame = 0;
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(keepInView);
+    };
+    const observer = new ResizeObserver(scheduleFit);
+    observer.observe(content);
+    observer.observe(container);
+    // MapLibre updates marker projection as part of its resize cycle.
+    // Fit on the next frame so we don't pan against stale screen positions.
+    map.on("resize", scheduleFit);
+    scheduleFit();
+    return () => {
+      observer.disconnect();
+      map.off("resize", scheduleFit);
+      cancelAnimationFrame(frame);
+    };
+  }, [selectedId, map]);
+
   useEffect(() => {
     const nextExpiry = Math.min(
       ...hazards
@@ -135,16 +200,32 @@ function HazardSession() {
               longitude={lng}
               latitude={lat}
               anchor="center"
-              onClick={(e) => {
-                e.originalEvent.stopPropagation();
-                setSelected(h);
+              ref={(marker) => {
+                // The native button below owns semantics and keyboard input;
+                // suppress MapLibre's additional generic "Map marker" role.
+                const element = marker?.getElement();
+                element?.setAttribute("role", "presentation");
+                element?.setAttribute("aria-label", "");
               }}
             >
-              <div
-                className={`h-7 w-7 rounded-full ${h.status === "verified" ? "bg-amber-500" : "bg-neutral-400"} flex items-center justify-center shadow-md cursor-pointer hover:scale-110 transition-transform`}
+              <button
+                type="button"
+                aria-label={t(
+                  h.hazardType === "data_error" ? "dataError" : h.hazardType,
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSelected(h);
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+                className="flex size-11 cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
-                <AlertTriangle className="h-3.5 w-3.5 text-white" />
-              </div>
+                <span
+                  className={`flex size-8 items-center justify-center rounded-full border-2 bg-background text-foreground shadow-md ${h.status === "verified" ? "border-primary" : "border-muted-foreground"}`}
+                >
+                  <AlertTriangle className="size-4" aria-hidden="true" />
+                </span>
+              </button>
             </Marker>
           );
         })}
@@ -154,70 +235,168 @@ function HazardSession() {
           longitude={selected.reportedLocation.coordinates[0]}
           latitude={selected.reportedLocation.coordinates[1]}
           anchor="bottom"
+          offset={22}
+          maxWidth="none"
           onClose={() => setSelected(null)}
           closeOnClick={false}
-          className="[&_.maplibregl-popup-content]:rounded-xl [&_.maplibregl-popup-content]:p-3 [&_.maplibregl-popup-content]:shadow-lg"
+          closeButton={false}
+          className="hazard-map-popup"
         >
-          <div className="space-y-1 min-w-[160px]">
-            <div className="flex justify-end pr-4">
-              <ContentSafetyMenu
-                target={{ targetType: "hazard_report", targetId: selected._id }}
-                canBlock={selected.canBlockAuthor === true}
-                isOwn={Boolean(user?._id && selected.reporterId === user._id)}
-              />
-            </div>
-            <p className="text-sm font-semibold flex items-center gap-1.5">
-              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-              {t(
-                selected.hazardType === "data_error"
-                  ? "dataError"
-                  : selected.hazardType,
-              )}
-            </p>
-            {selected.description && (
-              <p className="text-xs text-muted-foreground">
-                {selected.description}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              {t(hazardReviewStatus(selected, now))}
-              {selected.confirmCount != null &&
-                ` · ${selected.confirmCount} ${t("confirmed")}`}
-            </p>
-            {selected.aiReview?.reason && (
-              <p className="text-xs text-muted-foreground">
-                {selected.aiReview.reason}
-              </p>
-            )}
-            {hazardCanConfirm(selected, now) &&
-              selected.reporterId !== user?._id &&
-              (votedIds.has(selected._id) ? (
-                <p className="text-xs italic text-muted-foreground">
-                  {t("hazardVoted")}
+          <article
+            ref={popupContent}
+            key={selected._id}
+            className="w-[min(336px,calc(100vw-88px))] max-h-[min(640px,calc(88dvh-32px))] overflow-y-auto overscroll-contain break-words font-sans text-popover-foreground md:max-h-[min(640px,calc(100dvh-100px))]"
+          >
+            <header className="flex items-start gap-3 border-b border-border/60 p-4 pb-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-muted">
+                <AlertTriangle className="size-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1 space-y-1">
+                <h2 className="text-base font-semibold leading-snug">
+                  {t(
+                    selected.hazardType === "data_error"
+                      ? "dataError"
+                      : selected.hazardType,
+                  )}
+                </h2>
+                {selected.severity && (
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      {
+                        blocking: "severityBlocking",
+                        difficult: "severityDifficult",
+                        minor: "severityMinor",
+                      }[selected.severity],
+                    )}
+                  </p>
+                )}
+              </div>
+              <div className="-mr-2 -mt-2 flex shrink-0 items-center">
+                <ContentSafetyMenu
+                  target={{
+                    targetType: "hazard_report",
+                    targetId: selected._id,
+                  }}
+                  canBlock={selected.canBlockAuthor === true}
+                  isOwn={Boolean(user?._id && selected.reporterId === user._id)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="rounded-full"
+                  aria-label={t("hazardReviewClose")}
+                  onClick={() => setSelected(null)}
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </header>
+            <div className="space-y-4 p-4">
+              {selected.description && (
+                <p className="text-base leading-relaxed">
+                  {selected.description}
                 </p>
-              ) : (
-                <div className="flex gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleVote(selected, "confirm")}
-                    disabled={votingId === selected._id}
-                    className="flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
-                  >
-                    <ThumbsUp className="h-3 w-3" />
-                    {t("confirmHazard")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleVote(selected, "deny")}
-                    disabled={votingId === selected._id}
-                    className="flex items-center gap-1 rounded-md bg-neutral-400 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
-                  >
-                    <ThumbsDown className="h-3 w-3" />
-                    {t("denyHazard")}
-                  </button>
+              )}
+              {(selected.hasPhoto ?? Boolean(selected.photoUrl)) && (
+                <figure className="space-y-2">
+                  <HazardReportPhoto
+                    reportId={selected._id}
+                    variant="popup"
+                    retryable
+                  />
+                  <figcaption className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Camera className="size-3.5" aria-hidden="true" />
+                    {t("hazardPhoto")}
+                  </figcaption>
+                </figure>
+              )}
+              <section
+                aria-label={t("reportReviewSummary")}
+                className="space-y-2 rounded-xl border border-border/60 bg-muted/40 p-3"
+              >
+                <p className="text-sm font-medium leading-relaxed">
+                  {t(hazardReviewStatus(selected, now))}
+                </p>
+                {selected.aiReview?.reason && (
+                  <details className="group text-sm">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+                      {t("reportReviewSummary")}
+                      <ChevronDown
+                        className="size-4 shrink-0 group-open:rotate-180"
+                        aria-hidden="true"
+                      />
+                    </summary>
+                    <p className="pt-1 text-muted-foreground leading-relaxed">
+                      {selected.aiReview.reason}
+                    </p>
+                  </details>
+                )}
+              </section>
+              <section
+                aria-label={t("reportCommunity")}
+                className="space-y-3 border-t border-border/60 pt-3"
+              >
+                <h3 className="text-xs font-medium text-muted-foreground">
+                  {t("reportCommunity")}
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                  <p className="flex items-center gap-1.5">
+                    <ThumbsUp
+                      className="size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>{t("reportConfirmCount")}</span>
+                    <strong className="ml-auto text-sm tabular-nums text-foreground">
+                      {selected.confirmCount ?? 0}
+                    </strong>
+                  </p>
+                  <p className="flex items-center gap-1.5">
+                    <ThumbsDown
+                      className="size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>{t("reportDenyCount")}</span>
+                    <strong className="ml-auto text-sm tabular-nums text-foreground">
+                      {selected.denyCount ?? 0}
+                    </strong>
+                  </p>
                 </div>
-              ))}
-          </div>
+                {hazardCanConfirm(selected, now) &&
+                  selected.reporterId !== user?._id &&
+                  (votedIds.has(selected._id) ? (
+                    <p
+                      role="status"
+                      className="rounded-xl bg-muted p-3 text-sm text-muted-foreground"
+                    >
+                      {t("hazardVoted")}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => handleVote(selected, "confirm")}
+                        disabled={votingId === selected._id}
+                        className="min-h-11 h-auto whitespace-normal rounded-xl px-2 py-2"
+                      >
+                        <ThumbsUp className="size-4" aria-hidden="true" />
+                        {t("confirmHazard")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleVote(selected, "deny")}
+                        disabled={votingId === selected._id}
+                        className="min-h-11 h-auto whitespace-normal rounded-xl px-2 py-2"
+                      >
+                        <ThumbsDown className="size-4" aria-hidden="true" />
+                        {t("denyHazard")}
+                      </Button>
+                    </div>
+                  ))}
+              </section>
+            </div>
+          </article>
         </Popup>
       )}
     </>

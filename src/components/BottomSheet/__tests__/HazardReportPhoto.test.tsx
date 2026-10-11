@@ -61,9 +61,13 @@ vi.mock("@/lib/api/hazard-photo", () => ({ getHazardPhoto: vi.fn() }));
 import { getHazardPhoto } from "@/lib/api/hazard-photo";
 import HazardReportPhoto from "../HazardReportPhoto";
 
-function render() {
+function render(variant: "thumbnail" | "detail" | "popup" = "thumbnail") {
   hooks.cursor = 0;
-  const session = HazardReportPhoto({ reportId: "r", retryable: true });
+  const session = HazardReportPhoto({
+    reportId: "r",
+    retryable: true,
+    variant,
+  });
   const tree = (session.type as (props: typeof session.props) => ReactElement)(
     session.props,
   );
@@ -91,6 +95,20 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("report photo lifecycle", () => {
+  it("uses a reserved, uncropped popup frame and a touch-sized retry", async () => {
+    vi.mocked(getHazardPhoto).mockRejectedValueOnce(new Error("404"));
+    const loading = nodes(render("popup")).find(
+      (node) => node.props.role === "status",
+    );
+    expect(loading?.props.className).toContain("aspect-video");
+    expect(loading?.props.className).toContain("object-contain");
+    await flush();
+    const retry = nodes(render("popup")).find(
+      (node) => node.props.children === "myReportsRetry",
+    );
+    expect(retry?.props.className).toContain("min-h-11");
+    expect(retry?.props.className).toContain("min-w-11");
+  });
   it("renders only a local blob URL and revokes it on unmount", async () => {
     vi.mocked(getHazardPhoto).mockResolvedValueOnce(new Blob(["photo"]));
     const create = vi

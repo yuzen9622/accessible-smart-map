@@ -9,7 +9,7 @@ import useAuthStore from "@/stores/useAuthStore";
 export default function HazardReportPhoto(props: {
   reportId: string;
   retryable?: boolean;
-  variant?: "thumbnail" | "detail";
+  variant?: "thumbnail" | "detail" | "popup";
 }) {
   const userId = useAuthStore((s) => s.user?._id);
   return (
@@ -27,13 +27,15 @@ function PhotoSession({
 }: {
   reportId: string;
   retryable?: boolean;
-  variant?: "thumbnail" | "detail";
+  variant?: "thumbnail" | "detail" | "popup";
 }) {
   const { t } = useAppTranslation();
   const frame =
     variant === "detail"
       ? "aspect-[4/3] w-full rounded-2xl object-contain bg-muted/40"
-      : "h-20 w-20 rounded-xl border border-border/50 bg-muted object-cover";
+      : variant === "popup"
+        ? "aspect-video w-full rounded-xl object-contain bg-muted"
+        : "h-20 w-20 rounded-xl border border-border/50 bg-muted object-cover";
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -65,7 +67,7 @@ function PhotoSession({
   }, [reportId, attempt]);
   return (
     <span
-      className={`block space-y-2 ${variant === "detail" ? "w-full" : "shrink-0"}`}
+      className={`block space-y-2 ${variant === "thumbnail" ? "shrink-0" : "w-full"}`}
     >
       {url && !failed ? (
         // biome-ignore lint/performance/noImgElement: Authenticated backend bytes are rendered as a local object URL.
@@ -87,6 +89,9 @@ function PhotoSession({
         <Button
           variant="outline"
           size="sm"
+          className={
+            variant === "popup" ? "min-h-11 min-w-11 rounded-xl" : undefined
+          }
           onClick={() => setAttempt((value) => value + 1)}
         >
           {t("myReportsRetry")}
