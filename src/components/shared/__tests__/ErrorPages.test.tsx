@@ -35,7 +35,7 @@ describe("Route ErrorPage ([lng]/error.tsx)", () => {
 
     // Verify removed badges are no longer rendered
     expect(html).not.toContain("安全防護攔截");
-    expect(html).not.toContain("臺北無障礙智慧地圖</span>");
+    expect(html).not.toContain("無障礙智慧地圖</span>");
   });
 
   it("handles empty error message with fallback text", () => {
@@ -70,7 +70,7 @@ describe("GlobalError (global-error.tsx)", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain('aria-live="assertive"');
     expect(html).toContain('aria-atomic="true"');
-    expect(html).toContain("系統發生重大錯誤");
+    expect(html).toContain("<title>系統發生重大錯誤 - 無障礙智慧地圖</title>");
     expect(html).toContain(
       "應用程式核心元件發生未預期的錯誤，請嘗試重新載入整個頁面或返回首頁。",
     );
@@ -83,7 +83,7 @@ describe("GlobalError (global-error.tsx)", () => {
 
     // Verify removed badges are no longer rendered
     expect(html).not.toContain("全域防護攔截");
-    expect(html).not.toContain("臺北無障礙智慧地圖</span>");
+    expect(html).not.toContain("無障礙智慧地圖</span>");
   });
 
   it("handles empty error message with fallback text", () => {

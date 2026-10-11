@@ -46,7 +46,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
 
   const handleCopyDebugInfo = async () => {
     const debugText = [
-      `=== Taipei Accessible Map Global Error Diagnostic ===`,
+      `=== Accessible Smart Map Global Error Diagnostic ===`,
       `Time: ${new Date().toISOString()}`,
       `URL: ${typeof window !== "undefined" ? window.location.href : "SSR"}`,
       error?.digest ? `Digest: ${error.digest}` : null,
@@ -69,7 +69,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
   return (
     <html lang="zh-TW">
       <head>
-        <title>系統發生重大錯誤 - 臺北無障礙智慧地圖</title>
+        <title>系統發生重大錯誤 - 無障礙智慧地圖</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       </head>
       <body className="min-h-dvh bg-slate-50 text-slate-900 dark:bg-zinc-950 dark:text-zinc-100 font-sans antialiased m-0 p-0 flex items-center justify-center">

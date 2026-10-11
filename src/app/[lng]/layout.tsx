@@ -66,7 +66,7 @@ export const metadata: Metadata = {
     description:
       "無障礙智慧地圖 - Accessible Smart Map 一款專為無障礙設計的地圖，支援無障礙設施查詢、即時公車動態與無障礙路線規劃。",
     url: "https://map.yuzen.dev",
-    siteName: "臺北無障礙導航系統",
+    siteName: "無障礙智慧地圖",
     locale: "zh_TW",
     type: "website",
   },

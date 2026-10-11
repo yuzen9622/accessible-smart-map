@@ -75,7 +75,7 @@ export default function ErrorPage({ error, reset }: ErrorProps) {
 
   const handleCopyDebugInfo = async () => {
     const debugText = [
-      `=== Taipei Accessible Map Error Diagnostic ===`,
+      `=== Accessible Smart Map Error Diagnostic ===`,
       `Time: ${new Date().toISOString()}`,
       `URL: ${typeof window !== "undefined" ? window.location.href : "SSR"}`,
       `Language: ${currentLng}`,
