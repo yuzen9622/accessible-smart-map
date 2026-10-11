@@ -1,9 +1,9 @@
 # taipei-accessible-map
 
 <div align="center">
-  <img src="./public/logo.png" alt="Taipei Accessible Map Logo" width="280"/>
+  <img src="./public/logo.png" alt="無障礙智慧地圖 Logo" width="280"/>
 
-  ### 臺北無障礙導航系統 · Taipei Accessible Navigation System
+  ### 無障礙智慧地圖 · Accessible Smart Map
 
   [![CI](https://img.shields.io/github/actions/workflow/status/yuzen9622/taipei-accessible-map/ci.yml?branch=main&label=CI&logo=github)](https://github.com/yuzen9622/taipei-accessible-map/actions/workflows/ci.yml)
   [![Next.js](https://img.shields.io/badge/Next.js-16_(Turbopack)-black?logo=next.js)](https://nextjs.org/)
@@ -226,7 +226,7 @@ npm run ios
 
 ## 🌐 English Summary
 
-**Taipei Accessible Navigation System (`taipei-accessible-map`)** is an open-source, intelligent navigation and transit map designed for wheelchair users, elderly people, and individuals with mobility impairments.
+**Accessible Smart Map (`taipei-accessible-map`)** is an open-source, intelligent navigation and transit map designed for wheelchair users, elderly people, and individuals with mobility impairments.
 
 ### Key Highlights
 - **Barrier-Free Routing**: Avoids stairs, overpasses, and pedestrian obstacles; prioritizes elevator and ramp-accessible pathways.

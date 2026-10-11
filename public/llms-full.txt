@@ -1,7 +1,7 @@
-# 臺北無障礙導航系統 完整規格導覽 - Taipei Accessible Navigation System (Full Guide)
+# 無障礙智慧地圖 完整規格導覽 - Accessible Smart Map (Full Guide)
 
 ## 專案概要 (Project Summary)
-- 專案名稱：臺北無障礙導航系統 (Taipei Accessible Navigation System / Accessible Smart Map)
+- 專案名稱：無障礙智慧地圖 (Accessible Smart Map)
 - 網址：https://map.yuzen.dev/
 - 核心目標：針對輪椅使用者、長者、推嬰兒車者等行動不便族群，提供結合無障礙設施、即時大眾運輸動態、安全無障礙路網的智慧導航平台。
 

@@ -1,4 +1,4 @@
-# 臺北無障礙智慧地圖 前端產品級工程稽核報告
+# 無障礙智慧地圖 前端產品級工程稽核報告
 
 - 稽核日期：2026-09-04
 - 稽核範圍：前端專屬範圍（Next.js 16.3.2 App Router 前端 UI、Hook、Client API、狀態管理與工具鏈），基線 commit `c2e196b`
@@ -9,7 +9,7 @@
 
 ## 0. 一頁摘要
 
-臺北無障礙智慧地圖（前端）整體工程架構健全度達到**產品級（Production-Ready）中後期水準**。核心優點在於無障礙體驗（a11y）、按鍵語義化（無 `<div onClick>` 濫用）、色彩對比、鍵盤焦點環、以及透過 Next.js Dynamic Import 所實現的細緻 Code Splitting。此外，認證 Token 嚴格維持記憶體儲存搭配 HttpOnly Cookie 輪替，未外洩至 LocalStorage，資安基本功扎實。
+無障礙智慧地圖（前端）整體工程架構健全度達到**產品級（Production-Ready）中後期水準**。核心優點在於無障礙體驗（a11y）、按鍵語義化（無 `<div onClick>` 濫用）、色彩對比、鍵盤焦點環、以及透過 Next.js Dynamic Import 所實現的細緻 Code Splitting。此外，認證 Token 嚴格維持記憶體儲存搭配 HttpOnly Cookie 輪替，未外洩至 LocalStorage，資安基本功扎實。
 
 然而，阻擋邁入成熟產品級有三項最致命的隱患：
 
