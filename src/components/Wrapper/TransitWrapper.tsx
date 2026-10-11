@@ -8,7 +8,6 @@ import BusStopPin from "@/components/BusStopPin";
 import Polyline from "@/components/Polyline";
 import { useMapBoundsAndZoom } from "@/hook/useMapBoundsAndZoom";
 import { getNearbyBusStops, type RouteDetailStop } from "@/lib/api/transit";
-import useBusTrackingStore from "@/stores/useBusTrackingStore";
 import useMapStore from "@/stores/useMapStore";
 import type { BusStopSearchResult } from "@/types/transit";
 
@@ -20,7 +19,6 @@ type BusPointProperties = {
 
 export default function TransitWrapper() {
   const { current: map } = useMap();
-  const trackingSnapshot = useBusTrackingStore((s) => s.snapshot);
   const {
     activeRailPanel,
     userLocation,
@@ -134,21 +132,6 @@ export default function TransitWrapper() {
 
   return (
     <>
-      {trackingSnapshot?.buses.map((bus) => (
-        <Marker
-          key={`panel-bus-${bus.plateNumb}`}
-          latitude={bus.lat}
-          longitude={bus.lng}
-          anchor="center"
-        >
-          <span
-            className="bg-emerald-700 text-white rounded px-2 py-1 text-xs"
-            title={bus.plateNumb}
-          >
-            🚌 {bus.plateNumb}
-          </span>
-        </Marker>
-      ))}
       {busRoutePolyline.length >= 2 && (
         <Polyline
           id="selected-bus-route"
