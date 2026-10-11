@@ -1,5 +1,10 @@
 "use client";
 import { create } from "zustand";
+import type { TransitGuide } from "@/lib/navigation/transitRide";
+import {
+  confirmBoarded,
+  type TransitRideRuntime,
+} from "@/lib/navigation/transitRideRuntime";
 import type {
   VoiceNavAdvisory,
   VoiceRerouteReason,
@@ -40,6 +45,9 @@ export interface NavProgressUpdate {
 interface NavState {
   /** Which state machine owns step advancement for the active navigation. */
   navigationSource: NavigationSource;
+  navigationMode: "preview" | "live";
+  transitRide: TransitRideRuntime | null;
+  transitGuide: TransitGuide | null;
   navigationId: string | null;
   routeVersion: number;
   instructions: NavInstruction[];
@@ -61,7 +69,7 @@ interface NavState {
   lastRerouteReason: NavRerouteReason | null;
   arrived: boolean;
   compassPermission: CompassPermission;
-  /** Timestamp of the last manual step change; brief lock against auto-advance. */
+  /** Preview step-change timestamp, retained for caller compatibility (not a live override). */
   lastManualTs: number;
   /** True after the user drags the map mid-navigation; camera-follow pauses. */
   followPaused: boolean;
@@ -88,6 +96,12 @@ interface NavState {
 }
 
 interface NavAction {
+  promoteToLive: () => void;
+  setTransitRide: (
+    ride: TransitRideRuntime | null,
+    guide: TransitGuide | null,
+  ) => void;
+  confirmBusBoarded: () => void;
   setNavigationSource: (source: NavigationSource) => void;
   setNavigationIdentity: (
     navigationId: string | null,
@@ -103,7 +117,7 @@ interface NavAction {
     instruction: string,
     remainingM: number | null,
   ) => void;
-  /** Manual override from the prev/next buttons. */
+  /** Preview-only selection from prev/next or the step list. */
   setStepIndex: (index: number) => void;
   setDistanceToNextM: (m: number | null) => void;
   setUserHeading: (deg: number | null, source: HeadingSource) => void;
@@ -135,6 +149,9 @@ const ADVISORY_MAX = 3;
 
 const initialState: NavState = {
   navigationSource: "local",
+  navigationMode: "preview",
+  transitRide: null,
+  transitGuide: null,
   navigationId: null,
   routeVersion: 0,
   instructions: [],
@@ -168,13 +185,70 @@ const initialState: NavState = {
 
 const useNavStore = create<NavStore>((set) => ({
   ...initialState,
-  setNavigationSource: (navigationSource) => set({ navigationSource }),
+  setNavigationSource: (navigationSource) =>
+    set((state) =>
+      state.navigationSource === navigationSource
+        ? {}
+        : {
+            navigationSource,
+            navigationMode:
+              navigationSource === "voice" || state.navigationSource === "voice"
+                ? "live"
+                : state.navigationMode,
+            transitRide: null,
+            transitGuide: null,
+            lastManualTs: 0,
+          },
+    ),
+  promoteToLive: () =>
+    set((state) =>
+      state.navigationSource === "local" && state.navigationMode === "preview"
+        ? {
+            navigationMode: "live",
+            currentStepIndex: 0,
+            lastManualTs: 0,
+            stepListOpen: false,
+            arrived: false,
+            isOffRoute: false,
+          }
+        : {},
+    ),
+  setTransitRide: (transitRide, transitGuide) =>
+    set({ transitRide, transitGuide }),
+  confirmBusBoarded: () =>
+    set((state) =>
+      state.navigationSource === "local" &&
+      state.navigationMode === "live" &&
+      state.transitRide &&
+      state.transitGuide?.phase === "waiting"
+        ? { transitRide: confirmBoarded(state.transitRide, Date.now()) }
+        : {},
+    ),
   setNavigationIdentity: (navigationId, routeVersion) =>
-    set({ navigationId, routeVersion }),
+    set((state) => ({
+      navigationId,
+      routeVersion,
+      ...(state.navigationId !== navigationId ||
+      state.routeVersion !== routeVersion
+        ? {
+            transitRide: null,
+            transitGuide: null,
+            lastManualTs: 0,
+            currentStepIndex: 0,
+            arrived: false,
+            isOffRoute: false,
+            distanceToNextM: null,
+            remainingM: null,
+          }
+        : {}),
+    })),
   setInstructions: (instructions, warnings = []) =>
     set({
       instructions,
       warnings,
+      transitRide: null,
+      transitGuide: null,
+      lastManualTs: 0,
       currentStepIndex: 0,
       arrived: false,
       isOffRoute: false,
@@ -199,8 +273,20 @@ const useNavStore = create<NavStore>((set) => ({
       remainingM,
       isOffRoute: false,
     })),
-  setStepIndex: (currentStepIndex) =>
-    set({ currentStepIndex, lastManualTs: Date.now() }),
+  setStepIndex: (index) =>
+    set((state) =>
+      state.navigationSource === "local" &&
+      state.navigationMode === "preview" &&
+      Number.isInteger(index)
+        ? {
+            currentStepIndex: Math.max(
+              0,
+              Math.min(index, state.instructions.length - 1),
+            ),
+            lastManualTs: Date.now(),
+          }
+        : {},
+    ),
   setDistanceToNextM: (distanceToNextM) => set({ distanceToNextM }),
   setUserHeading: (userHeading, headingSource) =>
     set({ userHeading, headingSource }),

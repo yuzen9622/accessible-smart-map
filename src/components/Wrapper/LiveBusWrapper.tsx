@@ -88,7 +88,11 @@ function TargetBusMarker({ bus }: { bus: AnimatedBus }) {
  */
 function useNavigationBusTracking() {
   const isNavigating = useMapStore((s) => s.isNavigating);
-  const selectRoute = useMapStore((s) => s.selectRoute);
+  const route = useMapStore(
+    (s) => s.activeNavigationRoute ?? s.selectRoute?.route,
+  );
+  const mode = useNavStore((s) => s.navigationMode);
+  const source = useNavStore((s) => s.navigationSource);
   const setActiveBusLeg = useMapStore((s) => s.setActiveBusLeg);
   const instructions = useNavStore((s) => s.instructions);
   const currentStepIndex = useNavStore((s) => s.currentStepIndex);
@@ -100,7 +104,7 @@ function useNavigationBusTracking() {
   useEffect(() => {
     // Outside navigation the route card owns the tracking decision; only undo
     // what this effect itself set.
-    if (!isNavigating) {
+    if (!isNavigating || mode !== "live" || source !== "local") {
       if (lastKeyRef.current !== null) {
         lastKeyRef.current = null;
         setActiveBusLeg(null);
@@ -108,12 +112,11 @@ function useNavigationBusTracking() {
       return;
     }
 
-    const busLegs = (selectRoute?.route?.legs ?? []).filter(
+    const busLegs = (route?.legs ?? []).filter(
       (leg): leg is BusLeg => leg.type === "BUS",
     );
     const ordinal = resolveActiveBusLegOrdinal(instructions, currentStepIndex);
     const rawLeg = ordinal == null ? undefined : busLegs[ordinal];
-    const route = selectRoute?.route;
     const leg = rawLeg
       ? {
           ...rawLeg,
@@ -125,14 +128,21 @@ function useNavigationBusTracking() {
             : undefined,
         }
       : undefined;
-    const nextKey = leg ? busLegKey(`nav:${ordinal}`, leg) : null;
+    const nextKey = leg
+      ? busLegKey(
+          `nav:${route?.navigationId}:${route?.routeVersion}:${ordinal}`,
+          leg,
+        )
+      : null;
 
     if (nextKey === lastKeyRef.current) return;
     lastKeyRef.current = nextKey;
     setActiveBusLeg(nextKey && leg ? { key: nextKey, leg } : null);
   }, [
     isNavigating,
-    selectRoute?.route,
+    route,
+    mode,
+    source,
     instructions,
     currentStepIndex,
     setActiveBusLeg,
@@ -147,9 +157,19 @@ function useNavigationBusTracking() {
 }
 
 export default function LiveBusWrapper() {
-  // Starts/owns the 15s polling lifecycle while a bus leg is being tracked.
-  useLiveBusPositions();
   useNavigationBusTracking();
+  const isNavigating = useMapStore((s) => s.isNavigating);
+  const mode = useNavStore((s) => s.navigationMode);
+  const source = useNavStore((s) => s.navigationSource);
+  const navigationId = useNavStore((s) => s.navigationId);
+  const version = useNavStore((s) => s.routeVersion);
+  const ride = useNavStore((s) => s.transitRide);
+  // A boarded but unidentified vehicle stays unidentified: never select the next bus.
+  useLiveBusPositions({
+    enabled: !isNavigating || (mode === "live" && source === "local"),
+    sessionKey: `${navigationId}:${version}:${source}:${mode}`,
+    vehicle: isNavigating && ride?.boarded ? ride.vehicle : undefined,
+  });
   const liveBusPositions = useMapStore((s) => s.liveBusPositions);
   const buses = useAnimatedBuses(liveBusPositions);
 

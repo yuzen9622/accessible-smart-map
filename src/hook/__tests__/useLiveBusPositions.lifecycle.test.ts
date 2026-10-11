@@ -114,6 +114,70 @@ const start = async () => {
 const lastSet = () => h.setLiveBusPositions.mock.calls.at(-1)?.[0];
 
 describe("useLiveBusPositions lifecycle", () => {
+  it("does not poll or publish a real ride in preview", async () => {
+    useLiveBusPositions({ enabled: false, sessionKey: "preview" });
+    cleanup = h.effects[0]();
+    await flush();
+    expect(h.getLiveBusPositions).not.toHaveBeenCalled();
+    expect(lastSet()).toEqual([]);
+  });
+  it("hidden tab aborts and invalidates a late response, visible return requires fresh data", async () => {
+    let release: (value: unknown) => void = () => {};
+    h.getLiveBusPositions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    useLiveBusPositions();
+    cleanup = h.effects[0]();
+    await flush();
+    const listener = vi
+      .mocked(document.addEventListener)
+      .mock.calls.find(
+        (call) => call[0] === "visibilitychange",
+      )?.[1] as () => void;
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    listener();
+    release({
+      ok: true,
+      data: { buses: [{ plateNumb: "KKA-1", direction: 0, lat: 0, lng: 0 }] },
+    });
+    await flush();
+    expect(lastSet()).toEqual([]);
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    listener();
+    await flush();
+    expect(lastSet()).toHaveLength(1);
+  });
+  it("session/version replacement rejects the prior session response", async () => {
+    let release: (value: unknown) => void = () => {};
+    h.getLiveBusPositions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    useLiveBusPositions({ enabled: true, sessionKey: "nav:1" });
+    cleanup = h.effects[0]();
+    await flush();
+    cleanup?.();
+    h.effects.length = 0;
+    useLiveBusPositions({ enabled: true, sessionKey: "nav:2" });
+    cleanup = h.effects[0]();
+    await flush();
+    h.setLiveBusPositions.mockClear();
+    release({
+      ok: true,
+      data: { buses: [{ plateNumb: "OLD", direction: 0, lat: 0, lng: 0 }] },
+    });
+    await flush();
+    expect(h.setLiveBusPositions).not.toHaveBeenCalled();
+  });
   it("publishes the target vehicle", async () => {
     await start();
     expect(lastSet()).toHaveLength(1);

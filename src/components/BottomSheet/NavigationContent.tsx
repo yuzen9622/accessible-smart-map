@@ -17,8 +17,8 @@ import { Button } from "../ui/button";
 
 /**
  * Step list shown while navigating (the live banner/ETA moved to the on-map
- * NavigationHUD). Opened from the HUD's list button; tapping a step manually
- * overrides the engine's auto-advance.
+ * NavigationHUD). Opened from the HUD's list button; selection is enabled
+ * only for local preview. Live and voice-owned steps remain read-only.
  */
 export default function NavigationContent() {
   const { t } = useAppTranslation();
@@ -27,6 +27,9 @@ export default function NavigationContent() {
   const currentStep = useNavStore((s) => s.currentStepIndex);
   const arrived = useNavStore((s) => s.arrived);
   const setStepIndex = useNavStore((s) => s.setStepIndex);
+  const mode = useNavStore((s) => s.navigationMode);
+  const source = useNavStore((s) => s.navigationSource);
+  const maySelect = source === "local" && mode === "preview";
   const warnings = useNavStore((s) => s.warnings);
 
   const currentRef = useRef<HTMLButtonElement | null>(null);
@@ -108,9 +111,11 @@ export default function NavigationContent() {
               key={`${step.type}-${step.text}-${step.distanceM ?? 0}-${step.polylineIndex ?? 0}`}
               ref={active ? currentRef : undefined}
               type="button"
+              disabled={!maySelect}
+              aria-current={active ? "step" : undefined}
               onClick={() => setStepIndex(i)}
               className={cn(
-                "w-full flex items-start gap-3 p-3 rounded-xl text-left transition-colors",
+                "w-full min-h-[44px] flex items-start gap-3 p-3 rounded-xl text-left transition-colors disabled:cursor-default",
                 active
                   ? "bg-primary/10 border border-primary/30"
                   : "hover:bg-muted/60 border border-transparent",

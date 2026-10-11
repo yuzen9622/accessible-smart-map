@@ -61,7 +61,13 @@ export function resolveNavigationAudioToggle(
  * live Gemini channel, and it still obeys the local toggle otherwise.
  */
 export function shouldSpeakLocally(
-  state: Omit<NavigationAudioState, "geminiMuted">,
+  state: Omit<NavigationAudioState, "geminiMuted"> & {
+    localNavigationMode?: "preview" | "live";
+  },
 ): boolean {
-  return !state.geminiOwnsSpeech && state.localVoiceEnabled;
+  return (
+    !state.geminiOwnsSpeech &&
+    state.localVoiceEnabled &&
+    state.localNavigationMode !== "preview"
+  );
 }

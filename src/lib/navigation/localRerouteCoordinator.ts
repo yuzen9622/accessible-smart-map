@@ -21,6 +21,7 @@ export type ReroutePriority = "AUTO" | "MANUAL";
 
 export interface LocalRerouteContext {
   navigationSource: NavigationSource;
+  navigationMode?: "preview" | "live";
   isNavigating: boolean;
   navigationId: string | null;
   routeToken: string | null;
@@ -63,6 +64,7 @@ function defaultReadContext(): LocalRerouteContext {
 
   return {
     navigationSource: nav.navigationSource,
+    navigationMode: nav.navigationMode,
     isNavigating: map.isNavigating,
     navigationId: hasMatchingRuntimeIdentity ? routeNavigationId : null,
     routeToken:
@@ -196,7 +198,11 @@ export class LocalRerouteCoordinator {
    */
   triggerAutoReroute(position?: LatLng): Promise<boolean> {
     const context = this.readContext();
-    if (!this.isSessionActive() || context.navigationSource !== "local") {
+    if (
+      !this.isSessionActive() ||
+      context.navigationSource !== "local" ||
+      context.navigationMode === "preview"
+    ) {
       return Promise.resolve(false);
     }
 
@@ -231,7 +237,11 @@ export class LocalRerouteCoordinator {
     position?: LatLng,
   ): Promise<boolean> {
     const context = this.readContext();
-    if (!this.isSessionActive() || context.navigationSource !== "local") {
+    if (
+      !this.isSessionActive() ||
+      context.navigationSource !== "local" ||
+      context.navigationMode === "preview"
+    ) {
       return Promise.resolve(false);
     }
 
@@ -259,7 +269,11 @@ export class LocalRerouteCoordinator {
    */
   retry(position?: LatLng): Promise<boolean> {
     const context = this.readContext();
-    if (!this.isSessionActive() || context.navigationSource !== "local") {
+    if (
+      !this.isSessionActive() ||
+      context.navigationSource !== "local" ||
+      context.navigationMode === "preview"
+    ) {
       return Promise.resolve(false);
     }
     if (this.activeRequest !== null) return Promise.resolve(false);
@@ -382,6 +396,7 @@ export class LocalRerouteCoordinator {
     return (
       current.isNavigating &&
       current.navigationSource === "local" &&
+      current.navigationMode !== "preview" &&
       current.navigationId === expectedContext.navigationId &&
       current.routeVersion === expectedContext.routeVersion &&
       current.routeToken === expectedContext.routeToken

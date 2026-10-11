@@ -14,6 +14,17 @@ export function startNavigation(): void {
     toast.error("這份路線目前無法啟用導航，請重新規劃。");
     return;
   }
+  // VoiceSessionHost installs authoritative steps before invoking this command.
+  // Starting its map UI must not reset that owner or its carried instructions.
+  if (useNavStore.getState().navigationSource !== "voice") {
+    useNavStore.getState().reset();
+    useNavStore
+      .getState()
+      .setNavigationIdentity(
+        route.navigationId ?? null,
+        route.routeVersion ?? 0,
+      );
+  }
   useMapStore.setState({ activeNavigationRoute: route });
   const navigationId = route.navigationId ?? null;
   localRerouteCoordinator.startSession(navigationId);

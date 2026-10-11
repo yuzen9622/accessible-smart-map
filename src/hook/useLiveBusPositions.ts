@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { RouteDetailStop } from "@/lib/api/transit";
 import { getLiveBusPositions } from "@/lib/api/transit";
+import type { BoardedVehicle } from "@/lib/navigation/transitRideRuntime";
 import {
   type ResolvedLegRide,
   resolveCurrentStopSeq,
@@ -9,6 +10,7 @@ import {
 import {
   fetchRouteDetailCached,
   legRouteDetailRef,
+  peekRouteDetailSnapshot,
 } from "@/lib/transit/busRouteDetailCache";
 import useMapStore from "@/stores/useMapStore";
 import type { BusLeg, LiveBus } from "@/types/route";
@@ -57,6 +59,7 @@ function onResolvedBranch(
 export async function fetchLeg(
   leg: BusLeg,
   signal: AbortSignal,
+  boardedVehicle?: BoardedVehicle | null,
 ): Promise<LiveBus[]> {
   const ref = legRouteDetailRef(leg);
   if (signal.aborted || !ref.city || !leg.planContext) return [];
@@ -71,13 +74,25 @@ export async function fetchLeg(
   const ride = resolveLegRide(directions ?? undefined, leg);
   if (!ride || ride.direction === 255) return [];
 
-  const board = ride.stops[0];
+  const locked = boardedVehicle !== undefined;
+  if (
+    locked &&
+    (!boardedVehicle?.plate ||
+      boardedVehicle.direction !== ride.direction ||
+      (boardedVehicle.branch !== null &&
+        boardedVehicle.branch !== ride.subRouteUid))
+  )
+    return [];
+  const board = locked ? ride.stops.at(-1) : ride.stops[0];
   const arrival = {
-    plate: board?.plateNumb,
-    eta: board?.estimateMinutes,
+    plate: locked ? boardedVehicle?.plate : board?.plateNumb,
+    eta:
+      locked && board?.plateNumb !== boardedVehicle?.plate
+        ? null
+        : board?.estimateMinutes,
     subRouteUid: ride.subRouteUid,
   };
-  if (!arrival.plate || arrival.eta == null) return [];
+  if (!arrival.plate || (!locked && arrival.eta == null)) return [];
   const posRes = await getLiveBusPositions(
     ref.routeName,
     ref.city,
@@ -86,7 +101,7 @@ export async function fetchLeg(
   );
   if (signal.aborted) return [];
 
-  if (!arrival.plate || arrival.eta == null) return [];
+  if (!arrival.plate || (!locked && arrival.eta == null)) return [];
   if (!posRes.ok || !posRes.data?.buses?.length) return [];
 
   const target = posRes.data.buses.find(
@@ -99,12 +114,23 @@ export async function fetchLeg(
         arrival.subRouteUid === b.subRouteUid),
   );
   if (!target) return [];
+  // A slow positions request must not revive an expired planned arrival.
+  const freshArrival = peekRouteDetailSnapshot(
+    ref.routeName,
+    ref.city,
+    ref.subRouteUid,
+    leg.planContext,
+  );
+  if (!freshArrival) {
+    if (!locked) return [];
+    arrival.eta = null;
+  }
 
   // Last guard: a vehicle already past the boarding stop cannot be the one the
   // user boards, whatever the feeds say. Without this, a stale or mislabelled
   // record shows "已過站" all down the stop list next to a countdown to that
   // same boarding stop — two claims that cannot both be true.
-  if (hasPassedBoardingStop(ride.stops, target)) return [];
+  if (!locked && hasPassedBoardingStop(ride.stops, target)) return [];
 
   // The plate and the ETA come from the same arrival record, so one bus's
   // plate never sits beside another bus's countdown.
@@ -114,8 +140,8 @@ export async function fetchLeg(
       routeName: leg.routeName,
       city: leg.tdxCity ?? "",
       isTarget: true,
-      estimateTime: arrival.eta,
-      etaStopName: leg.departureStop,
+      estimateTime: arrival.eta ?? undefined,
+      etaStopName: locked ? leg.arrivalStop : leg.departureStop,
     },
   ];
 }
@@ -153,7 +179,11 @@ function hasPassedBoardingStop(
  *   the vehicle: a stale position or ETA is worse than none.
  * - Each refresh carries a generation; a superseded or cancelled one is ignored.
  */
-export function useLiveBusPositions(): void {
+export function useLiveBusPositions(options?: {
+  enabled: boolean;
+  sessionKey: string;
+  vehicle?: BoardedVehicle | null;
+}): void {
   const activeBusLeg = useMapStore((s) => s.activeBusLeg);
   const setLiveBusPositions = useMapStore((s) => s.setLiveBusPositions);
 
@@ -162,11 +192,19 @@ export function useLiveBusPositions(): void {
   const legRef = useRef<BusLeg | null>(activeBusLeg?.leg ?? null);
   legRef.current = activeBusLeg?.leg ?? null;
 
-  const legKey = activeBusLeg?.key ?? null;
+  const enabled = options?.enabled ?? true;
+  const sessionKey = options?.sessionKey ?? "";
+  const vehicleKey = JSON.stringify(options?.vehicle);
+  const vehicleRef = useRef(options?.vehicle);
+  vehicleRef.current = options?.vehicle;
+  const legKey = enabled ? (activeBusLeg?.key ?? null) : null;
 
   // `legKey` is the intended restart key: the loop reads the freshest leg from
   // `legRef`, so the effect must NOT also depend on the leg object reference.
   useEffect(() => {
+    // Session and lock identity invalidate all old requests even on the same leg.
+    void sessionKey;
+    void vehicleKey;
     const leg = legRef.current;
     if (!legKey || !leg) {
       setLiveBusPositions([]);
@@ -179,11 +217,14 @@ export function useLiveBusPositions(): void {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let staleTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const armStale = () => {
+    const armStale = (lifetimeMs: number = STALE_AFTER_MS) => {
       if (staleTimer) clearTimeout(staleTimer);
-      staleTimer = setTimeout(() => {
-        if (!cancelled) setLiveBusPositions([]);
-      }, STALE_AFTER_MS);
+      staleTimer = setTimeout(
+        () => {
+          if (!cancelled) setLiveBusPositions([]);
+        },
+        Math.max(0, Math.min(STALE_AFTER_MS, lifetimeMs)),
+      );
     };
 
     const refresh = async () => {
@@ -196,12 +237,24 @@ export function useLiveBusPositions(): void {
       const live = () => !cancelled && !signal.aborted && mine === generation;
 
       try {
-        const buses = await fetchLeg(current, signal);
+        const buses = await fetchLeg(current, signal, vehicleRef.current);
         if (!live()) return;
         setLiveBusPositions(buses);
         // Only a vehicle on screen needs an expiry.
-        if (buses.length) armStale();
-        else if (staleTimer) clearTimeout(staleTimer);
+        if (buses.length) {
+          const ref = legRouteDetailRef(current);
+          const snapshot = peekRouteDetailSnapshot(
+            ref.routeName,
+            ref.city,
+            ref.subRouteUid,
+            current.planContext,
+          );
+          armStale(
+            buses[0]?.estimateTime != null && snapshot
+              ? snapshot.expiresAt - Date.now()
+              : STALE_AFTER_MS,
+          );
+        } else if (staleTimer) clearTimeout(staleTimer);
       } catch {
         // A failed poll must not leave the previous vehicle looking current.
         if (live()) setLiveBusPositions([]);
@@ -223,12 +276,20 @@ export function useLiveBusPositions(): void {
         scheduleNext();
         return;
       }
+      const expectedGeneration = generation + 1;
       await refresh();
-      if (!cancelled) scheduleNext();
+      if (!cancelled && expectedGeneration === generation) scheduleNext();
     }
 
     function onVisibility() {
-      if (!cancelled && !document.hidden) tick();
+      if (cancelled) return;
+      if (document.hidden) {
+        generation++;
+        controller?.abort();
+        if (timer) clearTimeout(timer);
+        if (staleTimer) clearTimeout(staleTimer);
+        setLiveBusPositions([]);
+      } else void tick();
     }
 
     tick();
@@ -242,5 +303,5 @@ export function useLiveBusPositions(): void {
       document.removeEventListener("visibilitychange", onVisibility);
       setLiveBusPositions([]);
     };
-  }, [legKey, setLiveBusPositions]);
+  }, [legKey, setLiveBusPositions, sessionKey, vehicleKey]);
 }

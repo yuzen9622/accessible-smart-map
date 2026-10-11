@@ -161,6 +161,68 @@ describe("planned bus tracking", () => {
   });
 });
 
+describe("boarded vehicle lock", () => {
+  it("does not revive a planned ETA when the positions request outlives its snapshot", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      mockApi.getLiveBusPositions.mockImplementation(async () => {
+        now.mockReturnValue(16001);
+        return positions(vehicle());
+      });
+      expect(await fetchLeg(leg, signal)).toEqual([]);
+      __clearRouteDetailCache();
+      now.mockReturnValue(1000);
+      const buses = await fetchLeg(leg, signal, {
+        plate: "BUS-10",
+        direction: 1,
+        branch: "BRANCH",
+      });
+      expect(buses).toHaveLength(1);
+      expect(buses[0].estimateTime).toBeUndefined();
+    } finally {
+      now.mockRestore();
+    }
+  });
+  const lock = { plate: "BUS-10", direction: 1 as const, branch: "BRANCH" };
+  it("tracks the boarded plate past boarding and reports only its alighting ETA", async () => {
+    mockApi.getLiveBusPositions.mockResolvedValue(
+      positions(vehicle({ lat: 25.1, lng: 121.1 })),
+    );
+    const buses = await fetchLeg(leg, signal, lock);
+    expect(buses).toHaveLength(1);
+    expect(buses[0]).toMatchObject({
+      plateNumb: "BUS-10",
+      etaStopName: "C",
+      estimateTime: 20,
+    });
+  });
+  it("does not switch to the next planned bus after boarding", async () => {
+    mockApi.getBusRouteDetail.mockResolvedValue(detail("NEXT"));
+    mockApi.getLiveBusPositions.mockResolvedValue(
+      positions(vehicle(), vehicle({ plateNumb: "NEXT" })),
+    );
+    const buses = await fetchLeg(leg, signal, lock);
+    expect(buses).toHaveLength(1);
+    expect(buses[0].plateNumb).toBe("BUS-10");
+    expect(buses[0].estimateTime).toBeUndefined();
+  });
+  it.each([
+    { ...lock, branch: "OTHER" },
+    { ...lock, direction: 0 as const },
+    { ...lock, plate: null },
+    null,
+  ])("rejects unknown or mismatched lock %j", async (identity) => {
+    expect(await fetchLeg(leg, signal, identity)).toEqual([]);
+  });
+  it("does not borrow alighting ETA from the boarding record", async () => {
+    const response = detail();
+    response.data.directions[0].stops[1].plateNumb = "NEXT";
+    mockApi.getBusRouteDetail.mockResolvedValue(response);
+    const buses = await fetchLeg(leg, signal, lock);
+    expect(buses[0]?.estimateTime).toBeUndefined();
+  });
+});
+
 it("ignores a response that finishes after cancellation", async () => {
   const controller = new AbortController();
   mockApi.getLiveBusPositions.mockImplementation(async () => {

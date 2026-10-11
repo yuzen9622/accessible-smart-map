@@ -31,6 +31,14 @@ import {
 import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
 import { shouldSpeakLocally } from "@/lib/navigation/navigationAudio";
 import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
+import {
+  navigationCopyDefault,
+  transitDetail,
+  transitHeadline,
+  transitInstruction,
+  transitSpeechText,
+} from "@/lib/navigation/transitCopy";
+import { createTransitSpeechCoordinator } from "@/lib/navigation/transitSpeechCoordinator";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
@@ -114,6 +122,23 @@ export default function NavigationHUD() {
   const arrived = useNavStore((s) => s.arrived);
   const voiceEnabled = useNavStore((s) => s.voiceEnabled);
   const navigationSource = useNavStore((s) => s.navigationSource);
+  const navigationMode = useNavStore((s) => s.navigationMode);
+  const transitGuide = useNavStore((s) => s.transitGuide);
+  const rideKey = useNavStore((s) => s.transitRide?.key);
+  const navigationId = useNavStore((s) => s.navigationId);
+  const routeVersion = useNavStore((s) => s.routeVersion);
+  const isNavigating = useMapStore((s) => s.isNavigating);
+  const preview = navigationSource === "local" && navigationMode === "preview";
+  const navT = useCallback(
+    (key: string, options?: Record<string, string | number>) => {
+      return t(key, {
+        defaultValue: navigationCopyDefault(i18n.language, key, options?.count),
+        ...options,
+      });
+    },
+    [t, i18n.language],
+  );
+  const headline = transitGuide ? transitHeadline(navT, transitGuide) : null;
   const rerouteStatus = useNavStore((s) => s.rerouteStatus);
   const rerouteError = useNavStore((s) => s.rerouteError);
   const rerouteRetryable = useNavStore((s) => s.rerouteRetryable);
@@ -170,17 +195,51 @@ export default function NavigationHUD() {
     return () => synthRef.current?.cancel();
   }, []);
 
+  const alightUtterance = useRef<SpeechSynthesisUtterance | null>(null);
+  const speechScope =
+    isNavigating &&
+    route &&
+    navigationSource === "local" &&
+    !preview &&
+    voiceEnabled &&
+    !isGeminiNavSpeechLive &&
+    rerouteStatus === "idle"
+      ? JSON.stringify([
+          route.routeToken,
+          route.navigationId,
+          route.routeVersion,
+          navigationId,
+          routeVersion,
+        ])
+      : null;
+  const priorSpeechScope = useRef<string | null>(null);
+  const priorSpeechInstructions = useRef(instructions);
+  const speechCoordinator = useRef(createTransitSpeechCoordinator());
   const speak = useCallback(
-    (text: string) => {
+    (text: string, alight = false) => {
       // Read the toggle fresh: speak() is called from effects that may fire
       // after the user flipped it.
       const maySpeak = shouldSpeakLocally({
         geminiOwnsSpeech: isGeminiNavSpeechLive,
         localVoiceEnabled: useNavStore.getState().voiceEnabled,
+        localNavigationMode:
+          useNavStore.getState().navigationSource === "local"
+            ? useNavStore.getState().navigationMode
+            : "live",
       });
       if (!maySpeak || !synthRef.current) return;
+      // The WALK/arrival/advisory effects must not interrupt an alight reminder.
+      if (alightUtterance.current && !alight) return;
       synthRef.current.cancel();
       const utter = new SpeechSynthesisUtterance(text);
+      if (alight) {
+        alightUtterance.current = utter;
+        const release = () => {
+          if (alightUtterance.current === utter) alightUtterance.current = null;
+        };
+        utter.onend = release;
+        utter.onerror = release;
+      }
       utter.lang = i18n.language === "zh-TW" ? "zh-TW" : "en-US";
       utter.rate = 0.9;
       synthRef.current.speak(utter);
@@ -189,9 +248,48 @@ export default function NavigationHUD() {
   );
 
   useEffect(() => {
-    const s = instructions[currentStep];
-    if (s) speak(s.text);
-  }, [currentStep, instructions, speak]);
+    if (
+      priorSpeechScope.current !== speechScope ||
+      priorSpeechInstructions.current !== instructions
+    ) {
+      priorSpeechScope.current = speechScope;
+      priorSpeechInstructions.current = instructions;
+      if (alightUtterance.current) synthRef.current?.cancel();
+      alightUtterance.current = null;
+    }
+    // Scheduled proportional minutes are labelled in the HUD, not announced as realtime.
+    const spokenGuide =
+      transitGuide?.phase === "riding" &&
+      transitGuide.minutesSource === "estimated"
+        ? { ...transitGuide, minutes: null }
+        : transitGuide;
+    const decision = speechCoordinator.current({
+      scope: speechScope,
+      instructions,
+      index: currentStep,
+      rideKey,
+      guide: spokenGuide,
+    });
+    if (decision.speech) {
+      speak(
+        transitSpeechText(navT, decision.speech),
+        decision.speech.kind === "alight",
+      );
+    } else if ((decision.generic || navigationSource === "voice") && !preview) {
+      const s = instructions[currentStep];
+      if (s) speak(s.text);
+    }
+  }, [
+    speechScope,
+    instructions,
+    currentStep,
+    rideKey,
+    transitGuide,
+    speak,
+    navT,
+    preview,
+    navigationSource,
+  ]);
 
   useEffect(() => {
     if (arrived) speak(t("arrivedDesc"));
@@ -209,8 +307,9 @@ export default function NavigationHUD() {
   }, [advisories, arrived, speak]);
 
   useEffect(() => {
-    if (isGeminiNavSpeechLive || !voiceEnabled) synthRef.current?.cancel();
-  }, [isGeminiNavSpeechLive, voiceEnabled]);
+    if (isGeminiNavSpeechLive || !voiceEnabled || preview)
+      synthRef.current?.cancel();
+  }, [isGeminiNavSpeechLive, voiceEnabled, preview]);
 
   // ---- Upcoming accessible facility (from the route's own walk-leg data) ----
   const routeFacilities = useMemo(() => {
@@ -373,6 +472,41 @@ export default function NavigationHUD() {
     <>
       {/* ===== Top instruction banner — dark HUD ===== */}
       <div className="absolute top-3 left-3 right-3 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 lg:w-[560px] z-40 space-y-2">
+        <div
+          className="rounded-xl bg-background/95 p-3 text-sm shadow"
+          role="status"
+        >
+          <p className="font-semibold">
+            {navT(preview ? "navPreview" : "navLive")}
+          </p>
+          {preview && (
+            <>
+              <p className="text-muted-foreground">{navT("navPreviewDesc")}</p>
+              <div className="flex gap-2 mt-2">
+                <button
+                  type="button"
+                  disabled={currentStep <= 0}
+                  onClick={() =>
+                    useNavStore.getState().setStepIndex(currentStep - 1)
+                  }
+                  className="min-h-[44px] px-4 rounded-lg border disabled:opacity-50"
+                >
+                  {navT("navPrevious")}
+                </button>
+                <button
+                  type="button"
+                  disabled={currentStep >= instructions.length - 1}
+                  onClick={() =>
+                    useNavStore.getState().setStepIndex(currentStep + 1)
+                  }
+                  className="min-h-[44px] px-4 rounded-lg border disabled:opacity-50"
+                >
+                  {navT("navNext")}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         {arrived ? (
           <motion.div
             role="alert"
@@ -402,7 +536,12 @@ export default function NavigationHUD() {
                 <StepIcon className="h-8 w-8 sm:h-11 sm:w-11" />
               </div>
               <div className="flex-1 min-w-0">
-                {distanceToNextM != null && (
+                {headline && (
+                  <p className="text-3xl font-black mb-2" aria-live="polite">
+                    {headline}
+                  </p>
+                )}
+                {!headline && distanceToNextM != null && (
                   <p
                     className="font-black leading-none mb-2 tabular-nums tracking-tight whitespace-nowrap"
                     style={{ fontSize: "clamp(2rem, 11vw, 3rem)" }}
@@ -421,8 +560,26 @@ export default function NavigationHUD() {
                   aria-atomic="true"
                   className="text-[15px] sm:text-base font-medium leading-snug text-white/90 line-clamp-2"
                 >
-                  {step?.text ?? t("preparingNav")}
+                  {transitGuide
+                    ? transitInstruction(navT, transitGuide)
+                    : (step?.text ?? t("preparingNav"))}
                 </p>
+                {transitGuide && (
+                  <p className="text-sm text-white/70 mt-1">
+                    {transitDetail(navT, transitGuide)}
+                  </p>
+                )}
+                {transitGuide?.phase === "waiting" &&
+                  !preview &&
+                  navigationSource === "local" && (
+                    <button
+                      type="button"
+                      onClick={() => useNavStore.getState().confirmBusBoarded()}
+                      className="min-h-[44px] mt-2 px-4 rounded-lg bg-white/15 hover:bg-white/25"
+                    >
+                      {navT("navBusBoardedConfirm")}
+                    </button>
+                  )}
                 <div className="flex sm:hidden items-center gap-2 mt-1.5">
                   {isVehicleLeg && (
                     <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
@@ -457,7 +614,7 @@ export default function NavigationHUD() {
                 )}
               </div>
             </div>
-            {nextStep && (
+            {nextStep && !transitGuide && (
               <div className="flex items-center gap-2.5 bg-white/5 border-t border-white/10 px-6 py-3">
                 <span className="text-xs text-white/40 shrink-0 font-medium uppercase tracking-wider">
                   {t("then")}
@@ -495,6 +652,7 @@ export default function NavigationHUD() {
                   : t("offRoute"))}
             </p>
             {navigationSource === "local" &&
+              !preview &&
               (rerouteStatus !== "error" || rerouteRetryable) && (
                 <button
                   type="button"
@@ -643,7 +801,7 @@ export default function NavigationHUD() {
                   type: hazardAlert.type,
                 })}
               </span>
-              {navigationSource === "local" && (
+              {navigationSource === "local" && !preview && (
                 <button
                   type="button"
                   disabled={isRecalcBusy}
@@ -695,7 +853,7 @@ export default function NavigationHUD() {
             </p>
           </div>
 
-          {nextStep && !arrived && (
+          {nextStep && !transitGuide && !arrived && (
             <div className="hidden lg:flex flex-1 items-center gap-2 min-w-0 px-3 py-2 rounded-xl bg-muted/50">
               <NextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="text-sm text-muted-foreground truncate">
@@ -703,7 +861,9 @@ export default function NavigationHUD() {
               </span>
             </div>
           )}
-          {(!nextStep || arrived) && <div className="hidden lg:block flex-1" />}
+          {(!nextStep || transitGuide || arrived) && (
+            <div className="hidden lg:block flex-1" />
+          )}
 
           <div className="flex items-center gap-2.5 shrink-0">
             <button
