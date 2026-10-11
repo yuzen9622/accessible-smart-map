@@ -13,6 +13,7 @@ import { HazardReportResultContent } from "@/components/BottomSheet/HazardReport
 
 const base: HazardReport = {
   _id: "test",
+  publicPhotoUrl: null,
   hazardType: "obstacle",
   status: "pending",
   reportedLocation: { type: "Point", coordinates: [121, 25] },

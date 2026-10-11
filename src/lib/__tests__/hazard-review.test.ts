@@ -15,6 +15,7 @@ const report = (
   decision?: NonNullable<HazardReport["aiReview"]>["decision"],
 ): HazardReport => ({
   _id: "test",
+  publicPhotoUrl: null,
   hazardType: "obstacle",
   status: "pending",
   reportedLocation: { type: "Point", coordinates: [121.5, 25] },

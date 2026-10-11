@@ -12,13 +12,18 @@ import { useEffect, useRef, useState } from "react";
 import { Marker, Popup } from "react-map-gl/maplibre";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
-import HazardReportPhoto from "@/components/BottomSheet/HazardReportPhoto";
+import PublicHazardReportPhoto from "@/components/BottomSheet/PublicHazardReportPhoto";
 import ContentSafetyMenu from "@/components/content-safety/ContentSafetyMenu";
 import { Button } from "@/components/ui/button";
 import { useAppTranslation } from "@/i18n/client";
-import { confirmHazardReport, getNearbyHazardReports } from "@/lib/api/a11y";
+import {
+  confirmHazardReport,
+  getHazardReport,
+  getNearbyHazardReports,
+} from "@/lib/api/a11y";
 import { ApiError } from "@/lib/fetch";
 import {
+  createHazardReviewPoller,
   hazardCanConfirm,
   hazardExpired,
   hazardReviewStatus,
@@ -74,6 +79,8 @@ function HazardSession() {
   const [votingId, setVotingId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const popupContent = useRef<HTMLElement>(null);
+  const selectionSnapshot = useRef<HazardReport | null>(null);
+  const reportId = selected?._id;
   const selectedId =
     selected && !hazardExpired(selected, now) ? selected._id : undefined;
 
@@ -140,6 +147,70 @@ function HazardSession() {
       .catch(() => {});
     return () => controller.abort();
   }, [userLocation]);
+
+  useEffect(() => {
+    const initial = selectionSnapshot.current;
+    if (!reportId || initial?._id !== reportId) return;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    let poller: ReturnType<typeof createHazardReviewPoller> | undefined;
+    const armExpiry = (report: HazardReport) => {
+      clearTimeout(expiryTimer);
+      const expires = report.expiredAt
+        ? Date.parse(report.expiredAt)
+        : Infinity;
+      if (!Number.isFinite(expires) || expires <= Date.now()) return;
+      expiryTimer = setTimeout(
+        () => {
+          setNow(Date.now()); // Remove already-decoded public bytes immediately.
+          poller?.refresh();
+        },
+        Math.min(2_147_483_647, expires - Date.now()),
+      );
+    };
+    poller = createHazardReviewPoller({
+      initial,
+      visibility: document,
+      load: async (signal) => {
+        const response = await getHazardReport(reportId, signal);
+        const report = response.data?.report;
+        if (!(response.ok || response.success) || report?._id !== reportId)
+          throw new Error("Invalid report response");
+        return report;
+      },
+      onReport: (report) => {
+        // Public DTOs may omit owner identity; preserve locally known identity,
+        // but a missing/null public URL must always revoke the displayed photo.
+        const next = {
+          ...report,
+          publicPhotoUrl: report.publicPhotoUrl ?? null,
+        };
+        setHazards((previous) =>
+          previous.map((item) =>
+            item._id === reportId ? { ...item, ...next } : item,
+          ),
+        );
+        setSelected((previous) =>
+          previous?._id === reportId ? { ...previous, ...next } : previous,
+        );
+        armExpiry(next);
+      },
+      onNotice: (notice) => {
+        if (notice !== "missing") return;
+        setSelected((previous) =>
+          previous?._id === reportId ? null : previous,
+        );
+        setHazards((previous) =>
+          previous.filter((item) => item._id !== reportId),
+        );
+      },
+    });
+    armExpiry(initial);
+    poller.refresh(); // Refresh the DTO on open, including terminal AI results.
+    return () => {
+      clearTimeout(expiryTimer);
+      poller?.dispose();
+    };
+  }, [reportId]);
 
   const handleVote = async (
     report: HazardReport,
@@ -215,6 +286,7 @@ function HazardSession() {
                 )}
                 onClick={(event) => {
                   event.stopPropagation();
+                  selectionSnapshot.current = h;
                   setSelected(h);
                 }}
                 onKeyDown={(event) => event.stopPropagation()}
@@ -298,12 +370,11 @@ function HazardSession() {
                   {selected.description}
                 </p>
               )}
-              {(selected.hasPhoto ?? Boolean(selected.photoUrl)) && (
+              {selected.publicPhotoUrl && (
                 <figure className="space-y-2">
-                  <HazardReportPhoto
-                    reportId={selected._id}
-                    variant="popup"
-                    retryable
+                  <PublicHazardReportPhoto
+                    publicPhotoUrl={selected.publicPhotoUrl}
+                    expiredAt={selected.expiredAt}
                   />
                   <figcaption className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Camera className="size-3.5" aria-hidden="true" />

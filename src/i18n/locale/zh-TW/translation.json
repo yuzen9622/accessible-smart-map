@@ -47,6 +47,7 @@
   "reportVisible_blocked_path": "通路阻塞",
   "hazardPhotoLoading": "照片載入中…",
   "hazardPhotoUnavailable": "照片暫時無法載入",
+  "hazardPublicPhotoUnavailable": "照片目前無法公開",
   "myReportsTitle": "我的回報",
   "myReportsView": "查看我的回報",
   "myReportsAnonymous": "匿名回報不會收錄到帳號紀錄，請保留本次回報編號。",

@@ -79,6 +79,7 @@ type ContentProps = {
 };
 const initial: HazardReport = {
   _id: "first",
+  publicPhotoUrl: null,
   reporterId: "owner",
   hazardType: "obstacle",
   status: "pending",

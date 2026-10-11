@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/locale/en/translation.json";
+import { END_POINT } from "@/lib/config";
 import type { HazardReport } from "@/types/route";
 
 const state = vi.hoisted(() => ({
@@ -74,6 +75,7 @@ const base: HazardReport = {
   reporterId: "author",
   reportedLocation: { type: "Point", coordinates: [121, 25] },
   hasPhoto: true,
+  publicPhotoUrl: "/api/v1/a11y/reports/report-with-photo/photo/public",
   description: "Construction blocks the pavement",
   severity: "difficult",
   confirmCount: 3,
@@ -127,29 +129,31 @@ describe("report popup viewport fitting", () => {
 });
 
 describe("map hazard popup", () => {
-  it("renders an attached photo through the authenticated byte-stream component", () => {
+  it("renders only the backend public URL, never the private byte-stream component", () => {
     const html = render();
-    expect(html).toContain('data-photo-report="report-with-photo"');
-    expect(html).toContain('data-variant="popup"');
-    expect(html).toContain('data-retryable="true"');
+    if (!base.publicPhotoUrl) throw new Error("Missing fixture public URL");
+    const url = new URL(base.publicPhotoUrl, new URL(END_POINT).origin).href;
+    expect(html).toContain(`src="${url}"`);
+    expect(html).not.toContain("data-photo-report");
   });
-  it("uses the same secure photo path for legacy reports, never the storage URL", () => {
+  it("null never guesses a private or legacy storage URL even when a photo exists", () => {
     const html = render({
       ...base,
-      hasPhoto: undefined,
+      publicPhotoUrl: null,
       photoUrl: "https://storage.invalid/private.jpg",
     });
-    expect(html).toContain('data-photo-report="report-with-photo"');
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("data-photo-report");
     expect(html).not.toContain("https://storage.invalid");
   });
-  it("does not request photos when explicitly absent", () => {
-    expect(
-      render({
-        ...base,
-        hasPhoto: false,
-        photoUrl: "https://storage.invalid/old.jpg",
-      }),
-    ).not.toContain("data-photo-report");
+  it("tolerates a missing public URL during rolling deployment without private fallback", () => {
+    const report = { ...base };
+    Reflect.deleteProperty(report, "publicPhotoUrl");
+    expect(render(report)).not.toContain("<img");
+    expect(render(report)).not.toContain("data-photo-report");
+  });
+  it("uses the explicit public URL rather than hasPhoto as the permission hint", () => {
+    expect(render({ ...base, hasPhoto: false })).toContain("/photo/public");
   });
   it("keeps photo evidence distinct from on-site verification and escapes user text", () => {
     const html = render({

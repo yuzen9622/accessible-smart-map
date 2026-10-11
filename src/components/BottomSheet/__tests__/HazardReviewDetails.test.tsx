@@ -16,6 +16,7 @@ import HazardReviewDetails from "../HazardReviewDetails";
 
 const report: HazardReport = {
   _id: "test",
+  publicPhotoUrl: null,
   hazardType: "construction",
   severity: "difficult",
   status: "rejected",

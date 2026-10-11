@@ -648,8 +648,10 @@ export interface HazardReport {
   expectedUntil?: string | null;
   reportedLocation: HazardGeoPoint;
   description?: string;
-  /** Existence flag for the backend photo endpoint; no storage URL is needed. */
+  /** Retained photo existence; not permission to read it publicly. */
   hasPhoto?: boolean;
+  /** Backend public-photo route or null; never infer a private URL from hasPhoto. */
+  publicPhotoUrl: string | null;
   photoUrl?: string;
   status: "pending" | "verified" | "rejected" | "expired";
   exifValidation?: {

@@ -94,6 +94,7 @@ function click(tree: ReactNode, text: string) {
 }
 const report = (id: string): HazardReport => ({
   _id: id,
+  publicPhotoUrl: null,
   hazardType: "obstacle",
   status: "expired",
   reportedLocation: { type: "Point", coordinates: [121, 25] },

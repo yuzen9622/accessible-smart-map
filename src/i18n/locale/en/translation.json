@@ -47,6 +47,7 @@
   "reportVisible_blocked_path": "Blocked path",
   "hazardPhotoLoading": "Loading photo…",
   "hazardPhotoUnavailable": "Photo unavailable",
+  "hazardPublicPhotoUnavailable": "This photo is not currently public",
   "myReportsTitle": "My reports",
   "myReportsView": "View my reports",
   "myReportsAnonymous": "Anonymous reports are not saved to an account. Keep this report ID.",
