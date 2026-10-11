@@ -74,6 +74,8 @@ interface AuthAction {
   setSession: (session: { accessToken: string }) => void;
   updateUserConfig: (config: Partial<UserConfig>) => void;
   logout: () => void;
+  /** Confirmed deletion already revoked sessions and cleared the server cookie. */
+  clearLocalSession: () => void;
   requestAuthDialog: () => void;
   clearAuthDialogRequest: () => void;
   requestSettingsDialog: (tab?: SettingsTab) => void;
@@ -133,6 +135,10 @@ const useAuthStore = create<AuthStore>((set, get) => ({
       });
     }
     set((state) => ({ userConfig: { ...state.userConfig, ...config } }));
+  },
+  clearLocalSession: () => {
+    set({ user: null, session: null });
+    useChatStore.getState().clearAll();
   },
   logout: () => {
     // Synchronous logout: capture whether an active session exists first,

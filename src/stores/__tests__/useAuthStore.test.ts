@@ -231,6 +231,26 @@ describe("useAuthStore.logout", () => {
     expect(mockSessionStorage.getItem("aiChatConversation")).toBeNull();
   });
 
+  it("confirmed deletion clears local identity and persisted chat without server logout", () => {
+    const removeItem = vi.fn();
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("sessionStorage", { removeItem });
+    useAuthStore.setState({ user: USER, session: { accessToken: "deleted" } });
+    useChatStore.setState({
+      messages: [{ role: "user", content: "private" }],
+      chatHistory: [{ role: "user", content: "private" }],
+      input: "private draft",
+    });
+    useAuthStore.getState().clearLocalSession();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useChatStore.getState().messages).toEqual([]);
+    expect(useChatStore.getState().chatHistory).toEqual([]);
+    expect(useChatStore.getState().input).toBe("");
+    expect(removeItem).toHaveBeenCalledWith("aiChatConversation");
+    expect(mockRevokeSession).not.toHaveBeenCalled();
+  });
+
   it("invokes revokeSession when logged in", () => {
     useAuthStore.setState({
       user: USER,

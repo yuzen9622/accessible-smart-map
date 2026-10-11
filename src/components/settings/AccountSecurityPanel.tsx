@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import DeleteAccountPanel from "@/components/settings/DeleteAccountPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { changePassword } from "@/lib/api/auth";
@@ -93,6 +94,7 @@ export default function AccountSecurityPanel({ user }: { user: UserDTO }) {
           {hasPassword ? "更新密碼" : "設定密碼"}
         </Button>
       </form>
+      <DeleteAccountPanel key={user._id} user={user} />
     </div>
   );
 }

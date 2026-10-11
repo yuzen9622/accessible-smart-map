@@ -5,6 +5,7 @@ import type { ApiResponse } from "@/types/response";
 
 interface RequestOptions<T> {
   method?: string;
+  credentials?: RequestCredentials;
   body?: T;
   headers?: Record<string, string>;
   requireAuth?: boolean;

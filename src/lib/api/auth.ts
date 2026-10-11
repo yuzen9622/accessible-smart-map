@@ -4,6 +4,30 @@ import type { ApiResponse } from "@/types/response";
 import type { UserConfig, UserDTO } from "@/types/user";
 
 type SessionResponse = ApiResponse<{ user: UserDTO; config: UserConfig }>;
+type DeletionReauthResponse = ApiResponse<{
+  user: UserDTO;
+  config: UserConfig | null;
+}>;
+
+/** Isolated sign-in: neither sends cookies nor applies response Set-Cookie. */
+export async function reauthenticateDeletionWithEmail(
+  email: string,
+  password: string,
+) {
+  return fetchRequest(`${END_POINT}/api/v1/user/auth/login`, {
+    method: "POST",
+    body: { email, password },
+    credentials: "omit",
+  }) as Promise<DeletionReauthResponse>;
+}
+
+export async function reauthenticateDeletionWithGoogle(idToken: string) {
+  return fetchRequest(`${END_POINT}/api/v1/user/auth/google`, {
+    method: "POST",
+    body: { idToken },
+    credentials: "omit",
+  }) as Promise<DeletionReauthResponse>;
+}
 
 export async function loginWithGoogle(idToken: string) {
   return fetchRequest(`${END_POINT}/api/v1/user/auth/google`, {
@@ -69,6 +93,30 @@ export async function changePassword(
     // expired token) — don't let it trigger refresh-retry-then-logout.
     skipAuthRetry: true,
   }) as Promise<ApiResponse<{ user: UserDTO }>>;
+}
+
+/** Deletion needs a fresh interactive sign-in, never a refresh retry. */
+export async function deleteAccount(
+  isCurrentSession: () => boolean,
+  signal?: AbortSignal,
+  accessToken?: string,
+) {
+  return fetchRequest(`${END_POINT}/api/v1/user`, {
+    method: "DELETE",
+    body: {},
+    credentials: "omit",
+    requireAuth: accessToken === undefined,
+    headers:
+      accessToken === undefined
+        ? {}
+        : { Authorization: `Bearer ${accessToken}` },
+    isCurrentSession,
+    signal,
+    skipAuthRetry: true,
+    // The deletion coordinator classifies known business 403s separately
+    // from invalid-token 403s, without revoking a later account.
+    preserveSessionOnForbidden: true,
+  }) as Promise<ApiResponse<null>>;
 }
 
 export async function refreshToken(): Promise<string | null> {
