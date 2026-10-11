@@ -6,7 +6,22 @@ export type PlaceReviewType =
   | "parking"
   | "google";
 
-export interface ReviewItem {
+export type EntranceAccessibility =
+  | "step_free"
+  | "ramp"
+  | "stairs_with_assistance"
+  | "inaccessible";
+
+export interface ReviewEvidence {
+  entranceAccessibility?: EntranceAccessibility;
+  toiletTurningRoom?: boolean;
+  wheelchairTableHeight?: boolean;
+  adequateAisleWidth?: boolean;
+  staffHelpfulnessRating?: number;
+}
+
+export interface ReviewItem extends ReviewEvidence {
+  aggregateAccessibilityScore?: number;
   _id: string;
   userId: string;
   rating: number;
@@ -18,7 +33,7 @@ export interface ReviewItem {
   createdAt: string;
 }
 
-export interface CreateReviewInput {
+export interface CreateReviewInput extends ReviewEvidence {
   placeId: string;
   placeType: PlaceReviewType;
   passageWidthRating: number;
@@ -28,7 +43,7 @@ export interface CreateReviewInput {
   comment?: string;
 }
 
-export interface UpdateReviewInput {
+export interface UpdateReviewInput extends ReviewEvidence {
   passageWidthRating?: number;
   toiletRating?: number;
   elevatorRating?: number;

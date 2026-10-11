@@ -43,25 +43,38 @@ export async function getReviewSummary(
   return response as ApiResponse<ReviewSummaryResult>;
 }
 
-export async function createReview(body: CreateReviewInput) {
+export async function createReview(
+  body: CreateReviewInput,
+  isCurrentSession?: () => boolean,
+) {
   const response = await authenticatedRequest(BASE, {
     method: "POST",
+    isCurrentSession,
     body,
   });
   return response as ApiResponse<{ review: ReviewItem }>;
 }
 
-export async function updateReview(id: string, body: UpdateReviewInput) {
+export async function updateReview(
+  id: string,
+  body: UpdateReviewInput,
+  isCurrentSession?: () => boolean,
+) {
   const response = await authenticatedRequest(`${BASE}/${id}`, {
     method: "PATCH",
+    isCurrentSession,
     body,
   });
   return response as ApiResponse<{ review: ReviewItem }>;
 }
 
-export async function deleteReview(id: string) {
+export async function deleteReview(
+  id: string,
+  isCurrentSession?: () => boolean,
+) {
   const response = await authenticatedRequest(`${BASE}/${id}`, {
     method: "DELETE",
+    isCurrentSession,
   });
   return response as ApiResponse<unknown>;
 }
