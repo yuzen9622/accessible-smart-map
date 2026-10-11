@@ -18,10 +18,15 @@ import {
   selectBusDirection,
 } from "@/lib/transit/busDirections";
 import { parseStatusLabel } from "@/lib/transit/busLegStops";
+import {
+  hasUniqueTrackingBranch,
+  resolveOrigin,
+} from "@/lib/transit/busPanelTracking";
 import useMapStore from "@/stores/useMapStore";
 import type { BusSearchResult, BusStopSearchResult } from "@/types/transit";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import BusTrackingPanel from "./BusTrackingPanel";
 
 const CityNameMap: Record<string, string> = {
   Taipei: "台北市",
@@ -262,6 +267,7 @@ export default function BusPanel({
   const [selection, setSelection] = useState<BusDirectionSelection | null>(
     null,
   );
+  const [origin, setOrigin] = useState<BusStopSearchResult | null>(null);
   const [routeDetails, setRouteDetails] = useState<RouteDetailDirection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -306,9 +312,17 @@ export default function BusPanel({
         if ((res.ok || res.success) && res.data?.directions) {
           const details = res.data.directions;
           setRouteDetails(details);
-          setSelection((previous) =>
-            selectBusDirection(busDirectionOptions(details), previous),
-          );
+          setSelection((previous) => {
+            const resolved = origin ? resolveOrigin(details, origin) : null;
+            const options = busDirectionOptions(details);
+            return selectBusDirection(
+              options,
+              previous ??
+                (resolved
+                  ? (options.find((o) => o.detail === resolved.detail) ?? null)
+                  : null),
+            );
+          });
           if (!details.length) setError(t("noBusData"));
         } else {
           setRouteDetails([]);
@@ -344,12 +358,38 @@ export default function BusPanel({
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onResume);
     };
-  }, [selectedRoute, t]);
+  }, [selectedRoute, origin, t]);
 
   const directionOptions = busDirectionOptions(routeDetails);
   const currentDirectionDetails = directionOptions.find(
     (option) => option.key === selection?.key,
   )?.detail;
+  // Strip changing ETA fields so polling refreshes don't cancel reminder intent.
+  const trackingGeometry = currentDirectionDetails
+    ? JSON.stringify({
+        direction: currentDirectionDetails.direction,
+        subRouteUid: currentDirectionDetails.subRouteUid,
+        subRouteName: currentDirectionDetails.subRouteName,
+        stops: currentDirectionDetails.stops.map((s) => ({
+          seq: s.seq,
+          stopUid: s.stopUid,
+          name: s.name,
+          lat: s.lat,
+          lng: s.lng,
+          estimateMinutes: null,
+          statusLabel: "",
+        })),
+      })
+    : null;
+  const trackingDetail = useMemo<RouteDetailDirection | null>(
+    () => (trackingGeometry ? JSON.parse(trackingGeometry) : null),
+    [trackingGeometry],
+  );
+  const originMatch = origin ? resolveOrigin(routeDetails, origin) : null;
+  const initialBoarding =
+    originMatch && originMatch.detail === currentDirectionDetails
+      ? originMatch.index
+      : null;
   const directionLabel = (detail: RouteDetailDirection) => {
     const semanticLabel = t(busDirectionLabel(detail.direction));
     const terminal =
@@ -392,6 +432,7 @@ export default function BusPanel({
   }, [selection?.key, setSelectedBusStop]);
 
   const handleRouteSelect = (route: BusSearchResult) => {
+    setOrigin(null);
     setSelectedRoute(route);
     setOpen(false);
     setKeyword("");
@@ -404,6 +445,7 @@ export default function BusPanel({
   };
 
   const resetSelection = () => {
+    setOrigin(null);
     setSelectedRoute(null);
     setSelection(null);
     setRouteDetails([]);
@@ -444,6 +486,7 @@ export default function BusPanel({
   // the route name + city here (no departure/destination), so synthesize a
   // BusSearchResult; the direction labels fall back to route-detail terminals.
   const handleStopRouteSelect = (routeName: string, city: string) => {
+    setOrigin(selectedStop);
     setSelectedStop(null);
     setSelectedRoute({ routeName, city, departure: "", destination: "" });
     setSelection(null);
@@ -541,6 +584,19 @@ export default function BusPanel({
             </div>
           )}
 
+          {trackingDetail && selectedRoute && (
+            <BusTrackingPanel
+              key={`${selectedRoute.city}-${selectedRoute.routeName}-${selection?.key}-${initialBoarding}`}
+              routeName={selectedRoute.routeName}
+              city={selectedRoute.city}
+              detail={trackingDetail}
+              initialBoarding={initialBoarding}
+              originName={origin?.stopName}
+              unresolvedBranch={
+                !hasUniqueTrackingBranch(routeDetails, trackingDetail)
+              }
+            />
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
