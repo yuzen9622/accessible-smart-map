@@ -42,6 +42,8 @@ export interface SosPublicSession {
   lng: number;
   address: string | null;
   updatedAt: string;
+  /** Family handling progress; never carries contact names. Older servers omit it. */
+  handlingStatus?: HandlingStatus | "pending";
 }
 
 /** Fine-grained progress of a family member handling the SOS (owner-only). */

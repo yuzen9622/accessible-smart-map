@@ -26,7 +26,7 @@ import { useAppTranslation } from "@/i18n/client";
 import { getPublicSosSession } from "@/lib/api/sos";
 import { ApiError } from "@/lib/fetch";
 import useMapStore from "@/stores/useMapStore";
-import type { SosPublicSession, SosType } from "@/types/sos";
+import type { HandlingStatus, SosPublicSession, SosType } from "@/types/sos";
 
 const POLL_MS = 10000;
 
@@ -43,6 +43,15 @@ const SOS_TYPE_LABEL_KEY: Record<SosType, string> = {
   body: "sosBodyDiscomfort",
   trapped: "sosTrapped",
   share_location: "sosShareLocationType",
+};
+
+const HANDLING_LABEL_KEY: Record<HandlingStatus, string> = {
+  notified: "sosHandlingNotified",
+  acknowledged: "sosHandlingAcknowledged",
+  claimed: "sosHandlingClaimed",
+  en_route: "sosHandlingEnRoute",
+  arrived: "sosHandlingArrived",
+  resolved: "sosHandlingResolved",
 };
 
 const SOS_TYPE_ICON: Record<SosType, typeof AlertTriangle> = {
@@ -228,6 +237,10 @@ export default function SosTrackerWrapper() {
   const updatedAtLabel = session
     ? new Date(session.updatedAt).toLocaleString(lang)
     : "";
+  const handlingKey =
+    session?.handlingStatus && session.handlingStatus !== "pending"
+      ? HANDLING_LABEL_KEY[session.handlingStatus]
+      : undefined;
 
   return (
     <>
@@ -325,6 +338,14 @@ export default function SosTrackerWrapper() {
                   <span className="text-sm font-semibold">
                     {t(SOS_TYPE_LABEL_KEY[session.type])}
                   </span>
+                  {handlingKey && (
+                    <span
+                      className="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary"
+                      aria-live="polite"
+                    >
+                      {t(handlingKey)}
+                    </span>
+                  )}
                 </div>
 
                 <div className="text-xs text-muted-foreground space-y-1">
