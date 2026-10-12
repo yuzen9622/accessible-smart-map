@@ -4,12 +4,15 @@ import { Marker } from "react-map-gl/maplibre";
 import { useShallow } from "zustand/react/shallow";
 import { parkingItemLngLat } from "@/components/BottomSheet/ParkingPanel";
 import usePin from "@/hook/usePin";
+import { useAppTranslation } from "@/i18n/client";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import type { ParkingNearbyItem } from "@/types/route";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 
 export default function ParkingPin({ item }: { item: ParkingNearbyItem }) {
+  const { t } = useAppTranslation();
   const [open, setOpen] = useState(false);
   const {
     selectedParking,
@@ -32,16 +35,24 @@ export default function ParkingPin({ item }: { item: ParkingNearbyItem }) {
   if (!pos) return null;
 
   const isSelected = selectedParking?._id === item._id;
-  const title = item.type === "lot" ? item.name : item.placeName;
+  const canonicalTitle = item.type === "lot" ? item.name : item.placeName;
+  const title =
+    nonemptyName(item.displayName) ||
+    nonemptyName(canonicalTitle) ||
+    t("parking");
   const subtitle =
     item.type === "lot"
-      ? (item.address ?? undefined)
+      ? nonemptyName(item.displayAddress) || item.address || undefined
       : item.district || undefined;
 
   const handleClick = () => {
     handlePinClick(pos);
     setSelectedParking(item);
-    const fullAddress = subtitle ? `${title}, ${subtitle}` : title;
+    const canonicalSubtitle =
+      item.type === "lot" ? item.address : item.district;
+    const fullAddress = canonicalSubtitle
+      ? `${canonicalTitle}, ${canonicalSubtitle}`
+      : canonicalTitle;
     setInfoShow({
       isOpen: true,
       kind: "coordinate",
@@ -72,7 +83,7 @@ export default function ParkingPin({ item }: { item: ParkingNearbyItem }) {
           >
             <button
               type="button"
-              aria-label={title || "停車場"}
+              aria-label={title}
               onMouseEnter={() => setOpen(true)}
               onMouseLeave={() => setOpen(false)}
               onClick={(e) => {

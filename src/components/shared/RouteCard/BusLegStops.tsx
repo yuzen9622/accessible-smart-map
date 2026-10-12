@@ -1,12 +1,15 @@
 import { useMemo } from "react";
 import { useBusLegStopEtas } from "@/hook/useBusLegStopEtas";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import { legSourceName, nonemptyName } from "@/lib/route/sourceNames";
 import {
   buildStopRows,
   busLegKey,
   fallbackStopRows,
   resolveCurrentStopSeq,
   resolveLegRide,
+  withPlannedStopNames,
 } from "@/lib/transit/busLegStops";
 import useMapStore from "@/stores/useMapStore";
 import type { BusLeg } from "@/types/route";
@@ -27,6 +30,7 @@ export function BusLegStops({
   isSelected: boolean;
 }) {
   const { t } = useAppTranslation();
+  const language = getAppLanguage();
   const leg = useMemo(
     () => ({
       ...rawLeg,
@@ -80,16 +84,23 @@ export function BusLegStops({
 
     if (ride && ride.stops.length > 0) {
       const currentSeq = resolveCurrentStopSeq(ride.stops, targetBus);
-      return buildStopRows(ride.stops, currentSeq);
+      return withPlannedStopNames(
+        buildStopRows(ride.stops, currentSeq),
+        leg,
+        language,
+      );
     }
 
     // A failed or unavailable lookup keeps the original planned stop times.
     return fallbackStopRows(leg, {
       pending: status === "idle" || status === "loading",
+      language,
     });
-  }, [isOpen, ride, leg, targetBus, status]);
+  }, [isOpen, ride, leg, targetBus, status, language]);
 
-  const currentStopName = rows?.find((r) => r.state === "current")?.name;
+  const currentStop = rows?.find((r) => r.state === "current");
+  const currentStopName =
+    nonemptyName(currentStop?.displayName) || currentStop?.name;
 
   return (
     <div className="space-y-1">
@@ -112,8 +123,14 @@ export function BusLegStops({
       )}
 
       <TransitStops
-        boardName={leg.departureStop}
-        alightName={leg.arrivalStop}
+        boardName={legSourceName(
+          leg,
+          "from",
+          leg.departureStop,
+          getAppLanguage(),
+        )}
+        alightName={legSourceName(leg, "to", leg.arrivalStop, getAppLanguage())}
+        displayLanguage={leg.displayLanguage}
         boardTime={leg.departureTime}
         alightTime={leg.arrivalTime}
         intermediateStops={leg.intermediateStops}

@@ -28,6 +28,40 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("AI request UI language", () => {
+  it("tags late tool results with the request language, not the newly selected UI language", async () => {
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                stream = controller;
+              },
+            }),
+          ),
+      ),
+    );
+    const onTool = vi.fn();
+    const pending = streamChatWithAgent({ messages: [] }, vi.fn(), onTool);
+    await Promise.resolve();
+    await i18n.changeLanguage("en");
+    stream.enqueue(
+      new TextEncoder().encode(
+        'event: tool_result\ndata: {"name":"findNearbyParking","callId":"one","result":{"parkingSpots":[]}}\n\ndata: [DONE]\n\n',
+      ),
+    );
+    stream.close();
+    await pending;
+    expect(onTool.mock.calls[0][4]).toMatchObject({
+      language: "zh-TW",
+      callId: "one",
+    });
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
+    expect(body.language).toBe("zh-TW");
+  });
+
   it.each(["json", "sse"])(
     "reads live UI language for every %s request and preserves route/history",
     async (transport) => {

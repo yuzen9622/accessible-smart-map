@@ -1,6 +1,8 @@
 import { ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import { sourceName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import type { SlimOsmA11y } from "@/types/route";
 import {
@@ -13,9 +15,11 @@ import {
 export function A11yStationIcons({
   items,
   ariaLabel,
+  displayLanguage,
 }: {
   items?: SlimOsmA11y[];
   ariaLabel: string;
+  displayLanguage?: "en" | "zh-TW";
 }) {
   const { t } = useAppTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -67,7 +71,13 @@ export function A11yStationIcons({
               const wheelchairKey = getWheelchairStatusKey(item.wheelchair);
               return (
                 <li key={item.osmId || `${item.category}-${idx}`}>
-                  {item.name || t(getA11yCategoryLabelKey(item.category))}
+                  {sourceName(
+                    item.name,
+                    item.nameEn,
+                    item.displayName,
+                    getAppLanguage(),
+                    displayLanguage,
+                  ) || t(getA11yCategoryLabelKey(item.category))}
                   {wheelchairKey && ` · ${t(wheelchairKey)}`}
                 </li>
               );

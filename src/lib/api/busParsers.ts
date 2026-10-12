@@ -49,9 +49,15 @@ function geometry(value: unknown): value is [number, number][] {
 function plate(value: unknown): value is string {
   return text(value) && value.trim() !== "-1";
 }
+function displayFields(row: Record<string, unknown>, keys: string[]) {
+  return Object.fromEntries(
+    keys.filter((key) => text(row[key])).map((key) => [key, row[key]]),
+  ) as Record<string, string>;
+}
 function branch(row: Record<string, unknown>) {
   return {
     ...(text(row.subRouteUid) ? { subRouteUid: row.subRouteUid } : {}),
+    ...displayFields(row, ["subRouteDisplayName"]),
     ...(text(row.subRouteName) ? { subRouteName: row.subRouteName } : {}),
   };
 }
@@ -69,13 +75,17 @@ export function parseBusArrivals(data: unknown): BusArrivalItem[] {
   return list(data, "arrivals").flatMap((row) => {
     if (
       !record(row) ||
-      !text(row.stopName) ||
+      !(
+        typeof row.stopName === "string" &&
+        (text(row.stopName) || text(row.stopDisplayName))
+      ) ||
       !isBusDirection(row.direction) ||
       !eta(row.estimateMinutes)
     )
       return [];
     return [
       {
+        ...displayFields(row, ["stopDisplayName"]),
         stopName: row.stopName,
         direction: row.direction,
         directionLabel: label(row.directionLabel),
@@ -116,9 +126,17 @@ export function parseLiveBusPositions(data: unknown): LiveBusPositionsData {
       },
     ];
   });
-  if (!record(data) || !text(data.routeName) || !text(data.city))
+  if (
+    !record(data) ||
+    !(
+      typeof data.routeName === "string" &&
+      (text(data.routeName) || text(data.routeDisplayName))
+    ) ||
+    !text(data.city)
+  )
     throw new TypeError("Invalid bus positions metadata");
   return {
+    ...displayFields(data, ["routeDisplayName"]),
     routeName: data.routeName,
     city: data.city,
     buses,
@@ -141,7 +159,10 @@ export function parseBusRouteDirections(data: unknown): RouteDetailDirection[] {
         !Number.isInteger(stop.seq) ||
         !finite(stop.seq) ||
         stop.seq < 1 ||
-        !text(stop.name) ||
+        !(
+          typeof stop.name === "string" &&
+          (text(stop.name) || text(stop.displayName))
+        ) ||
         !coordinates(stop) ||
         !eta(stop.estimateMinutes)
       )
@@ -150,6 +171,7 @@ export function parseBusRouteDirections(data: unknown): RouteDetailDirection[] {
         {
           ...(text(stop.stopUid) ? { stopUid: stop.stopUid } : {}),
           seq: stop.seq,
+          ...displayFields(stop, ["displayName"]),
           name: stop.name,
           lat: stop.lat as number,
           lng: stop.lng as number,
@@ -168,6 +190,12 @@ export function parseBusRouteDirections(data: unknown): RouteDetailDirection[] {
     return [
       {
         ...branch(row),
+        ...displayFields(row, [
+          "from",
+          "to",
+          "fromDisplayName",
+          "toDisplayName",
+        ]),
         direction: row.direction,
         stops,
         ...(geometry(row.polyline) ? { polyline: row.polyline } : {}),
@@ -180,7 +208,8 @@ function frequency(value: unknown): value is BusFrequency {
   if (!record(value) || !text(value.serviceDays)) return false;
   if (value.scheduleType === "trip") {
     return (
-      text(value.originStopName) &&
+      typeof value.originStopName === "string" &&
+      (text(value.originStopName) || text(value.originStopDisplayName)) &&
       text(value.originDepartureTime) &&
       (value.stopTimes === undefined ||
         (Array.isArray(value.stopTimes) &&
@@ -190,7 +219,8 @@ function frequency(value: unknown): value is BusFrequency {
               finite(stop.seq) &&
               Number.isInteger(stop.seq) &&
               stop.seq > 0 &&
-              text(stop.stopName) &&
+              typeof stop.stopName === "string" &&
+              (text(stop.stopName) || text(stop.stopDisplayName)) &&
               text(stop.arrivalTime),
           )))
     );
@@ -231,12 +261,16 @@ export function parseBusTimetable(data: unknown): BusTimetableData {
   );
   if (
     !record(data) ||
-    !text(data.routeName) ||
+    !(
+      typeof data.routeName === "string" &&
+      (text(data.routeName) || text(data.routeDisplayName))
+    ) ||
     !text(data.city) ||
     typeof data.note !== "string"
   )
     throw new TypeError("Invalid bus timetable metadata");
   return {
+    ...displayFields(data, ["routeDisplayName"]),
     routeName: data.routeName,
     city: data.city,
     note: data.note,

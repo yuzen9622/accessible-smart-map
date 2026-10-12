@@ -865,7 +865,14 @@ describe("VoiceSessionController", () => {
         routeToken: "route-v2-token",
         route: { routeId: "route-v2" },
         steps: [],
-        warnings: [],
+        warnings: ["Hazard detected along this route."],
+        warningDetails: [
+          {
+            index: 0,
+            code: "ROUTE_HAZARD_ON_ROUTE",
+            message: "Hazard detected along this route.",
+          },
+        ],
         currentStepIndex: 0,
         reason: "FACILITY_OUTAGE",
       },

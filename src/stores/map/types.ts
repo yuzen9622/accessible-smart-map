@@ -223,7 +223,11 @@ export interface A11ySlice {
   a11yPlaces: Marker[] | null;
   setA11yPlaces: (places: Marker[] | null) => void;
   nearbyParking: ParkingNearbyItem[];
-  setNearbyParking: (items: ParkingNearbyItem[]) => void;
+  nearbyParkingLanguage?: "en" | "zh-TW";
+  setNearbyParking: (
+    items: ParkingNearbyItem[],
+    language?: "en" | "zh-TW",
+  ) => void;
   selectedParking: ParkingNearbyItem | null;
   setSelectedParking: (item: ParkingNearbyItem | null) => void;
   /** Selected-place context retained across responsive panel mounts.

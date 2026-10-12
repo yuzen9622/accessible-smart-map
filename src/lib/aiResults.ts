@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import {
   A11yEnum,
   type AiResultMarker,
@@ -10,7 +11,7 @@ import {
 import { formatBathroom, formatMetroA11y } from "./utils";
 
 // biome-ignore lint/suspicious/noExplicitAny: 後端工具回傳形狀不固定，這裡刻意用 any 做防禦式存取
-type AnyRec = Record<string, any>;
+type AnyRec = Record<string, any>; // pi-lens-ignore: no-unsafe-dictionary-any -- Existing dynamic tool DTO boundary.
 
 /**
  * 防禦式座標偵測：依序嘗試多種常見欄位命名，回傳 LatLng 或 null。
@@ -69,6 +70,10 @@ function isOk(res: AnyRec | null | undefined): res is AnyRec {
   return true;
 }
 
+function text(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() || undefined : undefined;
+}
+
 function dedupe(markers: AiResultMarker[]): AiResultMarker[] {
   const seen = new Map<string, AiResultMarker>();
   for (const m of markers) if (!seen.has(m.id)) seen.set(m.id, m);
@@ -76,7 +81,10 @@ function dedupe(markers: AiResultMarker[]): AiResultMarker[] {
 }
 
 /** findGooglePlaces 結果 → 可點標記（開 PlaceContent）。 */
-export function googlePlacesToMarkers(res: unknown): AiResultMarker[] {
+export function googlePlacesToMarkers(
+  res: unknown,
+  t?: TFunction,
+): AiResultMarker[] {
   const r = res as AnyRec;
   if (!isOk(r) || !Array.isArray(r.places)) return [];
 
@@ -84,7 +92,10 @@ export function googlePlacesToMarkers(res: unknown): AiResultMarker[] {
   r.places.forEach((place: AnyRec, i: number) => {
     const pos = getLatLng(place);
     if (!pos) return;
-    const name: string = place.name || place.formatted_address || "地點";
+    const name: string =
+      place.name ||
+      place.formatted_address ||
+      (t ? t("toolResults.place") : "地點");
     const googlePlaceId =
       typeof place.place_id === "string" && place.place_id
         ? place.place_id
@@ -150,7 +161,11 @@ export function googlePlacesToMarkers(res: unknown): AiResultMarker[] {
 }
 
 /** findA11yPlaces 結果 → 可點標記（開 StationDetailContent，依座標載入周邊設施）。 */
-export function a11yPlacesToMarkers(res: unknown): AiResultMarker[] {
+export function a11yPlacesToMarkers(
+  res: unknown,
+  t?: TFunction,
+  useDisplay = true,
+): AiResultMarker[] {
   const r = res as AnyRec;
   if (!isOk(r)) return [];
   const places = (r.places || {}) as AnyRec;
@@ -160,32 +175,55 @@ export function a11yPlacesToMarkers(res: unknown): AiResultMarker[] {
   const nearbyParking = (places.nearbyParking ?? []) as AnyRec[];
 
   const markers: AiResultMarker[] = [];
-  const pushFromMarker = (m: Marker) => {
+  const pushFromMarker = (m: Marker, display?: AnyRec) => {
     if (Number.isNaN(m.position.lat) || Number.isNaN(m.position.lng)) return;
     markers.push({
       id: String(m.id),
       position: m.position,
-      title: m.content?.title || "無障礙設施",
-      desc: m.content?.desc,
+      title:
+        (useDisplay ? text(display?.displayName) : undefined) ||
+        text(m.content?.title) ||
+        (t ? t("toolResults.a11yFacilities") : "無障礙設施"),
+      desc:
+        (useDisplay ? text(display?.displayAddress) : undefined) ||
+        m.content?.desc,
       target: { panel: "station", marker: m },
     });
   };
 
   // 已知形狀 → 重用既有 formatter（formatter 內部會過濾無座標項目）
-  const metroItems = nearbyMetroA11y.filter(
-    (m) => m?.["出入口電梯/無障礙坡道名稱"],
-  );
-  formatMetroA11y(metroItems as metroA11yData[]).forEach(pushFromMarker);
+  nearbyMetroA11y.forEach((item) => {
+    formatMetroA11y([item as metroA11yData]).forEach((marker) => {
+      pushFromMarker(marker, item);
+    });
+  });
 
-  const bathItems = nearbyBathroom.filter((b) => b?.name);
-  formatBathroom(bathItems as IBathroom[]).forEach(pushFromMarker);
+  const bathItems = nearbyBathroom;
+  bathItems.forEach((bathroom) => {
+    formatBathroom([bathroom as IBathroom]).forEach((marker) => {
+      if (t && marker.content) {
+        marker.content = {
+          ...marker.content,
+          desc: t(
+            bathroom.diaper
+              ? "toolResults.diaperTableAvailable"
+              : "toolResults.diaperTableUnavailable",
+          ),
+        };
+      }
+      pushFromMarker(marker, bathroom);
+    });
+  });
 
   // 未知形狀（osm / parking）→ 防禦式建 Marker
   [...nearbyOsm, ...nearbyParking].forEach((item, i) => {
     const pos = getLatLng(item);
     if (!pos) return;
     const title: string =
-      item.name || item.placeName || item.tags?.name || "無障礙設施";
+      text(item.name) ||
+      text(item.placeName) ||
+      text(item.tags?.name) ||
+      (t ? t("toolResults.a11yFacilities") : "無障礙設施");
     const marker: Marker = {
       id: item.id ?? item._id ?? item.osmId ?? `a_${i}`,
       position: pos,
@@ -193,16 +231,16 @@ export function a11yPlacesToMarkers(res: unknown): AiResultMarker[] {
       content: {
         title,
         desc:
-          item.address ||
-          item.spaceLabel ||
-          item.tags?.amenity ||
-          item.type ||
+          text(item.address) ||
+          text(item.spaceLabel) ||
+          text(item.tags?.amenity) ||
+          text(item.type) ||
           "",
       },
       zIndex: 1,
       a11yType: A11yEnum.NONE,
     };
-    pushFromMarker(marker);
+    pushFromMarker(marker, item);
   });
 
   return dedupe(markers);

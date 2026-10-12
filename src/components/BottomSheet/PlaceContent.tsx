@@ -23,7 +23,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyRouteA11yPlaces, getOsmPlaceDetail } from "@/lib/api/a11y";
+import { toApiLang } from "@/lib/place/lang";
 import { getPlaceTypeLabel } from "@/lib/placeTypes";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import { geoCoords } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import useOnboardingStore from "@/stores/useOnboardingStore";
@@ -70,6 +72,7 @@ function getAccessibilityStatusLabel(
 
 export default function PlaceContent() {
   const { t, i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
   const {
     infoShow,
     setInfoShow,
@@ -123,10 +126,12 @@ export default function PlaceContent() {
   }, [infoShow]);
 
   useEffect(() => {
+    setNearbyBathrooms([]);
+    setNearbyMetro([]);
     if (!placePosition) return;
     const controller = new AbortController();
     setA11yLoading(true);
-    getNearbyRouteA11yPlaces(placePosition, controller.signal)
+    getNearbyRouteA11yPlaces(placePosition, controller.signal, lang)
       .then((res) => {
         if (!controller.signal.aborted && res.ok && res.data) {
           setNearbyBathrooms(res.data.nearbyBathroom || []);
@@ -138,9 +143,10 @@ export default function PlaceContent() {
         if (!controller.signal.aborted) setA11yLoading(false);
       });
     return () => controller.abort();
-  }, [placePosition]);
+  }, [placePosition, lang]);
 
   useEffect(() => {
+    setOsmDetail(null);
     if (!infoShow.kind || infoShow.kind !== "place") {
       setOsmDetail(null);
       return;
@@ -151,7 +157,7 @@ export default function PlaceContent() {
       return;
     }
     const controller = new AbortController();
-    getOsmPlaceDetail(String(osmId), controller.signal)
+    getOsmPlaceDetail(String(osmId), controller.signal, lang)
       .then((res) => {
         if (!controller.signal.aborted && res.ok && res.data) {
           const detail = Array.isArray(res.data) ? res.data[0] : res.data;
@@ -160,7 +166,7 @@ export default function PlaceContent() {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [infoShow]);
+  }, [infoShow, lang]);
 
   const handleBack = useCallback(() => {
     setInfoShow({ isOpen: false, kind: null });
@@ -539,9 +545,13 @@ export default function PlaceContent() {
                   <DoorOpen className="h-4 w-4 text-blue-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{b.name}</p>
+                  <p className="text-sm font-medium truncate">
+                    {nonemptyName(b.displayName) ||
+                      nonemptyName(b.name) ||
+                      t("accessibleToilet")}
+                  </p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {b.address}
+                    {nonemptyName(b.displayAddress) || b.address}
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-xs shrink-0">
@@ -564,7 +574,9 @@ export default function PlaceContent() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">
-                    {m["出入口電梯/無障礙坡道名稱"]}
+                    {nonemptyName(m.displayName) ||
+                      nonemptyName(m["出入口電梯/無障礙坡道名稱"]) ||
+                      t("elevator")}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
                     {t("elevator")} · {m.出入口編號}
@@ -707,7 +719,11 @@ export default function PlaceContent() {
                       size={14}
                       className="text-muted-foreground shrink-0"
                     />
-                    <span className="truncate">{f.name || f.category}</span>
+                    <span className="truncate">
+                      {nonemptyName(f.displayName) ||
+                        nonemptyName(f.name) ||
+                        f.category}
+                    </span>
                     {f.wheelchair && (
                       <Badge
                         variant="outline"

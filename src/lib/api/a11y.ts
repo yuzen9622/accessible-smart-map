@@ -6,6 +6,7 @@ import {
   getAccessToken,
   personalizedRequest,
 } from "@/lib/fetch";
+import { withRouteNameLanguage } from "@/lib/route/sourceNames";
 import type { IBathroom, metroA11yData } from "@/types";
 import type { ApiResponse } from "@/types/response";
 import type {
@@ -25,11 +26,11 @@ import type {
   WelfareInstitution,
 } from "@/types/route";
 
-export async function getAllA11yFacilities() {
+export async function getAllA11yFacilities(lang?: string) {
   const response = await fetchRequest<ApiResponse<null>>(
     // Only these categories have map pins; filtering server-side cuts the
     // payload from ~5MB/24.7k items to ~1.6MB/7.9k items.
-    `${END_POINT}/api/v1/a11y/all-facilities?category=elevator,ramp,toilet`,
+    `${END_POINT}/api/v1/a11y/all-facilities?category=elevator,ramp,toilet${lang ? `&${new URLSearchParams({ lang })}` : ""}`,
   );
   return response as ApiResponse<A11yFacility[]>;
 }
@@ -40,6 +41,7 @@ export async function getNearbyRouteA11yPlaces(
     lng: number;
   },
   signal?: AbortSignal,
+  lang?: string,
 ) {
   const response = await fetchRequest<
     ApiResponse<{
@@ -47,7 +49,7 @@ export async function getNearbyRouteA11yPlaces(
       nearbyMetroA11y: metroA11yData[];
     }>
   >(
-    `${END_POINT}/api/v1/a11y/nearby-a11y?lat=${point.lat}&lng=${point.lng}`,
+    `${END_POINT}/api/v1/a11y/nearby-a11y?lat=${point.lat}&lng=${point.lng}${lang ? `&${new URLSearchParams({ lang })}` : ""}`,
     signal ? { signal } : undefined,
   );
 
@@ -65,7 +67,13 @@ export async function getAccessibleRoute(request: AccessibleRouteRequest) {
       body: request,
     },
   );
-  return response as ApiResponse<AccessibleRouteData>;
+  const result = response as ApiResponse<AccessibleRouteData>;
+  if (result.data?.routes) {
+    result.data.routes = result.data.routes.map((route) =>
+      withRouteNameLanguage(route, request.language),
+    );
+  }
+  return result;
 }
 
 export async function rerouteAccessibleRoute(
@@ -80,7 +88,16 @@ export async function rerouteAccessibleRoute(
       signal,
     },
   );
-  return response as ApiResponse<AccessibleRouteRerouteData>;
+  const result = response as ApiResponse<AccessibleRouteRerouteData>;
+  if (result.data?.route) {
+    // A replay retains the FIRST request's language, which is not echoed.
+    // Use source names instead of relabelling old display values as current.
+    result.data.route = withRouteNameLanguage(
+      result.data.route,
+      result.data.replayed ? undefined : request.language,
+    );
+  }
+  return result;
 }
 
 export async function getRouteInstructions(request: NavInstructionsRequest) {
@@ -102,9 +119,13 @@ export async function getRouteInstructions(request: NavInstructionsRequest) {
   return response as ApiResponse<NavInstructionsData>;
 }
 
-export async function getOsmPlaceDetail(osmId: string, signal?: AbortSignal) {
+export async function getOsmPlaceDetail(
+  osmId: string,
+  signal?: AbortSignal,
+  lang?: string,
+) {
   const response = await fetchRequest(
-    `${END_POINT}/api/v1/a11y/place?osmId=${osmId}`,
+    `${END_POINT}/api/v1/a11y/place?osmId=${osmId}${lang ? `&${new URLSearchParams({ lang })}` : ""}`,
     signal ? { signal } : undefined,
   );
   return response as ApiResponse<OsmPlaceDetail | OsmPlaceDetail[]>;
@@ -241,9 +262,10 @@ export async function getNearbyWelfare(
   lat: number,
   lng: number,
   radius = 1000,
+  lang?: string,
 ) {
   const response = await fetchRequest(
-    `${END_POINT}/api/v1/a11y/welfare/nearby?lat=${lat}&lng=${lng}&radius=${radius}`,
+    `${END_POINT}/api/v1/a11y/welfare/nearby?lat=${lat}&lng=${lng}&radius=${radius}${lang ? `&${new URLSearchParams({ lang })}` : ""}`,
   );
   return response as ApiResponse<WelfareInstitution[]>;
 }
@@ -260,9 +282,13 @@ export async function getEnvironmentInfo(lat: number, lng: number) {
   return response as ApiResponse<EnvironmentData>;
 }
 
-export async function getNearbyParking(lat: number, lng: number) {
+export async function getNearbyParking(
+  lat: number,
+  lng: number,
+  lang?: string,
+) {
   const response = await fetchRequest(
-    `${END_POINT}/api/v1/a11y/parking/nearby?lat=${lat}&lng=${lng}`,
+    `${END_POINT}/api/v1/a11y/parking/nearby?lat=${lat}&lng=${lng}${lang ? `&${new URLSearchParams({ lang })}` : ""}`,
   );
   return response as ApiResponse<ParkingNearbyItem[]>;
 }

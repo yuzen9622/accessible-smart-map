@@ -1,3 +1,4 @@
+import i18next, { type TFunction } from "i18next";
 import type { AiResultMarker, LatLng } from "@/types";
 import {
   a11yPlacesToMarkers,
@@ -6,7 +7,7 @@ import {
 } from "./aiResults";
 
 // biome-ignore lint/suspicious/noExplicitAny: 後端工具回傳形狀不固定，這裡刻意用 any 做防禦式存取
-type AnyRec = Record<string, any>;
+type AnyRec = Record<string, any>; // pi-lens-ignore: no-unsafe-dictionary-any -- Existing dynamic tool DTO boundary.
 
 export type ToolCardIcon =
   | "search"
@@ -38,26 +39,24 @@ export type ToolResultGroup = {
 
 const MAX_ITEMS = 30;
 
-// --- 列舉 → 中文標籤（對照 src/types/route.ts 的後端型別） ---
-const A11Y_CATEGORY_LABEL: Record<string, string> = {
-  wheelchair_accessible: "輪椅可通行",
-  kerb_cut: "緣石斜坡",
-  ramp: "無障礙坡道",
-  elevator: "電梯",
-  toilet: "無障礙廁所",
+// Backend enum values map to frontend-owned translation keys.
+const A11Y_CATEGORY_KEYS: Record<string, string> = {
+  wheelchair_accessible: "wheelchairAccessible",
+  kerb_cut: "kerbCut",
+  ramp: "ramp",
+  elevator: "elevator",
+  toilet: "toilet",
 };
-
-const HAZARD_TYPE_LABEL: Record<string, string> = {
-  obstacle: "障礙物",
-  construction: "施工",
-  data_error: "資料錯誤",
+const HAZARD_TYPE_KEYS: Record<string, string> = {
+  obstacle: "obstacle",
+  construction: "construction",
+  data_error: "dataError",
 };
-
-const HAZARD_STATUS_LABEL: Record<string, string> = {
-  pending: "待確認",
-  verified: "已確認",
-  rejected: "已否決",
-  expired: "已過期",
+const HAZARD_STATUS_KEYS: Record<string, string> = {
+  pending: "pending",
+  verified: "verified",
+  rejected: "rejected",
+  expired: "expired",
 };
 
 function isOk(res: AnyRec | null | undefined): res is AnyRec {
@@ -73,16 +72,22 @@ function str(v: unknown): string | undefined {
   return undefined;
 }
 
+function displayText(v: unknown): string | undefined {
+  return typeof v === "string" ? v.trim() || undefined : undefined;
+}
+
 function asArray(v: unknown): AnyRec[] {
   return Array.isArray(v) ? (v as AnyRec[]) : [];
 }
 
-/** 雙語名稱（TDX BilingualName）或純字串都能取出中文 */
-function localName(v: unknown): string | undefined {
+/** Prefer English bilingual names in English; preserve backend strings verbatim. */
+function localName(v: unknown, t: TFunction): string | undefined {
   if (typeof v === "string") return v.trim() || undefined;
   if (v && typeof v === "object") {
     const o = v as AnyRec;
-    return str(o.Zh_tw) || str(o.zh_tw) || str(o.En);
+    return t("toolResults.locale") === "en"
+      ? str(o.En) || str(o.Zh_tw) || str(o.zh_tw)
+      : str(o.Zh_tw) || str(o.zh_tw) || str(o.En);
   }
   return undefined;
 }
@@ -96,11 +101,11 @@ function isAffirmative(v: unknown): boolean {
 }
 
 /** TDX EstimateTime 為秒，轉成易讀文字 */
-function fmtEtaSeconds(sec: unknown): string | undefined {
+function fmtEtaSeconds(sec: unknown, t: TFunction): string | undefined {
   if (typeof sec !== "number" || !Number.isFinite(sec)) return undefined;
-  if (sec <= 0) return "進站中";
-  if (sec < 60) return "即將進站";
-  return `約 ${Math.round(sec / 60)} 分`;
+  if (sec <= 0) return t("toolResults.etaArriving");
+  if (sec < 60) return t("toolResults.etaSoon");
+  return t("toolResults.etaMinutes", { minutes: Math.round(sec / 60) });
 }
 
 function markersToItems(markers: AiResultMarker[]): ToolResultItem[] {
@@ -116,6 +121,7 @@ function markersToItems(markers: AiResultMarker[]): ToolResultItem[] {
 /** 把含座標的陣列轉成可點飛行的卡片 */
 function locationItems(
   items: AnyRec[],
+  t: TFunction,
   opts: {
     prefix: string;
     id?: (it: AnyRec, index: number) => string | undefined;
@@ -142,7 +148,7 @@ function locationItems(
       i;
     out.push({
       id: `${opts.prefix}_${rawId}`,
-      title: opts.title(it) || "項目",
+      title: opts.title(it) || t("toolResults.item"),
       subtitle: opts.subtitle?.(it),
       badge: opts.badge?.(it),
       position,
@@ -157,72 +163,104 @@ function locationItems(
 export function getToolResultGroup(
   name: string,
   result: unknown,
+  t: TFunction = i18next.t,
+  resultLanguage?: "en" | "zh-TW",
 ): ToolResultGroup | null {
   const res = (result ?? {}) as AnyRec;
   if (!isOk(res)) return null;
 
+  const useDisplay =
+    resultLanguage === undefined || resultLanguage === t("toolResults.locale");
+  const display = (value: unknown) =>
+    useDisplay ? displayText(value) : undefined;
+
+  const enumLabel = (
+    keys: Record<string, string>,
+    section: string,
+    value: string,
+  ) => (keys[value] ? t(`toolResults.${section}.${keys[value]}`) : undefined);
+  const categoryLabel = (value: string) =>
+    enumLabel(A11Y_CATEGORY_KEYS, "categories", value);
+
   switch (name) {
     case "findGooglePlaces": {
-      const items = markersToItems(googlePlacesToMarkers(result));
+      const items = markersToItems(googlePlacesToMarkers(result, t));
       return items.length
-        ? { heading: "周邊地點", icon: "search", items }
+        ? { heading: t("toolResults.nearbyPlaces"), icon: "search", items }
         : null;
     }
 
     case "findA11yPlaces": {
-      const items = markersToItems(a11yPlacesToMarkers(result));
+      const items = markersToItems(a11yPlacesToMarkers(result, t, useDisplay));
       return items.length
-        ? { heading: "無障礙設施", icon: "a11y", items }
+        ? { heading: t("toolResults.a11yFacilities"), icon: "a11y", items }
         : null;
     }
 
     // SlimOsmA11y[]: { osmId, name?, category(enum), wheelchair?, location: GeoPoint }
     case "getA11yFacilityDetails": {
-      const items = locationItems(asArray(res.facilities), {
+      const items = locationItems(asArray(res.facilities), t, {
         prefix: "a11yfac",
         title: (f) =>
-          str(f.name) || A11Y_CATEGORY_LABEL[f.category] || str(f.category),
+          display(f.displayName) ||
+          str(f.name) ||
+          categoryLabel(f.category) ||
+          str(f.category),
         subtitle: (f) =>
           [
-            A11Y_CATEGORY_LABEL[f.category] || str(f.category),
+            categoryLabel(f.category) || str(f.category),
             f.wheelchair === "yes"
-              ? "輪椅可通行"
+              ? t("toolResults.wheelchairAccessible")
               : f.wheelchair === "limited"
-                ? "部分無障礙"
+                ? t("toolResults.partiallyAccessible")
                 : undefined,
           ]
             .filter(Boolean)
             .join(" · ") || undefined,
       });
       return items.length
-        ? { heading: "無障礙設施詳情", icon: "a11y", items }
+        ? { heading: t("toolResults.a11yDetails"), icon: "a11y", items }
         : null;
     }
 
     // 停車格 / 停車場混合（ParkingSpaceNearby | ParkingLotNearby）：
     // 格位用 placeName/district/quantity，停車場用 name/address/disabledSpaces。
     case "findNearbyParking": {
-      const items = locationItems(asArray(res.parkingSpots), {
+      const items = locationItems(asArray(res.parkingSpots), t, {
         prefix: "parking",
-        title: (p) => str(p.placeName) || str(p.name) || "身障停車位",
+        title: (p) =>
+          display(p.displayName) ||
+          str(p.placeName) ||
+          str(p.name) ||
+          t("toolResults.accessibleParking"),
         subtitle: (p) =>
-          [str(p.address) || str(p.district) || str(p.city), str(p.spaceLabel)]
+          [
+            display(p.displayAddress) ||
+              str(p.address) ||
+              str(p.district) ||
+              str(p.city),
+            str(p.spaceLabel),
+          ]
             .filter(Boolean)
             .join(" · ") || str(p.chargeType),
         badge: (p) => {
           const n = p.disabledSpaces ?? p.quantity ?? p.availableSpaces;
           const q = str(n);
-          return q != null ? `${q} 位` : undefined;
+          return q != null
+            ? t("toolResults.parkingSpaces", { count: Number(q) })
+            : undefined;
         },
         requirePosition: true,
       });
       const total = str(res.total);
       return items.length
         ? {
-            heading: "身障停車位",
+            heading: t("toolResults.accessibleParking"),
             icon: "parking",
             items,
-            note: total ? `附近共 ${total} 處` : undefined,
+            note: total
+              ? t("toolResults.nearbyCount", { count: Number(total) })
+              : undefined,
           }
         : null;
     }
@@ -230,62 +268,71 @@ export function getToolResultGroup(
     // HazardReport[]: { hazardType, reportedLocation.coordinates, description, status, aiAnalysis.summary }
     case "getNearbyHazards": {
       const reports = asArray(res.data?.reports ?? res.reports ?? res.data);
-      const items = locationItems(reports, {
+      const items = locationItems(reports, t, {
         prefix: "hazard",
         title: (r) =>
-          HAZARD_TYPE_LABEL[r.hazardType] ||
+          enumLabel(HAZARD_TYPE_KEYS, "hazardTypes", r.hazardType) ||
           str(r.hazardType) ||
           str(r.type) ||
-          "路況回報",
+          t("toolResults.hazardReport"),
         subtitle: (r) =>
           str(r.description) ||
           str(r.aiAnalysis?.summary) ||
-          HAZARD_STATUS_LABEL[r.status] ||
+          enumLabel(HAZARD_STATUS_KEYS, "hazardStatuses", r.status) ||
           str(r.status),
         requirePosition: true,
       });
       return items.length
-        ? { heading: "附近路況與障礙物", icon: "hazard", items }
+        ? { heading: t("toolResults.nearbyHazards"), icon: "hazard", items }
         : null;
     }
 
     // LiveBus[]: { plateNumb, routeName, directionLabel, lat, lng, isLowFloor, hasLiftOrRamp, statusLabel, stopsAway }
     case "trackBuses": {
-      const items = locationItems(asArray(res.buses), {
+      const items = locationItems(asArray(res.buses), t, {
         prefix: "bus",
         id: (b, i) => str(b.plateNumb) || str(b.PlateNumb) || String(i),
         title: (b) => {
-          const route = str(b.routeName);
+          const route =
+            display(res.routeDisplayName) ||
+            str(b.routeName) ||
+            str(res.routeName);
           const plate = str(b.plateNumb);
           if (route && plate && route !== plate) {
             return `${route} · ${plate}`;
           }
-          return route || plate || "公車";
+          return route || plate || t("toolResults.bus");
         },
         subtitle: (b) =>
           [
             str(b.directionLabel),
-            b.stopsAway != null ? `還有 ${b.stopsAway} 站` : str(b.statusLabel),
+            b.stopsAway != null
+              ? t("toolResults.stopsAway", { count: Number(b.stopsAway) })
+              : str(b.statusLabel),
           ]
             .filter(Boolean)
             .join(" · ") || undefined,
         badge: (b) =>
           isAffirmative(b.isLowFloor) || isAffirmative(b.hasLiftOrRamp)
-            ? "低地板"
+            ? t("toolResults.lowFloor")
             : undefined,
         requirePosition: true,
       });
       const count = str(res.count);
       const low = str(res.lowFloorCount);
       const note = [
-        count != null ? `共 ${count} 班` : null,
-        low != null ? `低地板 ${low} 班` : null,
+        count != null
+          ? t("toolResults.busCount", { count: Number(count) })
+          : null,
+        low != null
+          ? t("toolResults.lowFloorCount", { count: Number(low) })
+          : null,
       ]
         .filter(Boolean)
         .join("，");
       return items.length
         ? {
-            heading: "公車即時動態",
+            heading: t("toolResults.liveBuses"),
             icon: "bus",
             items,
             note: note || undefined,
@@ -300,31 +347,42 @@ export function getToolResultGroup(
       const stops: AnyRec[] = [];
       for (const d of dirs) {
         const dirLabel =
-          localName(d.destination ?? d.DestinationStop) || str(d.direction);
+          display(d.toDisplayName) ||
+          str(d.to) ||
+          localName(d.destination ?? d.DestinationStop, t) ||
+          str(d.direction);
         for (const s of asArray(d.stops)) stops.push({ ...s, __dir: dirLabel });
       }
-      const items = locationItems(stops, {
+      const items = locationItems(stops, t, {
         prefix: "stop",
         id: (s, i) =>
           str(s.StopUID) ||
           str(s.stopUid) ||
           str(s.StopID) ||
           str(s.stopId) ||
-          localName(s.StopName) ||
           String(i),
         title: (s) =>
-          localName(s.StopName) || str(s.stopName) || str(s.name) || "站牌",
+          display(s.displayName) ||
+          localName(s.StopName, t) ||
+          str(s.stopName) ||
+          str(s.name) ||
+          t("toolResults.stop"),
         subtitle: (s) => {
           const etaRaw = s.EstimateTime ?? s.estimateTime ?? s.eta;
           const eta =
-            typeof etaRaw === "number" ? fmtEtaSeconds(etaRaw) : str(etaRaw);
+            typeof etaRaw === "number" ? fmtEtaSeconds(etaRaw, t) : str(etaRaw);
           return [str(s.__dir), eta].filter(Boolean).join(" · ") || undefined;
         },
       });
-      const routeName = localName(res.routeName) || str(res.routeNo);
+      const routeName =
+        display(res.routeDisplayName) ||
+        localName(res.routeName, t) ||
+        str(res.routeNo);
       return items.length
         ? {
-            heading: routeName ? `公車 ${routeName} 站牌` : "公車站牌",
+            heading: routeName
+              ? t("toolResults.routeStops", { route: routeName })
+              : t("toolResults.busStops"),
             icon: "bus",
             items,
           }
@@ -332,7 +390,22 @@ export function getToolResultGroup(
     }
 
     case "getBusTimetable": {
-      const schedules = asArray(res.schedules);
+      const schedules = asArray(res.schedules).flatMap((s) =>
+        Array.isArray(s.frequencies)
+          ? asArray(s.frequencies).map((f, i) => ({
+              ...f,
+              time:
+                str(f.originDepartureTime) ||
+                [str(f.start), str(f.end)].filter(Boolean).join("–"),
+              destination:
+                display(f.originStopDisplayName) ||
+                str(f.originStopName) ||
+                display(s.subRouteDisplayName) ||
+                str(s.subRouteName),
+              __id: `${s.subRouteUid ?? "schedule"}_${s.direction ?? "unknown"}_${i}`,
+            }))
+          : [s],
+      );
       const items: ToolResultItem[] = schedules
         .slice(0, MAX_ITEMS)
         .map((s, i) => {
@@ -342,19 +415,30 @@ export function getToolResultGroup(
             str(s.departureTime) ||
             str(s.ArrivalTime);
           return {
-            id: `sched_${i}`,
-            title: rawTime || "班次",
+            id: `sched_${s.__id ?? i}`,
+            title: rawTime || t("toolResults.departure"),
             subtitle:
-              [localName(s.destination ?? s.DestinationStop), str(s.note)]
+              [localName(s.destination ?? s.DestinationStop, t), str(s.note)]
                 .filter(Boolean)
                 .join(" · ") || undefined,
           };
         })
-        .filter((it) => it.title !== "班次" || it.subtitle);
-      const routeName = localName(res.routeName);
+        .filter((it, i) =>
+          Boolean(
+            str(schedules[i].time) ||
+              str(schedules[i].DepartureTime) ||
+              str(schedules[i].departureTime) ||
+              str(schedules[i].ArrivalTime) ||
+              it.subtitle,
+          ),
+        );
+      const routeName =
+        display(res.routeDisplayName) || localName(res.routeName, t);
       return items.length
         ? {
-            heading: routeName ? `公車 ${routeName} 時刻表` : "公車時刻表",
+            heading: routeName
+              ? t("toolResults.routeTimetable", { route: routeName })
+              : t("toolResults.busTimetable"),
             icon: "bus",
             items,
           }
@@ -369,14 +453,18 @@ export function getToolResultGroup(
       const place = [str(res.city), str(res.area)].filter(Boolean).join(" ");
       if (pm25 == null && quality == null) return null;
       return {
-        heading: place ? `空氣品質 · ${place}` : "空氣品質",
+        heading: place
+          ? t("toolResults.airQualityPlace", { place })
+          : t("toolResults.airQuality"),
         icon: "air",
         note: str(res.advice),
         items: [
           {
             id: "air_0",
             title:
-              pm25 != null ? `PM2.5 ${pm25} μg/m³` : (quality ?? "空氣品質"),
+              pm25 != null
+                ? `PM2.5 ${pm25} μg/m³`
+                : (quality ?? t("toolResults.airQuality")),
             subtitle: pm25 != null ? quality : undefined,
             position,
           },
@@ -393,12 +481,15 @@ export function getToolResultGroup(
         const desc = str(w.condition ?? w.description ?? w.weather);
         const title =
           [temp != null ? `${temp}°C` : null, desc].filter(Boolean).join(" ") ||
-          "天氣";
+          t("toolResults.weather");
         const rain = str(w.precipitationProbability);
         items.push({
           id: "env_weather",
           title,
-          subtitle: rain != null ? `降雨機率 ${rain}%` : undefined,
+          subtitle:
+            rain != null
+              ? t("toolResults.rainChance", { percent: rain })
+              : undefined,
         });
       }
       const aq = res.airQuality as AnyRec | undefined;
@@ -409,7 +500,9 @@ export function getToolResultGroup(
           title:
             pm25 != null
               ? `PM2.5 ${pm25}`
-              : `空氣品質 ${str(aq.quality) ?? ""}`.trim(),
+              : t("toolResults.airQualityValue", {
+                  quality: str(aq.quality) ?? "",
+                }).trim(),
           subtitle: str(aq.description),
           position: getLatLng(aq.coordinates ?? aq),
         });
@@ -419,17 +512,19 @@ export function getToolResultGroup(
       cams.slice(0, MAX_ITEMS).forEach((c, i) => {
         items.push({
           id: `cctv_${i}`,
-          title: str(c.name) || str(c.title) || "即時影像",
+          title: str(c.name) || str(c.title) || t("toolResults.liveCamera"),
           subtitle:
             c.distance != null
-              ? `約 ${Math.round(Number(c.distance))} m`
+              ? t("toolResults.distanceMeters", {
+                  distance: Math.round(Number(c.distance)),
+                })
               : str(c.address) || str(c.road),
           position: getLatLng(c),
         });
       });
 
       return items.length
-        ? { heading: "周邊環境資訊", icon: "env", items }
+        ? { heading: t("toolResults.environment"), icon: "env", items }
         : null;
     }
 
@@ -447,7 +542,10 @@ export function getToolResultGroup(
               : undefined;
           return {
             id: `nav_${i}`,
-            title: str(step.text) || str(step.instruction) || `第 ${i + 1} 步`,
+            title:
+              str(step.text) ||
+              str(step.instruction) ||
+              t("toolResults.step", { count: i + 1 }),
             subtitle:
               [str(step.relativeDirection), str(step.streetName), dist]
                 .filter(Boolean)
@@ -457,10 +555,12 @@ export function getToolResultGroup(
       const total = str(res.totalSteps);
       return items.length
         ? {
-            heading: "導航指引",
+            heading: t("toolResults.navigation"),
             icon: "nav",
             items,
-            note: total ? `共 ${total} 步` : undefined,
+            note: total
+              ? t("toolResults.stepCount", { count: Number(total) })
+              : undefined,
           }
         : null;
     }
@@ -477,16 +577,11 @@ function mergeIntoExistingGroup(
   incoming: ToolResultGroup,
 ): ToolResultGroup {
   const seenIds = new Set(existing.items.map((it) => it.id));
-  const seenKeys = new Set(
-    existing.items.map((it) => `${it.title}_${it.subtitle ?? ""}`),
-  );
 
   const mergedItems = [...existing.items];
   for (const it of incoming.items) {
-    const key = `${it.title}_${it.subtitle ?? ""}`;
-    if (!seenIds.has(it.id) && !seenKeys.has(key)) {
+    if (!seenIds.has(it.id)) {
       seenIds.add(it.id);
-      seenKeys.add(key);
       mergedItems.push(it);
     }
   }
@@ -512,8 +607,14 @@ function mergeIntoExistingGroup(
  */
 export function getAggregatedToolResults(
   activities:
-    | Array<{ name: string; result?: unknown; status?: string }>
+    | Array<{
+        name: string;
+        result?: unknown;
+        status?: string;
+        displayLanguage?: "en" | "zh-TW";
+      }>
     | undefined,
+  t: TFunction = i18next.t,
 ): ToolResultGroup[] {
   if (!activities?.length) return [];
 
@@ -521,7 +622,12 @@ export function getAggregatedToolResults(
 
   for (const act of activities) {
     if (act.status === "running") continue;
-    const group = getToolResultGroup(act.name, act.result);
+    const group = getToolResultGroup(
+      act.name,
+      act.result,
+      t,
+      act.displayLanguage,
+    );
     if (!group?.items.length) continue;
 
     const existingIndex = groups.findIndex(

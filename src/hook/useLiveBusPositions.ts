@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
-import type { RouteDetailStop } from "@/lib/api/transit";
+import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import type { BusLanguage, RouteDetailStop } from "@/lib/api/transit";
 import { getLiveBusPositions } from "@/lib/api/transit";
 import type { BoardedVehicle } from "@/lib/navigation/transitRideRuntime";
 import {
@@ -60,11 +62,13 @@ export async function fetchLeg(
   leg: BusLeg,
   signal: AbortSignal,
   boardedVehicle?: BoardedVehicle | null,
+  lang?: BusLanguage,
 ): Promise<LiveBus[]> {
   const ref = legRouteDetailRef(leg);
   if (signal.aborted || !ref.city || !leg.planContext) return [];
 
   const directions = await fetchRouteDetailCached(ref.routeName, ref.city, {
+    lang,
     subRouteUid: ref.subRouteUid,
     planContext: leg.planContext,
     signal,
@@ -98,6 +102,7 @@ export async function fetchLeg(
     ref.city,
     ride.direction,
     signal,
+    lang,
   );
   if (signal.aborted) return [];
 
@@ -120,6 +125,7 @@ export async function fetchLeg(
     ref.city,
     ref.subRouteUid,
     leg.planContext,
+    lang,
   );
   if (!freshArrival) {
     if (!locked) return [];
@@ -184,6 +190,8 @@ export function useLiveBusPositions(options?: {
   sessionKey: string;
   vehicle?: BoardedVehicle | null;
 }): void {
+  useAppTranslation();
+  const lang = getAppLanguage();
   const activeBusLeg = useMapStore((s) => s.activeBusLeg);
   const setLiveBusPositions = useMapStore((s) => s.setLiveBusPositions);
 
@@ -211,6 +219,7 @@ export function useLiveBusPositions(options?: {
       return;
     }
 
+    setLiveBusPositions([]);
     let cancelled = false;
     let generation = 0;
     let controller: AbortController | null = null;
@@ -237,7 +246,7 @@ export function useLiveBusPositions(options?: {
       const live = () => !cancelled && !signal.aborted && mine === generation;
 
       try {
-        const buses = await fetchLeg(current, signal, vehicleRef.current);
+        const buses = await fetchLeg(current, signal, vehicleRef.current, lang);
         if (!live()) return;
         setLiveBusPositions(buses);
         // Only a vehicle on screen needs an expiry.
@@ -248,6 +257,7 @@ export function useLiveBusPositions(options?: {
             ref.city,
             ref.subRouteUid,
             current.planContext,
+            lang,
           );
           armStale(
             buses[0]?.estimateTime != null && snapshot
@@ -303,5 +313,5 @@ export function useLiveBusPositions(options?: {
       document.removeEventListener("visibilitychange", onVisibility);
       setLiveBusPositions([]);
     };
-  }, [legKey, setLiveBusPositions, sessionKey, vehicleKey]);
+  }, [legKey, setLiveBusPositions, sessionKey, vehicleKey, lang]);
 }

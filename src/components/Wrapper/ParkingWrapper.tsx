@@ -6,36 +6,57 @@ import useSupercluster from "use-supercluster";
 import { useShallow } from "zustand/react/shallow";
 import { parkingItemLngLat } from "@/components/BottomSheet/ParkingPanel";
 import ParkingPin from "@/components/ParkingPin";
+import { useFetchLocation } from "@/hook/useFetchLocation";
 import { useMapBoundsAndZoom } from "@/hook/useMapBoundsAndZoom";
+import { useAppTranslation } from "@/i18n/client";
 import { getNearbyParking } from "@/lib/api/a11y";
+import { toApiLang } from "@/lib/place/lang";
 import useMapStore from "@/stores/useMapStore";
 import type { ParkingNearbyItem } from "@/types/route";
 
 export default function ParkingWrapper() {
   const { current: map } = useMap();
-  const { activeRailPanel, userLocation, nearbyParking, setNearbyParking } =
-    useMapStore(
-      useShallow((s) => ({
-        activeRailPanel: s.activeRailPanel,
-        userLocation: s.userLocation,
-        nearbyParking: s.nearbyParking,
-        setNearbyParking: s.setNearbyParking,
-      })),
-    );
+  const { i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
+  const {
+    activeRailPanel,
+    userLocation,
+    nearbyParking,
+    nearbyParkingLanguage,
+    setNearbyParking,
+    setSelectedParking,
+  } = useMapStore(
+    useShallow((s) => ({
+      activeRailPanel: s.activeRailPanel,
+      userLocation: s.userLocation,
+      nearbyParking: s.nearbyParking,
+      nearbyParkingLanguage: s.nearbyParkingLanguage,
+      setNearbyParking: s.setNearbyParking,
+      setSelectedParking: s.setSelectedParking,
+    })),
+  );
 
   const { bounds, zoom } = useMapBoundsAndZoom(map);
 
-  // Auto-fetch if user opened the parking panel and store has no data yet
+  const fetchLoc = useFetchLocation(userLocation);
+
+  // Only reuse a response from this language (even an empty result).
   useEffect(() => {
+    if (nearbyParkingLanguage !== lang) setSelectedParking(null);
     if (activeRailPanel !== "parking") return;
-    if (nearbyParking.length > 0) return;
-    if (!userLocation) return;
+    if (nearbyParkingLanguage === lang) return;
+    if (!fetchLoc) return;
 
     let active = true;
-    getNearbyParking(userLocation.lat, userLocation.lng)
+    getNearbyParking(fetchLoc.lat, fetchLoc.lng, lang)
       .then((res) => {
-        if (active && res.ok && res.data) {
-          setNearbyParking(res.data);
+        if (
+          active &&
+          (toApiLang(i18n.language) ?? "zh-TW") === lang &&
+          res.ok &&
+          res.data
+        ) {
+          setNearbyParking(res.data, lang);
         }
       })
       .catch(() => {});
@@ -43,9 +64,18 @@ export default function ParkingWrapper() {
     return () => {
       active = false;
     };
-  }, [activeRailPanel, nearbyParking.length, userLocation, setNearbyParking]);
+  }, [
+    activeRailPanel,
+    nearbyParkingLanguage,
+    lang,
+    i18n,
+    fetchLoc,
+    setNearbyParking,
+    setSelectedParking,
+  ]);
 
-  const shouldShow = activeRailPanel === "parking";
+  const shouldShow =
+    activeRailPanel === "parking" && nearbyParkingLanguage === lang;
 
   const points = useMemo(() => {
     if (!shouldShow) return [];

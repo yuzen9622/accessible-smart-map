@@ -1,5 +1,9 @@
 import type { RouteConversationInput } from "@/lib/ai/routeConversation";
-import type { AccessibleRoute, NavInstruction } from "@/types/route";
+import type {
+  AccessibleRoute,
+  NavInstruction,
+  RouteMessageDetail,
+} from "@/types/route";
 
 /**
  * VoiceSessionController — pure TS state machine for the realtime voice
@@ -225,6 +229,7 @@ export type VoiceNavigationEvent =
       routeToken: string;
       route: AccessibleRoute;
       warnings: string[];
+      warningDetails?: RouteMessageDetail[];
       currentStepIndex: 0;
       reason?: VoiceRerouteReason;
     } & (

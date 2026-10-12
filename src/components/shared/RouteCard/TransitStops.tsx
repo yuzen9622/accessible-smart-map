@@ -62,6 +62,7 @@ export function TransitStops({
   boardTime,
   alightTime,
   intermediateStops,
+  displayLanguage,
   color,
   departureA11y,
   arrivalA11y,
@@ -79,6 +80,7 @@ export function TransitStops({
   boardTime?: string;
   alightTime?: string;
   intermediateStops?: IntermediateStop[];
+  displayLanguage?: "en" | "zh-TW";
   color: string;
   departureA11y?: SlimOsmA11y[];
   arrivalA11y?: SlimOsmA11y[];
@@ -114,11 +116,13 @@ export function TransitStops({
       {isSelected && (
         <A11yStationIcons
           items={departureA11y}
+          displayLanguage={displayLanguage}
           ariaLabel={t("departureA11yLabel") ?? "出發站無障礙設施"}
         />
       )}
       <IntermediateStops
         stops={intermediateStops}
+        displayLanguage={displayLanguage}
         rows={intermediateRows}
         color={color}
         etaStatus={etaStatus}
@@ -141,6 +145,7 @@ export function TransitStops({
       {isSelected && (
         <A11yStationIcons
           items={arrivalA11y}
+          displayLanguage={displayLanguage}
           ariaLabel={t("arrivalA11yLabel") ?? "到達站無障礙設施"}
         />
       )}

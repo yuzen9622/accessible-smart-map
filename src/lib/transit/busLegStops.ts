@@ -1,7 +1,27 @@
 import type { RouteDetailDirection, RouteDetailStop } from "@/lib/api/transit";
 import { haversineMeters } from "@/lib/geo";
+import { nonemptyName, sourceName } from "@/lib/route/sourceNames";
 import type { BusLeg } from "@/types/route";
 import type { BusDirection } from "@/types/transit";
+
+/** The token-scoped ETA endpoint has no language query. Pair its same-leg
+ * rows with planned sources only when the complete original sequence matches. */
+export function withPlannedStopNames(
+  rows: BusLegStopRow[],
+  leg: BusLeg,
+  language: "en" | "zh-TW",
+): BusLegStopRow[] {
+  const planned = fallbackStopRows(leg, { language });
+  if (
+    rows.length !== planned.length ||
+    rows.some((row, index) => row.name !== planned[index].name)
+  )
+    return rows;
+  return rows.map((row, index) => ({
+    ...row,
+    displayName: nonemptyName(row.displayName) || planned[index].displayName,
+  }));
+}
 
 export type StopRowState = "passed" | "current" | "upcoming";
 export type StopRowKind = "board" | "intermediate" | "alight";
@@ -10,6 +30,7 @@ export type EtaTone = "arriving" | "soon" | "normal" | "muted";
 export interface BusLegStopRow {
   seq: number;
   name: string;
+  displayName?: string;
   stationUid?: string;
   estimateMinutes: number | null;
   statusLabel: string;
@@ -251,6 +272,7 @@ export function buildStopRows(
     return {
       seq: stop.seq,
       name: stop.name,
+      displayName: stop.displayName,
       estimateMinutes: stop.estimateMinutes,
       statusLabel: stop.statusLabel,
       state,
@@ -268,7 +290,10 @@ export function buildStopRows(
  */
 export function fallbackStopRows(
   leg: BusLeg,
-  { pending = false }: { pending?: boolean } = {},
+  {
+    pending = false,
+    language,
+  }: { pending?: boolean; language?: "en" | "zh-TW" } = {},
 ): BusLegStopRow[] {
   if (leg.scheduledTrip?.stops.length) {
     return leg.scheduledTrip.stops.map((stop, i, stops) => {
@@ -279,6 +304,15 @@ export function fallbackStopRows(
       return {
         seq: i + 1,
         name: stop.name,
+        displayName: language
+          ? sourceName(
+              stop.name,
+              stop.nameEn,
+              stop.displayName,
+              language,
+              leg.displayLanguage,
+            )
+          : undefined,
         stationUid: stop.stopUid,
         estimateMinutes: null,
         statusLabel:
@@ -302,17 +336,51 @@ export function fallbackStopRows(
   }
   const middle = leg.intermediateStops ?? [];
   const names = [
-    { name: leg.departureStop, kind: "board" as StopRowKind },
+    {
+      name: leg.departureStop,
+      displayName: language
+        ? sourceName(
+            leg.departureStop,
+            leg.fromNameEn,
+            leg.fromDisplayName,
+            language,
+            leg.displayLanguage,
+          )
+        : undefined,
+      kind: "board" as StopRowKind,
+    },
     ...middle.map((s) => ({
       name: s.name,
+      displayName: language
+        ? sourceName(
+            s.name,
+            s.nameEn,
+            s.displayName,
+            language,
+            leg.displayLanguage,
+          )
+        : undefined,
       stationUid: s.stationUid,
       kind: "intermediate" as StopRowKind,
     })),
-    { name: leg.arrivalStop, kind: "alight" as StopRowKind },
+    {
+      name: leg.arrivalStop,
+      displayName: language
+        ? sourceName(
+            leg.arrivalStop,
+            leg.toNameEn,
+            leg.toDisplayName,
+            language,
+            leg.displayLanguage,
+          )
+        : undefined,
+      kind: "alight" as StopRowKind,
+    },
   ];
   return names.map((entry, i) => ({
     seq: i,
     name: entry.name,
+    displayName: entry.displayName,
     stationUid: "stationUid" in entry ? entry.stationUid : undefined,
     estimateMinutes: null,
     statusLabel: "",

@@ -16,6 +16,8 @@ import { useFetchLocation } from "@/hook/useFetchLocation";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyHazardReports, getNearbyParking } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
+import { toApiLang } from "@/lib/place/lang";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import { cn, geoCoords } from "@/lib/utils";
 import useContentSafetyStore from "@/stores/useContentSafetyStore";
 import useMapStore from "@/stores/useMapStore";
@@ -44,7 +46,8 @@ function A11yPanelSession({
   onClose?: () => void;
   hideHeader?: boolean;
 }) {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
   const {
     map,
     userLocation,
@@ -78,16 +81,28 @@ function A11yPanelSession({
           setNearbyHazards(res.data.reports);
       })
       .catch(() => {});
-    getNearbyParking(fetchLoc.lat, fetchLoc.lng)
+    return () => controller.abort();
+  }, [fetchLoc]);
+
+  useEffect(() => {
+    setNearbyParking([]);
+    if (!fetchLoc) return;
+    const controller = new AbortController();
+    getNearbyParking(fetchLoc.lat, fetchLoc.lng, lang)
       .then((res) => {
-        if (!controller.signal.aborted && res.ok && res.data) {
+        if (
+          !controller.signal.aborted &&
+          (toApiLang(i18n.language) ?? "zh-TW") === lang &&
+          res.ok &&
+          res.data
+        ) {
           setNearbyParking(res.data);
-          setStoreNearbyParking(res.data);
+          setStoreNearbyParking(res.data, lang);
         }
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [fetchLoc, setStoreNearbyParking]);
+  }, [fetchLoc, lang, i18n, setStoreNearbyParking]);
 
   const a11yChips = [
     { type: A11yEnum.ELEVATOR, Icon: ArrowUpDown, label: t("elevator") },
@@ -112,17 +127,23 @@ function A11yPanelSession({
       const { title, desc } =
         p.type === "lot"
           ? {
-              title: p.name,
+              title:
+                nonemptyName(p.displayName) ||
+                nonemptyName(p.name) ||
+                t("parking"),
               desc:
                 [
-                  p.address,
+                  nonemptyName(p.displayAddress) || p.address,
                   p.wheelchairAccessible ? t("wheelchairFriendly") : null,
                 ]
                   .filter(Boolean)
                   .join(" · ") || undefined,
             }
           : {
-              title: p.placeName,
+              title:
+                nonemptyName(p.displayName) ||
+                nonemptyName(p.placeName) ||
+                t("parking"),
               desc: `${p.district ?? ""} · ${t("spots", { count: p.quantity })}`,
             };
       return [

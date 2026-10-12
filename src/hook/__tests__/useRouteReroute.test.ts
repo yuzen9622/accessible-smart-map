@@ -146,6 +146,39 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("reroute warning detail ownership", () => {
+  it("pairs envelope warningDetails only with envelope warnings", () => {
+    seedOldRuntime();
+    const data = response();
+    data.route.warnings = ["Nested warning"];
+    data.route.warningDetails = [
+      { index: 0, code: "NESTED", message: "Nested detail" },
+    ];
+    data.warningDetails = [
+      { index: 0, code: "ROUTE_DATA_SPARSE", message: "Envelope detail" },
+    ];
+    expect(applyRouteReplacement(normalizeRerouteReplacement(data))).toBe(true);
+    expect(useMapStore.getState().selectRoute?.route).toMatchObject({
+      warnings: data.warnings,
+      warningDetails: data.warningDetails,
+    });
+  });
+  it("does not reuse nested details when a legacy envelope omits them", () => {
+    seedOldRuntime();
+    const data = response();
+    data.route.warningDetails = [
+      { index: 0, code: "NESTED", message: "Wrong detail" },
+    ];
+    expect(applyRouteReplacement(normalizeRerouteReplacement(data))).toBe(true);
+    expect(useMapStore.getState().selectRoute?.route.warnings).toEqual(
+      data.warnings,
+    );
+    expect(
+      useMapStore.getState().selectRoute?.route.warningDetails,
+    ).toBeUndefined();
+  });
+});
+
 describe("LocalRerouteController", () => {
   it("sends exactly one local POST for a confirmed off-route episode", async () => {
     seedOldRuntime();

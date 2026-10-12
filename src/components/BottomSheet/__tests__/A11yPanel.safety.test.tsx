@@ -29,7 +29,10 @@ vi.mock("@/hook/useFetchLocation", () => ({
   useFetchLocation: () => ({ lat: 25, lng: 121 }),
 }));
 vi.mock("@/i18n/client", () => ({
-  useAppTranslation: () => ({ t: (key: string) => key }),
+  useAppTranslation: () => ({
+    t: (key: string) => key,
+    i18n: { language: "zh-TW" },
+  }),
 }));
 vi.mock("@/stores/useContentSafetyStore", () => ({
   default: (

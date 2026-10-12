@@ -94,6 +94,7 @@ describe("planned bus tracking", () => {
       "BRANCH",
       undefined,
       leg.planContext,
+      undefined,
     );
   });
   it("does not query a generic next bus when plan context is missing", async () => {

@@ -1,4 +1,4 @@
-import type { RouteDetailDirection } from "@/lib/api/transit";
+import type { BusLanguage, RouteDetailDirection } from "@/lib/api/transit";
 import { getBusRouteDetail } from "@/lib/api/transit";
 import type { BusLeg, BusPlanContext } from "@/types/route";
 
@@ -42,8 +42,10 @@ export function routeDetailKey(
   city: string,
   subRouteUid?: string,
   planContext?: BusPlanContext,
+  lang?: BusLanguage,
 ): string {
   return JSON.stringify([
+    lang ?? null,
     city,
     routeName,
     subRouteUid ?? null,
@@ -71,9 +73,10 @@ export function peekRouteDetailSnapshot(
   city: string,
   subRouteUid?: string,
   planContext?: BusPlanContext,
+  lang?: BusLanguage,
 ): RouteDetailSnapshot | null {
   const entry = cache.get(
-    routeDetailKey(routeName, city, subRouteUid, planContext),
+    routeDetailKey(routeName, city, subRouteUid, planContext, lang),
   );
   if (!entry?.settled || !entry.snapshot) return null;
   if (Date.now() >= entry.snapshot.expiresAt) return null;
@@ -86,9 +89,10 @@ export function peekRouteDetail(
   city: string,
   subRouteUid?: string,
   planContext?: BusPlanContext,
+  lang?: BusLanguage,
 ): RouteDetailDirection[] | null {
   return (
-    peekRouteDetailSnapshot(routeName, city, subRouteUid, planContext)
+    peekRouteDetailSnapshot(routeName, city, subRouteUid, planContext, lang)
       ?.directions ?? null
   );
 }
@@ -132,11 +136,13 @@ export function fetchRouteDetailSnapshot(
     subRouteUid?: string;
     signal?: AbortSignal;
     planContext?: BusPlanContext;
+    lang?: BusLanguage;
   },
 ): Promise<RouteDetailSnapshot | null> {
   const subRouteUid = opts?.subRouteUid;
   const planContext = opts?.planContext;
-  const key = routeDetailKey(routeName, city, subRouteUid, planContext);
+  const lang = opts?.lang;
+  const key = routeDetailKey(routeName, city, subRouteUid, planContext, lang);
   const existing = cache.get(key);
 
   if (existing) {
@@ -165,6 +171,7 @@ export function fetchRouteDetailSnapshot(
         subRouteUid,
         undefined,
         planContext,
+        lang,
       );
       const directions = res.ok ? res.data?.directions : undefined;
       if (!directions) {
@@ -197,6 +204,7 @@ export async function fetchRouteDetailCached(
     subRouteUid?: string;
     signal?: AbortSignal;
     planContext?: BusPlanContext;
+    lang?: BusLanguage;
   },
 ): Promise<RouteDetailDirection[] | null> {
   return (

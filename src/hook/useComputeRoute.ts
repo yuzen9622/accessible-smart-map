@@ -1,7 +1,8 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
 import { getAccessibleRoute } from "@/lib/api/a11y";
 import { ApiError } from "@/lib/fetch";
 import { haversineMeters } from "@/lib/geo";
@@ -37,8 +38,12 @@ function getCoordLng(c: CoordLike | undefined): number | undefined {
 const MAX_ROUTE_METERS = 500_000;
 
 export default function useComputeRoute() {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
   const [isLoading, setIsLoading] = useState(false);
+  const activeRequest = useRef<{
+    language: "en" | "zh-TW";
+    generation: number;
+  } | null>(null);
 
   const {
     setComputeRoutes,
@@ -65,6 +70,25 @@ export default function useComputeRoute() {
       userLocation: s.userLocation,
     })),
   );
+
+  useEffect(() => {
+    const onLanguageChanged = () => {
+      const pending = activeRequest.current;
+      if (!pending || pending.language === getAppLanguage()) return;
+      activeRequest.current = null;
+      setIsLoading(false);
+      if (useMapStore.getState().routeGeneration === pending.generation) {
+        setRouteInfoShow(false);
+      }
+      // Invalidate pending planning only. Never reroute an active trip merely
+      // to translate it, or republish an old request after an en → zh → en flip.
+    };
+    i18n.on("languageChanged", onLanguageChanged);
+    return () => {
+      i18n.off("languageChanged", onLanguageChanged);
+      activeRequest.current = null;
+    };
+  }, [i18n, setRouteInfoShow]);
 
   const computeRoute = useCallback(
     async (params: {
@@ -95,14 +119,20 @@ export default function useComputeRoute() {
         return false;
       }
 
-      let generation = -1;
+      const request = { language: getAppLanguage(), generation: -1 };
+      activeRequest.current = request;
+      const isCurrent = () =>
+        activeRequest.current === request &&
+        getAppLanguage() === request.language &&
+        useMapStore.getState().routeGeneration === request.generation;
       try {
         setIsLoading(true);
         setComputeRoutes(null);
-        generation = useMapStore.getState().routeGeneration;
+        request.generation = useMapStore.getState().routeGeneration;
         setRouteInfoShow(true);
 
         const response = await getAccessibleRoute({
+          language: request.language,
           origin: startLocation
             ? { latitude: startLocation.lat, longitude: startLocation.lng }
             : undefined,
@@ -120,7 +150,7 @@ export default function useComputeRoute() {
             : undefined,
         });
 
-        if (useMapStore.getState().routeGeneration !== generation) return false;
+        if (!isCurrent()) return false;
 
         if (!response.data?.routes?.length) {
           // Was `closeRouteDrawer()` — that clears origin/destination/mode
@@ -139,7 +169,7 @@ export default function useComputeRoute() {
           setRouteWaypoints([]);
           setActiveBusLeg(null);
           setLiveBusPositions([]);
-          toast.error("找不到合適的無障礙路線");
+          toast.error(t("routeErrorEmpty"));
           return false;
         }
 
@@ -189,7 +219,7 @@ export default function useComputeRoute() {
         }
         return true;
       } catch (error) {
-        if (useMapStore.getState().routeGeneration !== generation) return false;
+        if (!isCurrent()) return false;
         // Same reasoning as the no-routes branch above — keep the form
         // filled in so a network hiccup doesn't cost the user their inputs,
         // but still drop the stale result so it doesn't keep drawing on
@@ -218,11 +248,18 @@ export default function useComputeRoute() {
             ),
           );
         } else {
-          toast.error("路線規劃失敗，請稍後再試");
+          toast.error(
+            error instanceof ApiError && error.message
+              ? error.message
+              : t("routeErrorPlanning"),
+          );
         }
         return false;
       } finally {
-        setIsLoading(false);
+        if (activeRequest.current === request) {
+          activeRequest.current = null;
+          setIsLoading(false);
+        }
       }
     },
     [

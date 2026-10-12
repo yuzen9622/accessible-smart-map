@@ -4,6 +4,7 @@ import type {
   AccessibleRoute,
   AccessibleRouteRerouteData,
   NavInstruction,
+  RouteMessageDetail,
 } from "@/types/route";
 
 export interface RouteReplacement {
@@ -14,6 +15,7 @@ export interface RouteReplacement {
   route: AccessibleRoute;
   instructions: NavInstruction[];
   warnings: string[];
+  warningDetails?: RouteMessageDetail[];
   currentStepIndex: 0;
   reason?: NavRerouteReason;
 }
@@ -45,6 +47,7 @@ export function normalizeRerouteReplacement(
     route: data.route,
     instructions: data.instructions ?? data.steps,
     warnings: data.warnings,
+    warningDetails: data.warningDetails,
     currentStepIndex: data.currentStepIndex,
   };
 }
@@ -77,6 +80,9 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
     routeVersion: replacement.routeVersion,
     routeToken: replacement.routeToken,
     warnings: replacement.warnings,
+    // These warnings come from the envelope. Never retain indices from the
+    // nested route's independent warning array (including for legacy payloads).
+    warningDetails: replacement.warningDetails,
   };
   const viewingReplaced =
     map.selectRoute?.route.navigationId === replacement.navigationId;

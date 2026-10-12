@@ -14,8 +14,14 @@ export type BusScheduledTrip = {
   scheduleType: "trip";
   serviceDays: string;
   originStopName: string;
+  originStopDisplayName?: string;
   originDepartureTime: string;
-  stopTimes?: { seq: number; stopName: string; arrivalTime: string }[];
+  stopTimes?: {
+    seq: number;
+    stopName: string;
+    stopDisplayName?: string;
+    arrivalTime: string;
+  }[];
 };
 
 export type BusHeadwayWindow = {
@@ -29,6 +35,8 @@ export type BusHeadwayWindow = {
 
 export type BusFrequency = BusScheduledTrip | BusHeadwayWindow;
 export type BusScheduleByDirection = {
+  subRouteDisplayName?: string;
+
   subRouteUid?: string;
   subRouteName?: string;
   direction: BusDirection;
@@ -38,6 +46,8 @@ export type BusScheduleByDirection = {
   frequencies: BusFrequency[];
 };
 export type BusTimetableData = {
+  routeDisplayName?: string;
+
   routeName: string;
   city: string;
   schedules: BusScheduleByDirection[];
@@ -61,6 +71,10 @@ export const BUS_STATUS = {
 } as const;
 
 export type BusSearchResult = {
+  routeDisplayName?: string;
+  departureDisplayName?: string;
+  destinationDisplayName?: string;
+
   routeName: string;
   city: string;
   departure: string;
@@ -68,11 +82,14 @@ export type BusSearchResult = {
 };
 
 export type BusStopSearchResult = {
+  stopDisplayName?: string;
+
   stopUid: string;
   stopName: string;
   city: string;
   coordinates: [number, number]; // [lng, lat]
   routes: string[];
+  routeDisplayNames?: string[];
 };
 
 export type BusRealtimeNearbyStop = {

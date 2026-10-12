@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createHazardReport,
+  getAccessibleRoute,
   getHazardReport,
   getMyHazardReports,
   getRouteInstructions,
@@ -250,6 +251,89 @@ describe("hazard v2 API contracts", () => {
     await expect(
       getHazardReport("r1", controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("accessible route i18n transport", () => {
+  const detail = {
+    index: 0,
+    code: "ROUTE_DATA_SPARSE",
+    message: "Limited data",
+    params: {},
+  };
+  const route = {
+    routeId: "r1",
+    warnings: ["Route warning"],
+    warningDetails: [{ ...detail, message: "Route detail" }],
+    scoreWarnings: ["Limited data"],
+    scoreWarningDetails: [detail],
+    accessibilityHighlights: ["Caution"],
+    accessibilityHighlightDetails: [
+      { ...detail, code: "ROUTE_PARTIAL_ACCESSIBILITY" },
+    ],
+  };
+  it.each(["en", "zh-TW", undefined] as const)(
+    "forwards language %s and all optional details unchanged",
+    async (language) => {
+      const data = { routes: [route] };
+      const fetchMock = vi.fn(async () => jsonResponse({ ok: true, data }));
+      vi.stubGlobal("fetch", fetchMock);
+      const request = {
+        origin: "A",
+        destination: "B",
+        ...(language ? { language } : {}),
+      };
+      expect((await getAccessibleRoute(request)).data).toEqual(data);
+      const [url, init] = (
+        fetchMock.mock.calls as unknown as [string, RequestInit][]
+      )[0];
+      expect(url).toBe(`${END_POINT}/api/v1/a11y/accessible-route`);
+      expect(JSON.parse(init.body as string)).toEqual(request);
+      expect(new Headers(init.headers).has("Accept-Language")).toBe(false);
+    },
+  );
+  it("preserves the separate reroute envelope and nested route indices", async () => {
+    const data = {
+      route,
+      warnings: ["Envelope warning"],
+      warningDetails: [detail],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ ok: true, data })),
+    );
+    expect(
+      (
+        await rerouteAccessibleRoute({
+          routeToken: "token",
+          currentPosition: { latitude: 25, longitude: 121 },
+          previousRouteVersion: 1,
+          reason: "MANUAL",
+          clientRequestId: "request",
+          language: "en",
+        })
+      ).data,
+    ).toEqual(data);
+  });
+  it("reads the domain reason from data while keeping numeric code as HTTP status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(
+          {
+            ok: false,
+            code: 422,
+            message: "No accessible route",
+            data: { reason: "NO_ACCESSIBLE_ROUTE" },
+          },
+          422,
+        ),
+      ),
+    );
+    await expect(getAccessibleRoute({ language: "en" })).rejects.toMatchObject({
+      code: 422,
+      reason: "NO_ACCESSIBLE_ROUTE",
+    });
   });
 });
 

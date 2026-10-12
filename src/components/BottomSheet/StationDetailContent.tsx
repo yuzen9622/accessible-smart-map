@@ -5,13 +5,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyRouteA11yPlaces } from "@/lib/api/a11y";
+import { toApiLang } from "@/lib/place/lang";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import { geoCoords } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import type { IBathroom, metroA11yData } from "@/types";
 import { Badge } from "../ui/badge";
 
 export default function StationDetailContent() {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
   const { selectA11yPlace, setSheetMode, setSelectA11yPlace, map } =
     useMapStore(
       useShallow((s) => ({
@@ -29,18 +32,24 @@ export default function StationDetailContent() {
   const position = selectA11yPlace?.position ?? null;
 
   useEffect(() => {
+    setNearbyBathrooms([]);
+    setNearbyMetro([]);
     if (!position) return;
+    const controller = new AbortController();
     setLoading(true);
-    getNearbyRouteA11yPlaces(position)
+    getNearbyRouteA11yPlaces(position, controller.signal, lang)
       .then((res) => {
-        if (res.ok && res.data) {
+        if (!controller.signal.aborted && res.ok && res.data) {
           setNearbyBathrooms(res.data.nearbyBathroom || []);
           setNearbyMetro(res.data.nearbyMetroA11y || []);
         }
       })
       .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [position]);
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [position, lang]);
 
   const handleBack = useCallback(() => {
     setSelectA11yPlace(null);
@@ -135,7 +144,9 @@ export default function StationDetailContent() {
                             <ArrowUpDown className="h-3.5 w-3.5 text-green-600" />
                           </div>
                           <span className="text-sm flex-1 min-w-0 truncate">
-                            {m["出入口電梯/無障礙坡道名稱"]}
+                            {nonemptyName(m.displayName) ||
+                              nonemptyName(m["出入口電梯/無障礙坡道名稱"]) ||
+                              t("elevator")}
                           </span>
                         </button>
                       ))}
@@ -176,9 +187,13 @@ export default function StationDetailContent() {
                       <DoorOpen className="h-4 w-4 text-blue-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{b.name}</p>
+                      <p className="text-sm font-medium truncate">
+                        {nonemptyName(b.displayName) ||
+                          nonemptyName(b.name) ||
+                          t("accessibleToilet")}
+                      </p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {b.address}
+                        {nonemptyName(b.displayAddress) || b.address}
                       </p>
                     </div>
                   </button>

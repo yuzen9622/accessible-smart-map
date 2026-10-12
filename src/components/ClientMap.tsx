@@ -356,14 +356,17 @@ export default function ClientMap() {
 
     const controller = new AbortController();
 
+    const requestLanguage = toApiLang(i18n.language);
     setSheetMode("place");
-    getPlaceDetails(
-      placeId,
-      { lang: toApiLang(i18n.language) },
-      controller.signal,
-    )
+    getPlaceDetails(placeId, { lang: requestLanguage }, controller.signal)
       .then((res) => {
-        if (!res.ok || !res.data) return;
+        if (
+          controller.signal.aborted ||
+          toApiLang(i18n.language) !== requestLanguage ||
+          !res.ok ||
+          !res.data
+        )
+          return;
 
         const place = res.data;
         const [lng, lat] = place.location.coordinates;
@@ -381,7 +384,7 @@ export default function ClientMap() {
       });
 
     return () => controller.abort();
-  }, [i18n.language, map, setInfoShow, setSearchPlace, setSheetMode]);
+  }, [i18n, i18n.language, map, setInfoShow, setSearchPlace, setSheetMode]);
 
   const handleMouseDown = useCallback((e: MapLayerMouseEvent) => {
     pointerDownTime.current = Date.now();

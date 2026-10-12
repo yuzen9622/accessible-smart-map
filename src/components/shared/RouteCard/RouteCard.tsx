@@ -4,12 +4,15 @@ import {
   ChevronDown,
   Clock,
   Footprints,
+  Info,
   ShieldCheck,
 } from "lucide-react";
 import { memo, useId, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
 import { fitRouteBounds, routeBoundsFromLegs } from "@/lib/mapCamera";
+import { legSourceName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import type { AccessibleRoute } from "@/types/route";
@@ -24,6 +27,7 @@ import { Button } from "../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import RouteReasonSummary from "../RouteReasonSummary";
 import { LegDetail, LegIcon } from "./LegDetail";
+import { pairRouteMessages } from "./routeMessages";
 import { StarRating } from "./StarRating";
 import type { PointLabelContext } from "./utils";
 import {
@@ -66,6 +70,7 @@ export const RouteCard = memo(function RouteCard({
     })),
   );
   const { t } = useAppTranslation();
+  const language = getAppLanguage();
   const isSelected = selectRoute?.index === idx;
   const [scoreOpen, setScoreOpen] = useState(false);
   const scoreDetailId = useId();
@@ -95,6 +100,15 @@ export const RouteCard = memo(function RouteCard({
     : route.dataConfidence;
 
   const alertsCount = useMemo(() => getRouteAlertsCount(route), [route]);
+  const warnings = pairRouteMessages(route.warnings, route.warningDetails);
+  const scoreWarnings = pairRouteMessages(
+    route.scoreWarnings,
+    route.scoreWarningDetails,
+  );
+  const highlights = pairRouteMessages(
+    route.accessibilityHighlights,
+    route.accessibilityHighlightDetails,
+  );
 
   const routeSummary = useMemo(() => {
     const types = route.legs
@@ -102,13 +116,13 @@ export const RouteCard = memo(function RouteCard({
       .map((l) => {
         switch (l.type) {
           case "BUS":
-            return l.routeName;
+            return legSourceName(l, "route", l.routeName, language);
           case "METRO":
-            return l.lineName;
+            return legSourceName(l, "route", l.lineName, language);
           case "THSR":
             return `${t("thsr")} ${l.trainNo}`;
           case "TRA":
-            return `${l.trainTypeName}${l.trainNo}`;
+            return `${legSourceName(l, "route", l.trainTypeName, language)}${l.trainNo}`;
           case "DRIVE":
           case "MOTORCYCLE":
             return (
@@ -119,7 +133,7 @@ export const RouteCard = memo(function RouteCard({
         }
       });
     return types.join(" → ");
-  }, [route.legs, t]);
+  }, [route.legs, t, language]);
 
   const handleSelect = () => {
     setRouteSelect({ index: idx, route });
@@ -260,9 +274,9 @@ export const RouteCard = memo(function RouteCard({
           )}
           {!!route.warnings?.length && (
             <div className="space-y-1">
-              {route.warnings.map((warning) => (
+              {warnings.map((warning) => (
                 <p
-                  key={warning}
+                  key={warning.index}
                   className={cn(
                     "flex items-start gap-1 text-xs",
                     route.degraded === true
@@ -274,7 +288,7 @@ export const RouteCard = memo(function RouteCard({
                     className="h-3 w-3 shrink-0 mt-0.5"
                     aria-hidden
                   />
-                  <span>{warning}</span>
+                  <span>{warning.text}</span>
                 </p>
               ))}
             </div>
@@ -360,24 +374,28 @@ export const RouteCard = memo(function RouteCard({
                 <div id={scoreDetailId} className="space-y-3 pt-1">
                   {route.accessibilityHighlights?.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {route.accessibilityHighlights.map((h) => {
-                        const isWarning =
-                          h.includes("請留意") || h.includes("無法");
+                      {highlights.map((highlight) => {
+                        const Icon = {
+                          caution: AlertTriangle,
+                          positive: Check,
+                          neutral: Info,
+                        }[highlight.tone];
                         return (
                           <span
-                            key={h}
-                            className={
-                              isWarning
-                                ? "inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 px-2.5 py-1 text-xs font-medium"
-                                : "inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2.5 py-1 text-xs font-medium"
-                            }
-                          >
-                            {isWarning ? (
-                              <AlertTriangle className="h-3 w-3 shrink-0" />
-                            ) : (
-                              <Check className="h-3 w-3 shrink-0" />
+                            key={highlight.index}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                              {
+                                caution:
+                                  "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                                positive:
+                                  "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                                neutral: "bg-muted text-muted-foreground",
+                              }[highlight.tone],
                             )}
-                            {h}
+                          >
+                            <Icon className="h-3 w-3 shrink-0" aria-hidden />
+                            {highlight.text}
                           </span>
                         );
                       })}
@@ -433,16 +451,16 @@ export const RouteCard = memo(function RouteCard({
 
           {!!route.scoreWarnings?.length && (
             <div className="space-y-1">
-              {route.scoreWarnings.map((warning) => (
+              {scoreWarnings.map((warning) => (
                 <p
-                  key={warning}
+                  key={warning.index}
                   className="flex items-start gap-1 text-xs text-amber-600 dark:text-amber-400"
                 >
                   <AlertTriangle
                     className="h-3 w-3 shrink-0 mt-0.5"
                     aria-hidden
                   />
-                  <span>{warning}</span>
+                  <span>{warning.text}</span>
                 </p>
               ))}
             </div>

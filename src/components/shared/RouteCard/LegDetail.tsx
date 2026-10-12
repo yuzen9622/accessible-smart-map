@@ -8,6 +8,8 @@ import {
   TramFront,
 } from "lucide-react";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import { legSourceName } from "@/lib/route/sourceNames";
 import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
@@ -124,7 +126,13 @@ export function LegDetail({
             </p>
           )}
           {engine === "pedestrian-a11y" && <WalkA11ySummary leg={leg} />}
-          {isSelected && <WalkStepsList steps={leg.steps} />}
+          {isSelected && (
+            <WalkStepsList
+              steps={leg.steps}
+              stepStreetNames={leg.stepStreetNames}
+              displayLanguage={leg.displayLanguage}
+            />
+          )}
         </div>
       );
     case "BUS":
@@ -135,7 +143,7 @@ export function LegDetail({
               className="px-2 py-0.5 rounded text-xs font-bold text-white"
               style={{ backgroundColor: getLegColor(leg) }}
             >
-              {leg.routeName}
+              {legSourceName(leg, "route", leg.routeName, getAppLanguage())}
             </div>
             <WaitBadge waitInfo={leg.waitInfo} />
           </div>
@@ -165,14 +173,25 @@ export function LegDetail({
               className="px-2 py-0.5 rounded text-xs font-bold text-white"
               style={{ backgroundColor: getLegColor(leg) }}
             >
-              {leg.lineName}
+              {legSourceName(leg, "route", leg.lineName, getAppLanguage())}
             </div>
             <WaitBadge waitInfo={leg.waitInfo} />
           </div>
           <div className="space-y-1">
             <TransitStops
-              boardName={leg.departureStation}
-              alightName={leg.arrivalStation}
+              boardName={legSourceName(
+                leg,
+                "from",
+                leg.departureStation,
+                getAppLanguage(),
+              )}
+              alightName={legSourceName(
+                leg,
+                "to",
+                leg.arrivalStation,
+                getAppLanguage(),
+              )}
+              displayLanguage={leg.displayLanguage}
               intermediateStops={leg.intermediateStops}
               color={getLegColor(leg)}
               departureA11y={leg.departureStationA11y}
@@ -193,7 +212,7 @@ export function LegDetail({
       const badgeLabel =
         leg.type === "THSR"
           ? `${t("thsr")} ${leg.trainNo}`
-          : `${leg.trainTypeName} ${leg.trainNo}`;
+          : `${legSourceName(leg, "route", leg.trainTypeName, getAppLanguage())} ${leg.trainNo}`;
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -207,8 +226,19 @@ export function LegDetail({
           </div>
           <div className="space-y-1">
             <TransitStops
-              boardName={leg.departureStation}
-              alightName={leg.arrivalStation}
+              boardName={legSourceName(
+                leg,
+                "from",
+                leg.departureStation,
+                getAppLanguage(),
+              )}
+              alightName={legSourceName(
+                leg,
+                "to",
+                leg.arrivalStation,
+                getAppLanguage(),
+              )}
+              displayLanguage={leg.displayLanguage}
               boardTime={leg.departureTime}
               alightTime={leg.arrivalTime}
               intermediateStops={leg.intermediateStops}

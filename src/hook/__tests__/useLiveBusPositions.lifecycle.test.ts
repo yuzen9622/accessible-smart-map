@@ -3,6 +3,7 @@ import { __clearRouteDetailCache } from "@/lib/transit/busRouteDetailCache";
 import type { BusLeg } from "@/types/route";
 
 const h = vi.hoisted(() => ({
+  lang: "zh-TW" as "en" | "zh-TW",
   getBusArrival: vi.fn(),
   getLiveBusPositions: vi.fn(),
   getBusRouteDetail: vi.fn(),
@@ -10,6 +11,9 @@ const h = vi.hoisted(() => ({
   setLiveBusPositions: vi.fn(),
   state: {} as Record<string, unknown>,
 }));
+
+vi.mock("@/i18n/client", () => ({ useAppTranslation: () => ({}) }));
+vi.mock("@/i18n/language", () => ({ getAppLanguage: () => h.lang }));
 
 vi.mock("react", () => ({
   useEffect: (fn: () => undefined | (() => void)) => {
@@ -83,6 +87,7 @@ const goodFeeds = () => {
 let cleanup: undefined | (() => void);
 
 beforeEach(() => {
+  h.lang = "zh-TW";
   vi.useFakeTimers();
   __clearRouteDetailCache();
   h.effects.length = 0;
@@ -231,4 +236,34 @@ describe("useLiveBusPositions lifecycle", () => {
 
     expect(h.setLiveBusPositions).not.toHaveBeenCalled();
   });
+});
+
+it("restarts on language change without changing ride identity, ignoring late old-language positions", async () => {
+  let finish!: (value: unknown) => void;
+  h.getLiveBusPositions.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  await start();
+  cleanup?.();
+  h.effects.length = 0;
+  h.lang = "en";
+  await start();
+  expect(h.getBusRouteDetail.mock.calls.at(-1)?.at(-1)).toBe("en");
+  expect(h.getLiveBusPositions.mock.calls.at(-1)).toEqual([
+    "99",
+    "Taichung",
+    0,
+    expect.any(AbortSignal),
+    "en",
+  ]);
+  const current = lastSet();
+  finish({
+    ok: true,
+    data: { buses: [{ plateNumb: "OLD", direction: 0, lat: 0, lng: 0 }] },
+  });
+  await flush();
+  expect(lastSet()).toEqual(current);
+  expect(h.state.activeBusLeg).toEqual({ key: "k", leg });
 });

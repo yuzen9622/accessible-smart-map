@@ -70,6 +70,7 @@ describe("route-detail identity", () => {
       "A",
       undefined,
       undefined,
+      undefined,
     );
     expect(peekRouteDetail("99", "Taichung", "A")).toEqual(directions);
     expect(peekRouteDetail("99", "Taichung")).toBeNull();
@@ -258,4 +259,37 @@ it("isolates different plans and repeated legs of the same line", async () => {
   });
   expect(getBusRouteDetail).toHaveBeenCalledTimes(3);
   expect(peekRouteDetail("99", "Taipei")).toBeNull();
+});
+
+it("isolates omitted, en and zh-TW including late responses", async () => {
+  let finish!: (value: unknown) => void;
+  getBusRouteDetail.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const old = fetchRouteDetailCached("99", "Taipei", { lang: "zh-TW" });
+  const english = [{ ...directions[0], subRouteDisplayName: "English" }];
+  getBusRouteDetail.mockResolvedValueOnce({
+    ok: true,
+    data: { directions: english },
+  });
+  await expect(
+    fetchRouteDetailCached("99", "Taipei", { lang: "en" }),
+  ).resolves.toEqual(english);
+  expect(peekRouteDetail("99", "Taipei")).toBeNull();
+  finish(ok());
+  await old;
+  expect(peekRouteDetail("99", "Taipei", undefined, undefined, "en")).toEqual(
+    english,
+  );
+  expect(
+    peekRouteDetail("99", "Taipei", undefined, undefined, "zh-TW"),
+  ).toEqual(directions);
+  getBusRouteDetail.mockResolvedValue(ok());
+  await fetchRouteDetailCached("99", "Taipei");
+  expect(getBusRouteDetail).toHaveBeenCalledTimes(3);
+  expect(routeDetailKey("99", "Taipei", undefined, undefined, "en")).not.toBe(
+    routeDetailKey("99", "Taipei"),
+  );
 });

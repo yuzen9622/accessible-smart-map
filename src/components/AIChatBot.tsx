@@ -81,13 +81,16 @@ function ToolResultCard({
 }
 
 function ToolResultsBox({ activities }: { activities: ToolActivity[] }) {
+  const { t, i18n } = useAppTranslation();
+  const language = i18n.resolvedLanguage ?? i18n.language;
   const { openAiResult, flyTo } = useOpenAiResult();
   const [activeTab, setActiveTab] = useState(0);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Effective language changes must invalidate cards even when t retains its identity.
   const groups = useMemo(
-    () => getAggregatedToolResults(activities),
-    [activities],
+    () => getAggregatedToolResults(activities, t),
+    [activities, t, language],
   );
 
   if (!groups.length) return null;
@@ -129,13 +132,15 @@ function ToolResultsBox({ activities }: { activities: ToolActivity[] }) {
             {CARD_ICONS[currentGroup.icon]}
           </span>
           <span className="text-xs font-semibold text-foreground truncate">
-            {groups.length === 1 ? currentGroup.heading : "相關查詢結果"}
+            {groups.length === 1
+              ? currentGroup.heading
+              : t("toolResults.relatedResults")}
           </span>
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 h-4 font-normal text-muted-foreground"
           >
-            共 {totalItems} 筆
+            {t("toolResults.itemCount", { count: totalItems })}
           </Badge>
         </div>
 
@@ -143,7 +148,9 @@ function ToolResultsBox({ activities }: { activities: ToolActivity[] }) {
           className="flex items-center gap-1 text-[11px] text-muted-foreground transition-colors px-1.5 py-0.5 rounded-md"
           aria-hidden="true"
         >
-          <span>{isCollapsed ? "展開" : "收起"}</span>
+          <span>
+            {isCollapsed ? t("toolResults.expand") : t("toolResults.collapse")}
+          </span>
           {isCollapsed ? (
             <ChevronDown className="h-3.5 w-3.5" />
           ) : (
@@ -214,6 +221,10 @@ function ToolResultsBox({ activities }: { activities: ToolActivity[] }) {
 function MessageBubble({ message }: { message: ChatBubble }) {
   const { t } = useAppTranslation();
   const isUser = message.role === "user";
+  const content =
+    !isUser && message.kind === "greeting"
+      ? t("assistFirstMessage")
+      : message.content;
   const activities = message.toolActivities ?? [];
   // 所有已完成的工具都嘗試渲染；ToolResultView 對無法渲染的工具回 null
   const doneActivities = activities.filter((a) => a.status === "done");
@@ -224,7 +235,7 @@ function MessageBubble({ message }: { message: ChatBubble }) {
   const header = describeThinking({
     activities,
     isStreaming: !!message.isStreaming,
-    hasContent: !!message.content,
+    hasContent: !!content,
     thinkingMs: message.thinkingMs,
     t,
   });
@@ -243,7 +254,7 @@ function MessageBubble({ message }: { message: ChatBubble }) {
     >
       {showTrace && <ThinkingTrace rows={traceRows} header={header} />}
 
-      {message.content && (
+      {content && (
         <div
           className={cn(
             "max-w-[85%] w-fit px-3 py-2 rounded-2xl text-sm",
@@ -253,7 +264,7 @@ function MessageBubble({ message }: { message: ChatBubble }) {
           )}
         >
           <StreamingMarkdown
-            content={message.content}
+            content={content}
             streaming={!isUser && !!message.isStreaming}
           />
         </div>
@@ -345,6 +356,7 @@ export default function AIChatBot({ active = true }: { active?: boolean }) {
     useChatStore.getState().clearAll([
       {
         role: "assistant",
+        kind: "greeting",
         content: t(
           "assistFirstMessage",
           "你好！我是無障礙智慧地圖的 AI 助理，有什麼我能幫你的嗎？附近無障礙設施或者是問題回饋？請隨時提出！",
@@ -415,7 +427,7 @@ export default function AIChatBot({ active = true }: { active?: boolean }) {
       </ScrollArea>
 
       <div className="sticky bg-gradient-to-t from-card to-transparent bottom-0 py-2">
-        <div className="flex gap-2 px-4 overflow-x-auto justify-center">
+        <div className="flex gap-2 px-4 overflow-x-auto justify-start">
           {recommendations.map((rec) => (
             <Badge
               onClick={() => handleSend(rec)}

@@ -27,6 +27,9 @@ export type A11yFacilityCategory =
 interface A11yFacilityBase {
   _id: string;
   name: string;
+  displayName?: string;
+  displayAddress?: string;
+  displaySchoolName?: string;
   location: GeoPoint;
   category: A11yFacilityCategory;
 }
@@ -56,6 +59,8 @@ export type A11yFacility =
 export interface SlimOsmA11y {
   osmId: string;
   name?: string;
+  nameEn?: string;
+  displayName?: string;
   category:
     | "wheelchair_accessible"
     | "kerb_cut"
@@ -99,6 +104,8 @@ export interface ExitInfo {
 
 export interface IntermediateStop {
   name: string;
+  nameEn?: string;
+  displayName?: string;
   stationUid?: string;
   location?: [number, number]; // [lng, lat]
 }
@@ -131,7 +138,25 @@ export interface A11ySegment {
   minWidthCm: number | null;
 }
 
-export interface WalkLeg {
+export interface RouteSourceNames {
+  /** Client-only provenance of display values; absent on legacy/replayed data. */
+  displayLanguage?: "en" | "zh-TW";
+  fromNameEn?: string;
+  toNameEn?: string;
+  routeNameEn?: string;
+  fromDisplayName?: string;
+  toDisplayName?: string;
+  routeDisplayName?: string;
+}
+
+export interface StepStreetName {
+  index: number;
+  streetName: string;
+  nameEn?: string;
+  displayName?: string;
+}
+
+export interface WalkLeg extends RouteSourceNames {
   type: "WALK";
   from: string;
   to: string;
@@ -142,6 +167,7 @@ export interface WalkLeg {
   a11yRefs?: string[];
   exitInfo?: ExitInfo | null;
   steps?: WalkStep[];
+  stepStreetNames?: StepStreetName[];
   maxSlopePercent?: number | null;
   crossings?: number | null;
   crossingsWithCurbRamp?: number | null;
@@ -161,7 +187,7 @@ export interface BusPlanContext {
   legIndex: number;
 }
 
-export interface BusLeg {
+export interface BusLeg extends RouteSourceNames {
   /** Client-side request context, supplied by the containing planned route. */
   planContext?: BusPlanContext;
   scheduledTrip?: {
@@ -170,6 +196,8 @@ export interface BusLeg {
     stops: {
       stopUid?: string;
       name: string;
+      nameEn?: string;
+      displayName?: string;
       arrivalAt?: number;
       departureAt?: number;
       lat?: number;
@@ -208,7 +236,7 @@ export interface BusLeg {
   alerts?: MatchedAlert[];
 }
 
-export interface MetroLeg {
+export interface MetroLeg extends RouteSourceNames {
   type: "METRO";
   railSystem: string;
   lineId: string;
@@ -235,7 +263,7 @@ export interface MetroLeg {
   alerts?: MetroAlert[];
 }
 
-export interface ThsrLeg {
+export interface ThsrLeg extends RouteSourceNames {
   type: "THSR";
   trainNo: string;
   departureStation: string;
@@ -257,7 +285,7 @@ export interface ThsrLeg {
   alerts?: MatchedAlert[];
 }
 
-export interface TraLeg {
+export interface TraLeg extends RouteSourceNames {
   type: "TRA";
   trainNo: string;
   trainTypeName: string;
@@ -303,7 +331,7 @@ export interface DriveIncident {
   location: { lat: number; lng: number };
 }
 
-export interface DriveLeg {
+export interface DriveLeg extends RouteSourceNames {
   type: "DRIVE" | "MOTORCYCLE";
   label?: string;
   from: string;
@@ -341,6 +369,15 @@ export interface ScoreComponents {
 // --- Accessibility labels ---
 export type A11yLabel = "excellent" | "good" | "fair" | "poor" | "critical";
 
+// --- Localized route messages (paired with the original array by index) ---
+export interface RouteMessageDetail {
+  index: number;
+  /** Unknown future codes are allowed; consumers must preserve the raw string. */
+  code: string;
+  params?: Record<string, string | number | boolean>;
+  message: string;
+}
+
 // --- Single route ---
 export interface AccessibleRoute {
   routeId: string;
@@ -355,6 +392,7 @@ export interface AccessibleRoute {
   /** Absent when not degraded, so test for `=== true`. */
   degraded?: boolean;
   warnings?: string[];
+  warningDetails?: RouteMessageDetail[];
   /** Short-lived bearer capability used to arm voice navigation (30 min TTL). */
   routeToken?: string;
   routeName: string;
@@ -362,11 +400,13 @@ export interface AccessibleRoute {
   transferCount: number;
   legs: RouteLeg[];
   accessibilityHighlights: string[];
+  accessibilityHighlightDetails?: RouteMessageDetail[];
   accessibilityScore?: number;
   accessibilityLabel?: A11yLabel;
   scoreComponents?: ScoreComponents;
   dataConfidence?: "high" | "medium" | "low";
   scoreWarnings?: string[];
+  scoreWarningDetails?: RouteMessageDetail[];
   totalWalkDistanceM?: number;
   facilities?: Record<string, SlimOsmA11y>;
   attribution?: string;
@@ -403,6 +443,7 @@ export interface AccessibleRouteData {
 
 // --- Request body ---
 export interface AccessibleRouteRequest {
+  language?: "zh-TW" | "en";
   origin?: string | { latitude: number; longitude: number };
   destination?: string | { latitude: number; longitude: number };
   waypoints?: (string | { latitude: number; longitude: number })[];
@@ -617,6 +658,8 @@ export type AccessibleRouteRerouteData = {
   routeToken: string;
   route: AccessibleRoute;
   warnings: string[];
+  /** Indexed against this envelope's warnings, not route.warnings. */
+  warningDetails?: RouteMessageDetail[];
   currentStepIndex: 0;
   replayed: boolean;
 } & (
@@ -704,6 +747,8 @@ export interface HazardReport {
 export interface WelfareInstitution {
   _id: string;
   name: string;
+  displayName?: string;
+  displayAddress?: string;
   county: string;
   district: string;
   address: string;
@@ -747,6 +792,8 @@ export interface EnvironmentData {
 // --- Disabled Parking (from /a11y/parking/nearby) ---
 export interface DisabledParking {
   _id: string;
+  displayName?: string;
+  displayAddress?: string;
   city: string;
   district: string;
   areacode?: string;
@@ -779,6 +826,8 @@ export interface ParkingSpaceNearby extends DisabledParking {
 /** Parking lot imported from TDX (停車場，如城市車旅/捷運轉乘站). */
 export interface ParkingLotNearby {
   type: "lot";
+  displayName?: string;
+  displayAddress?: string;
   _id: string;
   carParkId: string;
   name: string;
@@ -802,6 +851,8 @@ export type ParkingNearbyItem = ParkingSpaceNearby | ParkingLotNearby;
 export interface OsmPlaceDetail {
   osmId: string;
   name?: string;
+  displayName?: string;
+  displayAddress?: string;
   category?: string;
   wheelchair?: "yes" | "limited" | "no";
   wheelchairDescription?: string;
@@ -1007,6 +1058,8 @@ export function formatDistance(meters: number): string {
 
 export interface LiveBus {
   plateNumb: string;
+  routeDisplayName?: string;
+  subRouteDisplayName?: string;
   direction: BusDirection;
   directionLabel?: string;
   lat: number;
@@ -1037,6 +1090,7 @@ export interface LiveBus {
 
 export interface LiveBusPositionsData {
   routeName: string;
+  routeDisplayName?: string;
   city: string;
   count: number;
   lowFloorCount: number;

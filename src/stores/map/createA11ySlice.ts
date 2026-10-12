@@ -40,9 +40,66 @@ export const createA11ySlice: MapSliceCreator<A11ySlice> = (set, get) => ({
     set({ selectA11yPlace: place });
   },
   a11yPlaces: null,
-  setA11yPlaces: (places) => set({ a11yPlaces: places }),
+  setA11yPlaces: (places) => {
+    const state = get();
+    const selected = state.selectA11yPlace;
+    const selectedMarker = selected
+      ? (places?.find((place) => place.id === selected.id) ??
+        (selected.content && selected.canonicalTitle !== undefined
+          ? {
+              ...selected,
+              content: { ...selected.content, title: selected.canonicalTitle },
+            }
+          : selected))
+      : null;
+    const addressFor = (id: string | number, fallback: string) => {
+      const marker = places?.find((place) => place.id === id);
+      if (!marker?.content) return fallback;
+      const { title, desc } = marker.content;
+      return desc ? `${title} (${desc})` : title;
+    };
+    // Update only projections explicitly owned by a facility ID. A translated
+    // title or coincident coordinates cannot identify an unrelated place.
+    const info = state.infoShow;
+    const search = state.searchPlace;
+    set({
+      a11yPlaces: places,
+      selectA11yPlace: selectedMarker,
+      infoShow:
+        info.kind === "coordinate" && info.facilityId !== undefined
+          ? {
+              ...info,
+              address: addressFor(
+                info.facilityId,
+                info.canonicalAddress ?? info.address,
+              ),
+            }
+          : info,
+      searchPlace:
+        search?.kind === "coordinate" && search.facilityId !== undefined
+          ? {
+              ...search,
+              address: addressFor(
+                search.facilityId,
+                search.canonicalAddress ?? search.address,
+              ),
+            }
+          : search,
+    });
+  },
   nearbyParking: [],
-  setNearbyParking: (items) => set({ nearbyParking: items }),
+  nearbyParkingLanguage: undefined,
+  setNearbyParking: (items, language) => {
+    const selected = get().selectedParking;
+    set({
+      nearbyParking: items,
+      nearbyParkingLanguage: language,
+      // Selection is identified by ID, but its display belongs to this payload.
+      selectedParking: selected
+        ? (items.find((item) => item._id === selected._id) ?? null)
+        : null,
+    });
+  },
   selectedParking: null,
   setSelectedParking: (item) => {
     if (item?._id === get().selectedParking?._id) {

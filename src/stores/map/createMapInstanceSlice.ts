@@ -25,7 +25,15 @@ export const createMapInstanceSlice: MapSliceCreator<MapInstanceSlice> = (
   },
   infoShow: { isOpen: false, kind: null },
   setInfoShow: (infoShow) => {
-    const nextInfoShow = { ...get().infoShow, ...infoShow } as InfoShow;
+    const nextInfoShow = {
+      ...get().infoShow,
+      // A new selection must not inherit the previous facility's identity.
+      // Pure visibility patches keep it; explicit facility selections supply it.
+      ...(infoShow.kind === undefined
+        ? {}
+        : { facilityId: undefined, canonicalAddress: undefined }),
+      ...infoShow,
+    } as InfoShow;
     const update: Partial<MapStore> = { infoShow: nextInfoShow };
     if (nextInfoShow.isOpen) {
       update.sidebarCollapsed = false;

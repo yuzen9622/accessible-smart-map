@@ -13,6 +13,9 @@ const { getBusRouteDetail } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/api/transit", () => ({ getBusRouteDetail }));
 
+vi.mock("@/i18n/client", () => ({ useAppTranslation: () => ({}) }));
+vi.mock("@/i18n/language", () => ({ getAppLanguage: () => "zh-TW" }));
+
 const directions: RouteDetailDirection[] = [
   {
     direction: 0,
@@ -54,6 +57,7 @@ beforeEach(async () => {
   getBusRouteDetail.mockReset();
   getBusRouteDetail.mockResolvedValue({ ok: true, data: { directions } });
   await fetchRouteDetailCached("99", "Taichung", {
+    lang: "zh-TW",
     subRouteUid: "A",
     planContext: { routeToken: "plan", legIndex: 1 },
   });

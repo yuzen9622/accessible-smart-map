@@ -2,6 +2,8 @@ import { BusIcon, ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import type { BusLegEtaStatus } from "@/hook/useBusLegStopEtas";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import { nonemptyName, sourceName } from "@/lib/route/sourceNames";
 import type { BusLegStopRow, EtaTone } from "@/lib/transit/busLegStops";
 import { resolveEtaLabel } from "@/lib/transit/busLegStops";
 import { cn } from "@/lib/utils";
@@ -57,6 +59,7 @@ function EtaBadge({
 
 export function IntermediateStops({
   stops,
+  displayLanguage,
   rows,
   color,
   etaStatus,
@@ -65,6 +68,7 @@ export function IntermediateStops({
   targetPlate,
 }: {
   stops?: IntermediateStop[];
+  displayLanguage?: "en" | "zh-TW";
   rows?: BusLegStopRow[];
   color: string;
   etaStatus?: BusLegEtaStatus;
@@ -175,7 +179,7 @@ export function IntermediateStops({
                             isCurrent && "font-semibold text-foreground",
                           )}
                         >
-                          {row.name}
+                          {nonemptyName(row.displayName) || row.name}
                         </span>
                         {isCurrent && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-foreground bg-muted/80 px-1 py-0.5 rounded font-mono shrink-0">
@@ -201,7 +205,15 @@ export function IntermediateStops({
                     className="w-1.5 h-1.5 rounded-full shrink-0 border border-background"
                     style={{ backgroundColor: color }}
                   />
-                  <span>{stop.name}</span>
+                  <span>
+                    {sourceName(
+                      stop.name,
+                      stop.nameEn,
+                      stop.displayName,
+                      getAppLanguage(),
+                      displayLanguage,
+                    )}
+                  </span>
                 </div>
               ))
             ) : null}

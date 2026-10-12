@@ -4,6 +4,8 @@ import { create } from "zustand";
 import type { ChatMessage } from "@/lib/api/ai";
 
 export interface ToolActivity {
+  /** Language of this tool response, not necessarily the current UI language. */
+  displayLanguage?: "en" | "zh-TW";
   callId?: string;
   name: string;
   args?: unknown;
@@ -13,6 +15,8 @@ export interface ToolActivity {
 
 export interface ChatBubble {
   role: "user" | "assistant";
+  /** Frontend-owned copy, translated at render time rather than a chat turn. */
+  kind?: "greeting";
   content: string;
   isStreaming?: boolean;
   toolActivities?: ToolActivity[];

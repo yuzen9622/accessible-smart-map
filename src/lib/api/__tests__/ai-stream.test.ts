@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { streamChatWithAgent } from "../ai";
 
-vi.mock("@/lib/fetch", () => ({ getAccessToken: async () => null }));
+vi.mock("@/lib/fetch", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/fetch")>()),
+  getAccessToken: async () => null,
+}));
 afterEach(() => vi.unstubAllGlobals());
 function respond(events: [string, unknown][]) {
   const content = events
@@ -59,7 +62,7 @@ describe("SSE correlation and cancellation", () => {
       '{"query":"第一條"}',
       true,
       { ok: true },
-      { callId: "a", summary: "第一條摘要" },
+      { callId: "a", summary: "第一條摘要", language: "zh-TW" },
     ]);
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
     expect(body.routeContext).toBeNull();
@@ -90,10 +93,66 @@ describe("SSE correlation and cancellation", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(onText).toHaveBeenCalledTimes(1);
   });
-  it("surfaces server errors instead of finishing successfully", async () => {
-    respond([["error", { message: "failure" }]]);
+  it("reads SSE data.reason without interpreting numeric code as a domain reason", async () => {
+    respond([
+      [
+        "error",
+        { code: 422, message: "failure", data: { reason: "NO_ROUTE" } },
+      ],
+    ]);
     await expect(
       streamChatWithAgent({ messages: [] }, vi.fn()),
-    ).rejects.toThrow("AI response failed");
+    ).rejects.toMatchObject({
+      code: 422,
+      reason: "NO_ROUTE",
+      message: "failure",
+    });
+  });
+  it("preserves HTTP data.reason before the SSE stream opens", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            code: 400,
+            message: "Invalid location",
+            data: { reason: "LOCATION_REQUIRED" },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    await expect(
+      streamChatWithAgent({ messages: [] }, vi.fn()),
+    ).rejects.toMatchObject({
+      code: 400,
+      reason: "LOCATION_REQUIRED",
+      message: "Invalid location",
+    });
+  });
+  it("falls back to HTTP status for non-JSON failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("Bad gateway", { status: 502 })),
+    );
+    await expect(
+      streamChatWithAgent({ messages: [] }, vi.fn()),
+    ).rejects.toMatchObject({
+      code: 502,
+      reason: undefined,
+    });
+  });
+  it("keeps a tool result's reason at its own top level", async () => {
+    const result = {
+      ok: false,
+      reason: "NO_ACCESSIBLE_ROUTE",
+      message: "Unavailable",
+    };
+    respond([
+      ["tool_result", { name: "planAccessibleRoute", callId: "a", result }],
+    ]);
+    const onTool = vi.fn();
+    await streamChatWithAgent({ messages: [] }, vi.fn(), onTool);
+    expect(onTool.mock.calls[0][3]).toEqual(result);
   });
 });

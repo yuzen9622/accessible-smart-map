@@ -4,7 +4,7 @@ import type {
   ToolSummary,
 } from "@/lib/ai/routeConversation";
 import { END_POINT } from "@/lib/config";
-import { fetchRequest, getAccessToken } from "@/lib/fetch";
+import { ApiError, fetchRequest, getAccessToken } from "@/lib/fetch";
 import type { ApiResponse } from "@/types/response";
 import type {
   AccessibleRoute,
@@ -35,6 +35,27 @@ export async function chatWithAgent(request: AgentChatRequest) {
   }) as Promise<ApiResponse<unknown>>;
 }
 
+function chatError(payload: unknown, status: number): ApiError {
+  const envelope =
+    payload && typeof payload === "object"
+      ? (payload as {
+          message?: unknown;
+          code?: unknown;
+          data?: { reason?: unknown };
+        })
+      : undefined;
+  return new ApiError(
+    typeof envelope?.message === "string"
+      ? envelope.message
+      : "AI response failed",
+    typeof envelope?.code === "number" ? envelope.code : status,
+    typeof envelope?.data?.reason === "string"
+      ? envelope.data.reason
+      : undefined,
+    envelope?.data,
+  );
+}
+
 export async function streamChatWithAgent(
   request: AgentChatRequest,
   onChunk: (text: string) => void,
@@ -43,10 +64,11 @@ export async function streamChatWithAgent(
     args: string,
     isDone: boolean,
     result?: unknown,
-    metadata?: { callId?: string; summary?: string },
+    metadata?: { callId?: string; summary?: string; language?: "en" | "zh-TW" },
   ) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  const language = getAppLanguage();
   const token = await getAccessToken();
   const response = await fetch(`${END_POINT}/api/v1/ai/chat`, {
     method: "POST",
@@ -57,12 +79,15 @@ export async function streamChatWithAgent(
     },
     body: JSON.stringify({
       ...request,
-      language: getAppLanguage(),
+      language,
       stream: true,
     }),
     signal,
   });
-  if (!response.ok) throw new Error(`AI request failed (${response.status})`);
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => undefined);
+    throw chatError(payload, response.status);
+  }
   if (!response.body) throw new Error("AI response has no stream");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -110,7 +135,7 @@ export async function streamChatWithAgent(
           }
           try {
             const chunk = JSON.parse(raw);
-            if (eventName === "error") throw new Error("AI response failed");
+            if (eventName === "error") throw chatError(chunk, 500);
 
             // Support custom backend format for tool calls: {"name": "...", "args": {...}}
             if (chunk.name && chunk.args !== undefined) {
@@ -121,6 +146,7 @@ export async function streamChatWithAgent(
               customToolArgsMap.set(chunk.callId ?? chunk.name, argsStr);
               onToolCall?.(chunk.name, argsStr, false, undefined, {
                 callId: chunk.callId,
+                language,
               });
               continue;
             }
@@ -132,6 +158,7 @@ export async function streamChatWithAgent(
               onToolCall?.(chunk.name, argsStr, true, chunk.result, {
                 callId: chunk.callId,
                 summary: chunk.summary,
+                language,
               });
               continue;
             }

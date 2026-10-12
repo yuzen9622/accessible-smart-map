@@ -20,6 +20,8 @@ export interface AutocompleteItem {
 }
 
 export interface NearbyFacilityBrief {
+  displayName?: string;
+  displayAddress?: string;
   id: string;
   name: string;
   address: string | null;

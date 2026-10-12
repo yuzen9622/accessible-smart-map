@@ -14,6 +14,8 @@ import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyWelfare } from "@/lib/api/a11y";
+import { toApiLang } from "@/lib/place/lang";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import useMapStore from "@/stores/useMapStore";
 import type { WelfareInstitution } from "@/types/route";
 import { Badge } from "../ui/badge";
@@ -38,7 +40,11 @@ function WelfareCard({
     <div className="p-3 rounded-xl bg-muted/40 border border-border/30 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold truncate">{item.name}</p>
+          <p className="text-sm font-semibold truncate">
+            {nonemptyName(item.displayName) ||
+              nonemptyName(item.name) ||
+              t("welfare")}
+          </p>
           <p className="text-xs text-muted-foreground truncate">{item.type}</p>
         </div>
         {item.evaluationGrade && (
@@ -54,7 +60,9 @@ function WelfareCard({
 
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <MapPin className="h-3 w-3 shrink-0" />
-        <span className="truncate">{item.address}</span>
+        <span className="truncate">
+          {nonemptyName(item.displayAddress) || item.address}
+        </span>
       </div>
 
       {item.phone && (
@@ -96,7 +104,8 @@ export default function WelfarePanel({
   onClose: () => void;
   hideHeader?: boolean;
 }) {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
   const { userLocation, map } = useMapStore(
     useShallow((s) => ({ userLocation: s.userLocation, map: s.map })),
   );
@@ -105,6 +114,8 @@ export default function WelfarePanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setData([]);
     if (!userLocation) {
       setLoading(false);
       setError(t("noLocation"));
@@ -113,8 +124,9 @@ export default function WelfarePanel({
     setLoading(true);
     setError(null);
 
-    getNearbyWelfare(userLocation.lat, userLocation.lng, 3000)
+    getNearbyWelfare(userLocation.lat, userLocation.lng, 3000, lang)
       .then((res) => {
+        if (!active) return;
         if (res.ok && res.data) {
           setData(res.data);
         } else {
@@ -122,10 +134,16 @@ export default function WelfarePanel({
         }
       })
       .catch(() => {
+        if (!active) return;
         setError(t("networkError"));
       })
-      .finally(() => setLoading(false));
-  }, [userLocation, t]);
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [userLocation, lang, t]);
 
   const handleNavigate = (item: WelfareInstitution) => {
     if (!item.location?.coordinates || !map) return;

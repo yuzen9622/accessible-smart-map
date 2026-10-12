@@ -45,13 +45,20 @@ export default function A11yFacilityPin({ place }: { place: MarkerType }) {
     const title = place.content?.title || "無障礙設施";
     const desc = place.content?.desc;
     const fullAddress = desc ? `${title} (${desc})` : title;
+    const canonicalTitle = place.canonicalTitle ?? title;
+    const canonicalAddress = desc
+      ? `${canonicalTitle} (${desc})`
+      : canonicalTitle;
+    const facilityIdentity = { facilityId: place.id, canonicalAddress };
     setInfoShow({
+      ...facilityIdentity,
       isOpen: true,
       kind: "coordinate",
       address: fullAddress,
       position: place.position,
     });
     setSearchPlace({
+      ...facilityIdentity,
       kind: "coordinate",
       address: fullAddress,
       position: place.position,

@@ -210,6 +210,8 @@ function PlaceInput({
         lng: userLocation?.lng,
         lang,
       });
+      // Details (including facility displays) belong to the request locale.
+      if (toApiLang(i18n.language) !== lang) return;
       if (!response.ok || !response.data) {
         throw new Error("Place details unavailable");
       }
@@ -228,6 +230,7 @@ function PlaceInput({
     },
     [
       addSearchHistory,
+      i18n,
       lang,
       map,
       onPlaceSelect,
@@ -252,6 +255,7 @@ function PlaceInput({
           limit: 1,
           lang,
         });
+        if (toApiLang(i18n.language) !== lang) return;
         const item = response.ok ? response.data?.[0] : undefined;
         if (!item) {
           toast.error("找不到符合的地點");
@@ -265,6 +269,7 @@ function PlaceInput({
       }
     },
     [
+      i18n,
       lang,
       pendingId,
       resolvePlace,

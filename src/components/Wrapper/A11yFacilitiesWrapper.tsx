@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { toast } from "sonner";
 import useSupercluster from "use-supercluster";
@@ -8,6 +8,8 @@ import A11yFacilityPin from "@/components/A11yFacilityPin";
 import { useMapBoundsAndZoom } from "@/hook/useMapBoundsAndZoom";
 import { useAppTranslation } from "@/i18n/client";
 import { getAllA11yFacilities } from "@/lib/api/a11y";
+import { toApiLang } from "@/lib/place/lang";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import useMapStore from "@/stores/useMapStore";
 import { A11yEnum, type Marker as MarkerType } from "@/types";
 import type { A11yFacility } from "@/types/route";
@@ -32,10 +34,14 @@ function facilityToMarker(facility: A11yFacility): MarkerType | null {
   const [lng, lat] = facility.location.coordinates;
   return {
     id: facility._id,
+    canonicalTitle: nonemptyName(facility.name) || facility.category,
     position: { lat, lng },
     type: "pin",
     content: {
-      title: facility.name,
+      title:
+        nonemptyName(facility.displayName) ||
+        nonemptyName(facility.name) ||
+        facility.category,
       desc: facility.source === "metro" ? (facility.exitName ?? "") : "",
     },
     zIndex: 1,
@@ -43,8 +49,13 @@ function facilityToMarker(facility: A11yFacility): MarkerType | null {
   };
 }
 
+const markerCache = new Map<string, MarkerType[]>();
+
 export default function A11yFacilitiesWrapper() {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
+  const tRef = useRef(t);
+  tRef.current = t;
   const { selectedA11yTypes, a11yPlaces, setA11yPlaces, routeA11y } =
     useMapStore(
       useShallow((s) => ({
@@ -56,37 +67,39 @@ export default function A11yFacilitiesWrapper() {
     );
   const { current: map } = useMap();
   const { bounds, zoom } = useMapBoundsAndZoom(map);
-  // a11yPlaces lives in the store and survives remounts (route changes, dev
-  // HMR); the deployed /all-facilities payload is ~5MB and can take >15s, so
-  // fetch it at most once per browser session.
-  const [isLoading, setIsLoading] = useState(
-    () => (useMapStore.getState().a11yPlaces?.length ?? 0) === 0,
-  );
+  // Successful payloads are cached per effective language, including empty lists.
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (useMapStore.getState().a11yPlaces?.length) return;
+    const cached = markerCache.get(lang);
+    if (cached) {
+      setA11yPlaces(cached);
+      setIsLoading(false);
+      return;
+    }
     const controller = new AbortController();
+    setA11yPlaces([]);
     setIsLoading(true);
-    getAllA11yFacilities()
+    getAllA11yFacilities(lang)
       .then((facilitiesRes) => {
         if (controller.signal.aborted) return;
-        const facilities = facilitiesRes.data ?? [];
-        setA11yPlaces(
-          facilities.flatMap((facility) => {
-            const marker = facilityToMarker(facility);
-            return marker ? [marker] : [];
-          }),
-        );
+        if (!facilitiesRes.ok) throw new Error("Facilities unavailable");
+        const markers = (facilitiesRes.data ?? []).flatMap((facility) => {
+          const marker = facilityToMarker(facility);
+          return marker ? [marker] : [];
+        });
+        markerCache.set(lang, markers);
+        setA11yPlaces(markers);
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        toast.error(t("a11yLoadFailed"));
+        toast.error(tRef.current("a11yLoadFailed"));
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [setA11yPlaces, t]);
+  }, [lang, setA11yPlaces]);
 
   // Pins appear ONLY for explicitly selected facility types — if user hasn't selected any, do not show.
   const isFilterActive = selectedA11yTypes.size > 0;

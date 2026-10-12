@@ -17,6 +17,8 @@ import {
   parseLiveBusPositions,
 } from "./busParsers";
 
+export type BusLanguage = "en" | "zh-TW";
+
 async function timedBusRequest(url: string, signal?: AbortSignal) {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
@@ -90,8 +92,10 @@ export async function getBusArrival(
   direction?: BusDirection | null,
   city?: string,
   signal?: AbortSignal,
+  lang?: BusLanguage,
 ) {
   const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
   if (routeName) params.set("routeName", routeName);
   if (stopName) params.set("stopName", stopName);
   if (direction != null) params.set("direction", String(direction));
@@ -100,8 +104,10 @@ export async function getBusArrival(
     `${END_POINT}/api/v1/transit/bus/arrival?${params}`,
     signal,
   )) as ApiResponse<{
+    routeDisplayName?: string;
     routeName: string;
     city: string;
+    stopDisplayName?: string;
     stopName: string;
     arrivals: BusArrivalItem[];
   }>;
@@ -111,6 +117,8 @@ export async function getBusArrival(
 }
 
 export interface BusArrivalItem {
+  stopDisplayName?: string;
+  subRouteDisplayName?: string;
   stopName: string;
   direction: BusDirection;
   directionLabel: string;
@@ -140,8 +148,10 @@ export async function getLiveBusPositions(
   city?: string,
   direction?: BusDirection | null,
   signal?: AbortSignal,
+  lang?: BusLanguage,
 ) {
   const params = new URLSearchParams({ routeName });
+  if (lang) params.set("lang", lang);
   if (city) params.set("city", city);
   if (direction != null) params.set("direction", String(direction));
   const data = (await timedBusRequest(
@@ -166,8 +176,10 @@ export async function getTrainData() {
 export async function searchBusRoutes(
   keyword: string,
   location?: LatLng | { lat: number; lng: number } | null,
+  lang?: BusLanguage,
 ) {
   const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
   params.set("keyword", keyword.trim());
   if (
     location &&
@@ -189,8 +201,10 @@ export async function searchBusRoutes(
 export async function searchBusStops(
   keyword: string,
   location?: LatLng | { lat: number; lng: number } | null,
+  lang?: BusLanguage,
 ) {
   const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
   params.set("keyword", keyword.trim());
   if (
     location &&
@@ -210,6 +224,7 @@ export async function searchBusStops(
 }
 
 export interface RouteDetailStop {
+  displayName?: string;
   plateNumb?: string;
   stopUid?: string;
   seq: number;
@@ -222,6 +237,11 @@ export interface RouteDetailStop {
 }
 
 export interface RouteDetailDirection {
+  subRouteDisplayName?: string;
+  from?: string;
+  to?: string;
+  fromDisplayName?: string;
+  toDisplayName?: string;
   direction: BusDirection;
   stops: RouteDetailStop[];
   /** Optional published route geometry, in [lng, lat] order. */
@@ -237,16 +257,23 @@ export async function getBusRouteDetail(
   subRouteUid?: string,
   signal?: AbortSignal,
   planContext?: BusPlanContext,
+  lang?: BusLanguage,
 ) {
   const params = new URLSearchParams({ routeName, city });
+  if (lang) params.set("lang", lang);
   if (subRouteUid) params.set("subRouteUid", subRouteUid);
+  // This capability endpoint has a strict query contract: unlike transit
+  // name GETs, it accepts ONLY the token and leg index (no lang).
   const endpoint = planContext
     ? `/api/v1/a11y/accessible-route/bus-arrivals?${new URLSearchParams({ routeToken: planContext.routeToken, legIndex: String(planContext.legIndex) })}`
     : `/api/v1/transit/bus/route-detail?${params}`;
   const data = (await timedBusRequest(
     `${END_POINT}${endpoint}`,
     signal,
-  )) as ApiResponse<{ directions: RouteDetailDirection[] }>;
+  )) as ApiResponse<{
+    routeDisplayName?: string;
+    directions: RouteDetailDirection[];
+  }>;
   if (data.data)
     data.data = {
       ...data.data,
@@ -260,8 +287,10 @@ export async function getBusTimetable(
   routeName: string,
   city?: string,
   signal?: AbortSignal,
+  lang?: BusLanguage,
 ) {
   const params = new URLSearchParams({ routeName });
+  if (lang) params.set("lang", lang);
   if (city) params.set("city", city);
   const data = (await timedBusRequest(
     `${END_POINT}/api/v1/transit/bus/timetable?${params}`,
@@ -271,11 +300,15 @@ export async function getBusTimetable(
   return data;
 }
 
-export async function getNearbyBusStops(lat: number, lng: number) {
+export async function getNearbyBusStops(
+  lat: number,
+  lng: number,
+  lang?: BusLanguage,
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   const data = (await fetchRequest(
-    `${END_POINT}/api/v1/transit/bus/nearby-stops?lat=${lat}&lng=${lng}`,
+    `${END_POINT}/api/v1/transit/bus/nearby-stops?${new URLSearchParams({ lat: String(lat), lng: String(lng), ...(lang ? { lang } : {}) })}`,
     { signal: controller.signal },
   )) as ApiResponse<{ stops: (BusStopSearchResult & { distance?: number })[] }>;
   clearTimeout(timeout);

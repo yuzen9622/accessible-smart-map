@@ -1,6 +1,7 @@
 import type { ClassValue } from "clsx";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import {
   A11yEnum,
   type IBathroom,
@@ -47,10 +48,11 @@ export function formatMetroA11y(places: metroA11yData[]) {
 
     return {
       id: _id ?? osmId,
+      canonicalTitle: name,
       position,
       type: "pin",
       content: {
-        title: name,
+        title: nonemptyName(place.displayName) || name,
         desc: place.出入口編號 ?? "",
       },
       zIndex: 1,
@@ -67,10 +69,11 @@ export function formatBathroom(bathrooms: IBathroom[]) {
 
     return {
       id: _id,
+      canonicalTitle: name,
       position,
       type: "pin",
       content: {
-        title: name,
+        title: nonemptyName(bathroom.displayName) || name,
         desc: diaper ? "有提供尿布台" : "無提供尿布台",
       },
       zIndex: 1,

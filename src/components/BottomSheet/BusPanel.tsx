@@ -5,12 +5,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import useBusSearch, { type BusSearchMode } from "@/hook/useBusSearch";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
 import {
   getBusRouteDetail,
   getNearbyBusStops,
   type RouteDetailDirection,
   type RouteDetailStop,
+  searchBusRoutes,
+  searchBusStops,
 } from "@/lib/api/transit";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import {
   type BusDirectionSelection,
   busDirectionLabel,
@@ -22,6 +26,16 @@ import useMapStore from "@/stores/useMapStore";
 import type { BusSearchResult, BusStopSearchResult } from "@/types/transit";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+
+type Language = "en" | "zh-TW";
+type Localized<T> = T & { displayLanguage?: Language };
+const name = (display?: string, canonical?: string) =>
+  nonemptyName(display) || nonemptyName(canonical) || "";
+function stopRouteNames(stop: BusStopSearchResult, localized = true) {
+  return (stop.routes ?? []).map((route, index) =>
+    name(localized ? stop.routeDisplayNames?.[index] : undefined, route),
+  );
+}
 
 const CityNameMap: Record<string, string> = {
   Taipei: "台北市",
@@ -105,7 +119,9 @@ export function RouteStopCard({
         }`}
       >
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold truncate flex-1">{stop.name}</p>
+          <p className="text-sm font-semibold truncate flex-1">
+            {name(stop.displayName, stop.name)}
+          </p>
           <Badge
             variant="secondary"
             className={`text-xs shrink-0 ${badgeColor}`}
@@ -126,6 +142,7 @@ export default function BusPanel({
   hideHeader?: boolean;
 }) {
   const { t } = useAppTranslation();
+  const lang = getAppLanguage();
   const [mode, setMode] = useState<BusSearchMode>("route");
   const [keyword, setKeyword] = useState("");
   const [open, setOpen] = useState(false);
@@ -134,7 +151,6 @@ export default function BusPanel({
   const {
     userLocation,
     map,
-    nearbyBusStops,
     setNearbyBusStops,
     setBusRouteStops,
     selectedBusStop,
@@ -143,7 +159,6 @@ export default function BusPanel({
     useShallow((s) => ({
       userLocation: s.userLocation,
       map: s.map,
-      nearbyBusStops: s.nearbyBusStops,
       setNearbyBusStops: s.setNearbyBusStops,
       setBusRouteStops: s.setBusRouteStops,
       selectedBusStop: s.selectedBusStop,
@@ -152,20 +167,28 @@ export default function BusPanel({
   );
   const [nearbyStops, setNearbyStops] = useState<
     (BusStopSearchResult & { distance?: number })[]
-  >(() => nearbyBusStops);
+  >([]);
+  const [nearbyLanguage, setNearbyLanguage] = useState<Language | null>(null);
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [nearbyError, setNearbyError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+    setNearbyStops([]);
+    setNearbyBusStops([]);
     const fetchNearby = async () => {
       if (!userLocation) return;
       setNearbyLoading(true);
       setNearbyError(null);
       try {
-        const res = await getNearbyBusStops(userLocation.lat, userLocation.lng);
+        const res = await getNearbyBusStops(
+          userLocation.lat,
+          userLocation.lng,
+          lang,
+        );
         if (active) {
           if (res.ok && res.data?.stops) {
+            setNearbyLanguage(lang);
             setNearbyStops(res.data.stops);
             setNearbyBusStops(res.data.stops);
           } else {
@@ -195,7 +218,7 @@ export default function BusPanel({
     return () => {
       active = false;
     };
-  }, [userLocation, setNearbyBusStops]);
+  }, [userLocation, setNearbyBusStops, lang]);
 
   const { results, loading: searchLoading } = useBusSearch(
     keyword,
@@ -253,25 +276,29 @@ export default function BusPanel({
     );
   }, [stopResults]);
 
-  const [selectedRoute, setSelectedRoute] = useState<BusSearchResult | null>(
-    null,
-  );
-  const [selectedStop, setSelectedStop] = useState<BusStopSearchResult | null>(
-    null,
-  );
+  const [selectedRoute, setSelectedRoute] =
+    useState<Localized<BusSearchResult> | null>(null);
+  const [selectedStop, setSelectedStop] =
+    useState<Localized<BusStopSearchResult> | null>(null);
   const [selection, setSelection] = useState<BusDirectionSelection | null>(
     null,
   );
   const [routeDetails, setRouteDetails] = useState<RouteDetailDirection[]>([]);
+  const [detailsLanguage, setDetailsLanguage] = useState<Language | null>(null);
+  const [routeDisplayName, setRouteDisplayName] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const REFRESH_INTERVAL = 30;
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
+  const selectedRouteName = selectedRoute?.routeName;
+  const selectedRouteCity = selectedRoute?.city;
 
   useEffect(() => {
-    if (!selectedRoute) return;
+    if (!selectedRouteName || !selectedRouteCity) return;
     let active = true;
+    setRouteDetails([]);
+    setRouteDisplayName(undefined);
     let pending = false;
     let remaining = REFRESH_INTERVAL;
     let request: AbortController | undefined;
@@ -297,14 +324,18 @@ export default function BusPanel({
       setError(null);
       try {
         const res = await getBusRouteDetail(
-          selectedRoute.routeName,
-          selectedRoute.city,
+          selectedRouteName,
+          selectedRouteCity,
           undefined,
           request.signal,
+          undefined,
+          lang,
         );
         if (!active) return;
         if ((res.ok || res.success) && res.data?.directions) {
           const details = res.data.directions;
+          setDetailsLanguage(lang);
+          setRouteDisplayName(res.data.routeDisplayName);
           setRouteDetails(details);
           setSelection((previous) =>
             selectBusDirection(busDirectionOptions(details), previous),
@@ -344,33 +375,56 @@ export default function BusPanel({
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", onResume);
     };
-  }, [selectedRoute, t]);
+  }, [selectedRouteName, selectedRouteCity, t, lang]);
 
-  const directionOptions = busDirectionOptions(routeDetails);
+  const directionOptions = busDirectionOptions(
+    detailsLanguage === lang ? routeDetails : [],
+  );
   const currentDirectionDetails = directionOptions.find(
     (option) => option.key === selection?.key,
   )?.detail;
   const directionLabel = (detail: RouteDetailDirection) => {
     const semanticLabel = t(busDirectionLabel(detail.direction));
+    const terminalStop = detail.stops.at(-1);
     const terminal =
-      detail.stops.at(-1)?.name ||
+      name(detail.toDisplayName, detail.to) ||
+      name(terminalStop?.displayName, terminalStop?.name) ||
       (detail.direction === 0
-        ? selectedRoute?.destination
-        : selectedRoute?.departure);
+        ? name(
+            selectedRoute?.displayLanguage === lang
+              ? selectedRoute.destinationDisplayName
+              : undefined,
+            selectedRoute?.destination,
+          )
+        : name(
+            selectedRoute?.displayLanguage === lang
+              ? selectedRoute.departureDisplayName
+              : undefined,
+            selectedRoute?.departure,
+          ));
     const label =
       (detail.direction === 0 || detail.direction === 1) && terminal
         ? t("busTowards", { destination: terminal })
         : semanticLabel;
-    return detail.subRouteName ? `${detail.subRouteName} · ${label}` : label;
+    const branch = name(detail.subRouteDisplayName, detail.subRouteName);
+    return branch ? `${branch} · ${label}` : label;
   };
 
   useEffect(() => {
     if (mode === "stop" && stopResults.length > 0) {
       setNearbyBusStops(stopResults);
     } else if (mode === "route" && !selectedRoute) {
-      setNearbyBusStops(nearbyStops);
+      setNearbyBusStops(nearbyLanguage === lang ? nearbyStops : []);
     }
-  }, [mode, stopResults, selectedRoute, nearbyStops, setNearbyBusStops]);
+  }, [
+    mode,
+    stopResults,
+    selectedRoute,
+    nearbyStops,
+    nearbyLanguage,
+    lang,
+    setNearbyBusStops,
+  ]);
 
   useEffect(() => {
     setBusRouteStops(
@@ -391,8 +445,72 @@ export default function BusPanel({
     if (selection?.key) setSelectedBusStop(null);
   }, [selection?.key, setSelectedBusStop]);
 
+  const selectedStopUid = selectedStop?.stopUid;
+  const selectedStopName = selectedStop?.stopName;
+  const selectedStopCity = selectedStop?.city;
+  useEffect(() => {
+    let active = true;
+    if (selectedRouteName && selectedRouteCity) {
+      void searchBusRoutes(selectedRouteName, undefined, lang)
+        .then((res) => {
+          if (!active) return;
+          const match = res.data?.routes?.find(
+            (route) =>
+              route.routeName === selectedRouteName &&
+              route.city === selectedRouteCity,
+          );
+          if (match)
+            setSelectedRoute((old) =>
+              old
+                ? {
+                    ...old,
+                    routeDisplayName: match.routeDisplayName,
+                    departureDisplayName: match.departureDisplayName,
+                    destinationDisplayName: match.destinationDisplayName,
+                    displayLanguage: lang,
+                  }
+                : old,
+            );
+        })
+        .catch(() => {});
+    }
+    if (selectedStopUid && selectedStopName) {
+      void searchBusStops(selectedStopName, undefined, lang)
+        .then((res) => {
+          if (!active) return;
+          const match = res.data?.stops?.find(
+            (stop) =>
+              stop.stopUid === selectedStopUid &&
+              stop.city === selectedStopCity,
+          );
+          if (match)
+            setSelectedStop((old) =>
+              old
+                ? {
+                    ...old,
+                    stopDisplayName: match.stopDisplayName,
+                    routeDisplayNames: match.routeDisplayNames,
+                    displayLanguage: lang,
+                  }
+                : old,
+            );
+        })
+        .catch(() => {});
+    }
+    return () => {
+      active = false;
+    };
+  }, [
+    selectedRouteName,
+    selectedRouteCity,
+    selectedStopUid,
+    selectedStopName,
+    selectedStopCity,
+    lang,
+  ]);
+
   const handleRouteSelect = (route: BusSearchResult) => {
-    setSelectedRoute(route);
+    setSelectedRoute({ ...route, displayLanguage: lang });
     setOpen(false);
     setKeyword("");
     setSelection(null);
@@ -418,7 +536,7 @@ export default function BusPanel({
   };
 
   const handleStopSelect = (stop: BusStopSearchResult) => {
-    setSelectedStop(stop);
+    setSelectedStop({ ...stop, displayLanguage: lang });
     setSelectedBusStop(stop);
     setOpen(false);
     setKeyword("");
@@ -484,7 +602,15 @@ export default function BusPanel({
             </button>
             <div>
               <h3 className="font-bold text-lg leading-tight">
-                {selectedRoute.routeName}
+                {name(
+                  detailsLanguage === lang ? routeDisplayName : undefined,
+                  name(
+                    selectedRoute.displayLanguage === lang
+                      ? selectedRoute.routeDisplayName
+                      : undefined,
+                    selectedRoute.routeName,
+                  ),
+                )}
               </h3>
               <p className="text-xs text-muted-foreground">
                 {CityNameMap[selectedRoute.city] || selectedRoute.city}
@@ -585,7 +711,12 @@ export default function BusPanel({
               <MapPin className="h-4.5 w-4.5 text-emerald-500 shrink-0" />
               <div className="min-w-0">
                 <h3 className="font-bold text-lg leading-tight truncate">
-                  {selectedStop.stopName}
+                  {name(
+                    selectedStop.displayLanguage === lang
+                      ? selectedStop.stopDisplayName
+                      : undefined,
+                    selectedStop.stopName,
+                  )}
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   {CityNameMap[selectedStop.city] || selectedStop.city}
@@ -605,7 +736,7 @@ export default function BusPanel({
                 經過此站牌的路線
               </p>
               <div className="flex flex-wrap gap-2">
-                {(selectedStop.routes || []).map((routeName) => (
+                {(selectedStop.routes || []).map((routeName, index) => (
                   <button
                     key={routeName}
                     type="button"
@@ -614,7 +745,12 @@ export default function BusPanel({
                     }
                     className="px-3 py-1.5 rounded-lg bg-muted/50 border border-border/30 text-sm font-semibold hover:bg-muted transition-colors"
                   >
-                    {routeName}
+                    {name(
+                      selectedStop.displayLanguage === lang
+                        ? selectedStop.routeDisplayNames?.[index]
+                        : undefined,
+                      routeName,
+                    )}
                   </button>
                 ))}
               </div>
@@ -698,14 +834,19 @@ export default function BusPanel({
                             {routes.map((r) => (
                               <CommandItem
                                 key={`${r.city}-${r.routeName}-${r.departure}-${r.destination}`}
+                                value={`${r.city}-${r.routeName}-${r.departure}-${r.destination}`}
                                 onSelect={() => handleRouteSelect(r)}
                                 className="flex flex-col items-start px-3 py-2 cursor-pointer"
                               >
                                 <span className="font-semibold text-sm">
-                                  {r.routeName}
+                                  {name(r.routeDisplayName, r.routeName)}
                                 </span>
                                 <span className="text-xs text-muted-foreground">
-                                  {r.departure} - {r.destination}
+                                  {name(r.departureDisplayName, r.departure)} -{" "}
+                                  {name(
+                                    r.destinationDisplayName,
+                                    r.destination,
+                                  )}
                                 </span>
                               </CommandItem>
                             ))}
@@ -735,11 +876,13 @@ export default function BusPanel({
                                 className="flex flex-col items-start px-3 py-2 cursor-pointer"
                               >
                                 <span className="font-semibold text-sm">
-                                  {s.stopName}
+                                  {name(s.stopDisplayName, s.stopName)}
                                 </span>
                                 <span className="text-xs text-muted-foreground truncate max-w-full">
                                   {stopRoutes.length > 0
-                                    ? stopRoutes.slice(0, 8).join(" · ") +
+                                    ? stopRouteNames(s)
+                                        .slice(0, 8)
+                                        .join(" · ") +
                                       (stopRoutes.length > 8 ? " …" : "")
                                     : "無經過路線"}
                                 </span>
@@ -789,7 +932,7 @@ export default function BusPanel({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {nearbyStops.map((stop) => {
+                  {(nearbyLanguage === lang ? nearbyStops : []).map((stop) => {
                     const stopRoutes = Array.isArray(stop.routes)
                       ? stop.routes
                       : [];
@@ -802,10 +945,10 @@ export default function BusPanel({
                       >
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold truncate group-hover:text-emerald-600 transition-colors">
-                            {stop.stopName}
+                            {name(stop.stopDisplayName, stop.stopName)}
                           </p>
                           <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {stopRoutes.slice(0, 5).join(" · ")}
+                            {stopRouteNames(stop).slice(0, 5).join(" · ")}
                             {stopRoutes.length > 5 &&
                               ` +${stopRoutes.length - 5}條路線`}
                           </p>

@@ -15,6 +15,8 @@ import { useFetchLocation } from "@/hook/useFetchLocation";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyParking } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
+import { toApiLang } from "@/lib/place/lang";
+import { nonemptyName } from "@/lib/route/sourceNames";
 import { geoCoords } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import { formatDistance, type ParkingNearbyItem } from "@/types/route";
@@ -93,10 +95,13 @@ function ParkingCard({
 }) {
   const { t } = useAppTranslation();
 
-  const title = item.type === "lot" ? item.name : item.placeName;
+  const title =
+    nonemptyName(item.displayName) ||
+    nonemptyName(item.type === "lot" ? item.name : item.placeName) ||
+    t("parking");
   const subtitle =
     item.type === "lot"
-      ? (item.address ?? undefined)
+      ? nonemptyName(item.displayAddress) || item.address || undefined
       : item.district || undefined;
 
   const badges: React.ReactNode[] = [];
@@ -227,11 +232,11 @@ export default function ParkingPanel({
   onClose: () => void;
   hideHeader?: boolean;
 }) {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
+  const lang = toApiLang(i18n.language) ?? "zh-TW";
   const {
     userLocation,
     map,
-    nearbyParking,
     setNearbyParking,
     selectedParking,
     setSelectedParking,
@@ -239,14 +244,13 @@ export default function ParkingPanel({
     useShallow((s) => ({
       userLocation: s.userLocation,
       map: s.map,
-      nearbyParking: s.nearbyParking,
       setNearbyParking: s.setNearbyParking,
       selectedParking: s.selectedParking,
       setSelectedParking: s.setSelectedParking,
     })),
   );
-  const [data, setData] = useState<ParkingNearbyItem[]>(() => nearbyParking);
-  const [loading, setLoading] = useState(() => nearbyParking.length === 0);
+  const [data, setData] = useState<ParkingNearbyItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // 距離門檻 gate：GPS 每 1~3 秒抖動一次，位移 < 100m 不重新 fetch
@@ -254,28 +258,40 @@ export default function ParkingPanel({
   const fetchLoc = useFetchLocation(userLocation);
 
   useEffect(() => {
+    let active = true;
+    setData([]);
     if (!fetchLoc) {
       setLoading(false);
       setError(t("noLocation"));
       return;
     }
+    if (useMapStore.getState().nearbyParkingLanguage !== lang)
+      setSelectedParking(null);
     setLoading(true);
     setError(null);
 
-    getNearbyParking(fetchLoc.lat, fetchLoc.lng)
+    getNearbyParking(fetchLoc.lat, fetchLoc.lng, lang)
       .then((res) => {
+        if (!active || (toApiLang(i18n.language) ?? "zh-TW") !== lang) return;
         if (res.ok && res.data) {
           setData(res.data);
-          setNearbyParking(res.data);
+          setNearbyParking(res.data, lang);
         } else {
           setError(t("noData"));
         }
       })
       .catch(() => {
+        if (!active || (toApiLang(i18n.language) ?? "zh-TW") !== lang) return;
         setError(t("networkError"));
       })
-      .finally(() => setLoading(false));
-  }, [fetchLoc, setNearbyParking, t]);
+      .finally(() => {
+        if (active && (toApiLang(i18n.language) ?? "zh-TW") === lang)
+          setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fetchLoc, lang, i18n, setNearbyParking, setSelectedParking, t]);
 
   const handleSelect = (item: ParkingNearbyItem) => {
     setSelectedParking(item);

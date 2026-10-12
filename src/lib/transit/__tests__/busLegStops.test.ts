@@ -14,6 +14,7 @@ import {
   resolveLegRide,
   resolveLegStops,
   sliceLegStops,
+  withPlannedStopNames,
 } from "@/lib/transit/busLegStops";
 import type { BusLeg } from "@/types/route";
 
@@ -40,6 +41,37 @@ const line = [
   stop(4, "C站"),
   stop(5, "終點"),
 ];
+
+describe("planned ETA source names", () => {
+  it("uses same-leg sources without sending lang to the strict capability endpoint", () => {
+    const leg = {
+      departureStop: "起點",
+      arrivalStop: "終點",
+      fromNameEn: "Start",
+      toNameEn: "End",
+      intermediateStops: [
+        { name: "同名", nameEn: "First" },
+        { name: "同名", nameEn: "Second" },
+      ],
+    } as BusLeg;
+    const rows = buildStopRows(
+      [stop(1, "起點"), stop(2, "同名"), stop(3, "同名"), stop(4, "終點")],
+      2,
+    );
+    expect(
+      withPlannedStopNames(rows, leg, "en").map((r) => r.displayName),
+    ).toEqual(["Start", "First", "Second", "End"]);
+    expect(
+      withPlannedStopNames(rows, leg, "zh-TW").map((r) => r.displayName),
+    ).toEqual(["起點", "同名", "同名", "終點"]);
+    expect(rows[1].name).toBe("同名");
+    expect(rows[1].state).toBe("current");
+    const other = rows.map((r, i) => (i === 1 ? { ...r, name: "另一站" } : r));
+    expect(withPlannedStopNames(other, leg, "en")).toBe(other);
+    const missing = rows.slice(1);
+    expect(withPlannedStopNames(missing, leg, "en")).toBe(missing);
+  });
+});
 
 describe("pickDirection", () => {
   it("returns the stops of the matching direction", () => {
@@ -752,4 +784,38 @@ it("retains the original 10:00 schedule at every stop even while loading or afte
     ["B", null, "10:10", false],
     ["C", null, "10:20", false],
   ]);
+});
+
+it("preserves display names on rows without changing canonical stop matching", () => {
+  const stops = [
+    stop(1, "起點", { displayName: "Origin" }),
+    stop(2, "終點", { displayName: "End" }),
+  ];
+  expect(
+    buildStopRows(stops, null).map((row) => [row.name, row.displayName]),
+  ).toEqual([
+    ["起點", "Origin"],
+    ["終點", "End"],
+  ]);
+  expect(sliceLegStops(stops, "Origin", "End")).toBeNull();
+  expect(sliceLegStops(stops, "起點", "終點")).toEqual(stops);
+  const leg = {
+    type: "BUS",
+    departureStop: "起點",
+    arrivalStop: "終點",
+    fromNameEn: "Origin",
+    toNameEn: "End",
+    fromDisplayName: "舊起點",
+    toDisplayName: "舊終點",
+    displayLanguage: "zh-TW",
+    intermediateStops: [
+      { name: "中間", nameEn: "Middle", displayName: "舊中間" },
+    ],
+  } as unknown as BusLeg;
+  expect(
+    fallbackStopRows(leg, { language: "en" }).map((row) => row.displayName),
+  ).toEqual(["Origin", "Middle", "End"]);
+  expect(
+    fallbackStopRows(leg, { language: "zh-TW" }).map((row) => row.name),
+  ).toEqual(["起點", "中間", "終點"]);
 });

@@ -45,6 +45,8 @@ export type Marker = {
   id: number | string;
   position: LatLng;
   content?: { title: string; desc: string };
+  /** Source name retained for selected-facility locale fallback. */
+  canonicalTitle?: string;
   type: "pin";
   zIndex: number;
   a11yType: A11yEnum;
@@ -59,6 +61,9 @@ type PlaceType = {
 type CoordinateType = {
   kind: "coordinate";
   address: string;
+  /** Set only for facility pins; never infer identity from translated text. */
+  facilityId?: string | number;
+  canonicalAddress?: string;
 };
 
 type Base = {
@@ -85,6 +90,7 @@ export type InfoShow =
   | { isOpen: boolean; kind: null };
 
 export type metroA11yData = {
+  displayName?: string;
   _id?: string;
   osmId?: string;
   source?: "metro" | "osm";
@@ -108,6 +114,8 @@ export type metroA11yAPI = {
 };
 
 export interface IBathroom {
+  displayName?: string;
+  displayAddress?: string;
   _id: string;
   contury: string;
   areacode: string;

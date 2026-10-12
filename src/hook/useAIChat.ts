@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
+import { languages } from "@/i18n/setting";
 import { executeAction } from "@/lib/ai/actionExecutor";
 import { AI_ROUTE_UNAVAILABLE, isRouteTool } from "@/lib/ai/routeContract";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/lib/ai/routeConversation";
 import { mapToolToActions } from "@/lib/ai/toolActionMapper";
 import { streamChatWithAgent } from "@/lib/api/ai";
+import { ApiError } from "@/lib/fetch";
 import useAuthStore from "@/stores/useAuthStore";
 import useChatStore, {
   type ChatBubble,
@@ -23,7 +25,7 @@ import { describeProfileForAssistant } from "@/types/a11yProfile";
 export type { ChatBubble, ToolActivity };
 
 export default function useAIChat() {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
 
   // Shared across every mount of the AI panel (mobile/desktop copies, and
   // any remount from the panel being collapsed/closed then reopened) so a
@@ -60,18 +62,37 @@ export default function useAIChat() {
   // the restore has actually landed.
   useEffect(() => {
     if (!hydrated) return;
-    if (useChatStore.getState().messages.length === 0) {
+    const first = useChatStore.getState().messages[0];
+    if (!first) {
       setMessages([
         {
           role: "assistant",
+          kind: "greeting",
           content: t(
             "assistFirstMessage",
             "你好！我是無障礙智慧地圖的 AI 助理，有什麼我能幫你的嗎？附近無障礙設施或者是問題回饋？請隨時提出！",
           ),
         },
       ]);
+    } else if (
+      !first.kind &&
+      first.role === "assistant" &&
+      !first.isStreaming &&
+      !first.toolActivities?.length &&
+      languages.some(
+        (language) =>
+          first.content === i18n.getFixedT(language)("assistFirstMessage"),
+      )
+    ) {
+      // Recognize only the legacy first system greeting restored from storage.
+      // Keep every real conversation turn (and any stream) untouched.
+      setMessages((previous) =>
+        previous[0] === first
+          ? [{ ...first, kind: "greeting" }, ...previous.slice(1)]
+          : previous,
+      );
     }
-  }, [hydrated, setMessages, t]);
+  }, [hydrated, setMessages, t, i18n]);
 
   const {
     userLocation,
@@ -257,6 +278,7 @@ export default function useAIChat() {
                 if (idx !== -1) {
                   existing[idx] = {
                     ...existing[idx],
+                    displayLanguage: metadata?.language,
                     args: toolArgs,
                     result: safeResult,
                     status: isDone ? "done" : "running",
@@ -273,6 +295,7 @@ export default function useAIChat() {
                       ...doneExisting,
                       {
                         name: toolName,
+                        displayLanguage: metadata?.language,
                         callId,
                         args: toolArgs,
                         result: safeResult,
@@ -286,7 +309,12 @@ export default function useAIChat() {
             });
 
             if (isDone) {
-              const actions = mapToolToActions(toolName, result, toolArgs);
+              const actions = mapToolToActions(
+                toolName,
+                result,
+                toolArgs,
+                metadata?.language,
+              );
               applying = true;
               try {
                 for (const action of actions) {
@@ -307,7 +335,9 @@ export default function useAIChat() {
         fullText =
           err instanceof Error && err.message === AI_ROUTE_UNAVAILABLE
             ? AI_ROUTE_UNAVAILABLE
-            : t("chatbot.error", "抱歉，發生錯誤，請稍後再試。");
+            : err instanceof ApiError && err.message
+              ? err.message
+              : t("chatbot.error", "抱歉，發生錯誤，請稍後再試。");
       } finally {
         unsubscribe();
         unsubscribeAuth();

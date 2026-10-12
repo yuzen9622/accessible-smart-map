@@ -322,6 +322,7 @@ export default function VoiceSessionHost() {
               route: navigationEvent.route,
               instructions,
               warnings: navigationEvent.warnings,
+              warningDetails: navigationEvent.warningDetails,
               currentStepIndex: navigationEvent.currentStepIndex,
               reason: navigationEvent.reason,
             },

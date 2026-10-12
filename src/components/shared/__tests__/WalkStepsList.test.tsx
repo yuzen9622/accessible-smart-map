@@ -129,6 +129,45 @@ afterEach(async () => {
 });
 
 describe("WalkStepsList", () => {
+  it("renders source street names by original index and switches back without mutating WALK9", async () => {
+    const steps = [
+      makeStep("CONTINUE", { streetName: "同名路", bogusName: false }),
+      makeStep("LEFT", { streetName: "同名路", bogusName: false }),
+    ];
+    const props = {
+      steps,
+      displayLanguage: "en" as const,
+      stepStreetNames: [
+        {
+          index: 0,
+          streetName: "同名路",
+          nameEn: "First Road",
+          displayName: "First Road",
+        },
+        {
+          index: 1,
+          streetName: "同名路",
+          nameEn: "Second Road",
+          displayName: "Second Road",
+        },
+      ],
+    };
+    await renderSteps("en", []);
+    const english = renderToStaticMarkup(
+      React.createElement(WalkStepsList, props),
+    );
+    expect(english).toContain("Continue straight on First Road");
+    expect(english).toContain("Turn left onto Second Road");
+    await renderSteps("zh-TW", []);
+    const chinese = renderToStaticMarkup(
+      React.createElement(WalkStepsList, props),
+    );
+    expect(chinese).toContain("同名路");
+    expect(chinese).not.toContain("First Road");
+    expect(steps[0].streetName).toBe("同名路");
+    expect(Object.keys(steps[0])).toHaveLength(9);
+  });
+
   it("keeps each WALK step to the exact nine-field contract", () => {
     const step = makeStep("DEPART");
 

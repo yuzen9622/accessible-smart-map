@@ -72,6 +72,72 @@ beforeEach(() => {
 });
 
 describe("AI route contract", () => {
+  it("retains source/display sidecars and request provenance without changing WALK9 or token", () => {
+    const fixture = planFixture();
+    const step = {
+      relativeDirection: "CONTINUE",
+      absoluteDirection: null,
+      streetName: "原路",
+      bogusName: false,
+      area: false,
+      stairs: false,
+      steepSlope: false,
+      distanceM: 20,
+      location: [121.5, 25],
+    };
+    const sidecar = [
+      {
+        index: 0,
+        streetName: "原路",
+        nameEn: "Original Road",
+        displayName: "Original Road",
+      },
+    ];
+    const plan = {
+      ...fixture,
+      routes: fixture.routes.map((route) => ({
+        ...route,
+        legs: [
+          {
+            type: "WALK",
+            from: "起",
+            to: "迄",
+            fromNameEn: "Start",
+            fromDisplayName: "Start",
+            distanceM: 20,
+            minutesEst: 1,
+            polyline: [
+              [121.5, 25],
+              [121.51, 25.01],
+            ],
+            a11yFacilities: [],
+            steps: [step],
+            stepStreetNames: sidecar,
+          },
+        ],
+      })),
+    };
+    const action = mapToolToActions(
+      "planAccessibleRoute",
+      plan,
+      undefined,
+      "en",
+    )[0];
+    if (action.type !== "show-route") throw new Error("Expected route action");
+    const leg = action.plan.routes[0].legs[0];
+    expect(leg).toMatchObject({
+      from: "起",
+      fromNameEn: "Start",
+      fromDisplayName: "Start",
+      displayLanguage: "en",
+      stepStreetNames: sidecar,
+      steps: [step],
+    });
+    expect(action.plan.routes[0].routeToken).toBe("private-a");
+    expect(Object.keys(step)).toHaveLength(9);
+    expect(plan.routes[0].legs[0]).not.toHaveProperty("displayLanguage");
+  });
+
   it("applies the selected identity, all candidates and canonical conditions in one notification, without any fetch", () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     const notify = vi.fn();

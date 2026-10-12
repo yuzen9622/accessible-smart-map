@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { RouteDetailDirection } from "@/lib/api/transit";
+import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import type { BusLanguage, RouteDetailDirection } from "@/lib/api/transit";
 import {
   fetchRouteDetailSnapshot,
   peekRouteDetailSnapshot,
@@ -33,11 +35,12 @@ function seed(
   city: string,
   uid?: string,
   planContext?: BusPlanContext,
+  lang?: BusLanguage,
 ): EtaState {
-  const key = routeDetailKey(routeName, city, uid, planContext);
+  const key = routeDetailKey(routeName, city, uid, planContext, lang);
   const warm =
     routeName && city
-      ? peekRouteDetailSnapshot(routeName, city, uid, planContext)
+      ? peekRouteDetailSnapshot(routeName, city, uid, planContext, lang)
       : null;
   return warm
     ? {
@@ -70,6 +73,8 @@ export function useBusLegStopEtas(
   enabled: boolean,
   poll: boolean,
 ): { directions: RouteDetailDirection[] | null; status: BusLegEtaStatus } {
+  useAppTranslation();
+  const lang = getAppLanguage();
   const city = leg?.tdxCity ?? leg?.cityCode ?? "";
   // TDX indexes stop sequences by sub-route: 99 and 99延 are different lists.
   // The planner names the run it chose, so ask for that one.
@@ -78,12 +83,12 @@ export function useBusLegStopEtas(
   const planContext = leg?.planContext;
   const routeToken = planContext?.routeToken;
   const legIndex = planContext?.legIndex;
-  const key = routeDetailKey(routeName, city, subRouteUid, planContext);
+  const key = routeDetailKey(routeName, city, subRouteUid, planContext, lang);
 
   // Seed from an already-warm cache entry so the first render after expanding
   // shows real ETAs instead of a placeholder.
   const [state, setState] = useState<EtaState>(() =>
-    seed(routeName, city, subRouteUid, planContext),
+    seed(routeName, city, subRouteUid, planContext, lang),
   );
 
   const pollRef = useRef(poll);
@@ -109,6 +114,7 @@ export function useBusLegStopEtas(
     const fetchEtas = async (force: boolean) => {
       const mine = ++version;
       const snapshot = await fetchRouteDetailSnapshot(routeName, city, {
+        lang,
         force,
         subRouteUid,
         planContext: { routeToken, legIndex },
@@ -152,10 +158,16 @@ export function useBusLegStopEtas(
     // A warm cache entry means we already have data; don't flash a loading
     // state over it just because the effect re-ran. A cold one (or one from a
     // different branch) must clear whatever was showing.
-    const warm = peekRouteDetailSnapshot(routeName, city, subRouteUid, {
-      routeToken,
-      legIndex,
-    });
+    const warm = peekRouteDetailSnapshot(
+      routeName,
+      city,
+      subRouteUid,
+      {
+        routeToken,
+        legIndex,
+      },
+      lang,
+    );
     setState(
       warm
         ? {
@@ -181,7 +193,17 @@ export function useBusLegStopEtas(
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [enabled, poll, routeName, city, subRouteUid, key, routeToken, legIndex]);
+  }, [
+    enabled,
+    poll,
+    routeName,
+    city,
+    subRouteUid,
+    key,
+    routeToken,
+    legIndex,
+    lang,
+  ]);
 
   // Expire what is on screen at the cache's deadline. The receipt time is not
   // renewed by this: only a new response can bring data back.

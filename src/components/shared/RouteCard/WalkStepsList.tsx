@@ -1,8 +1,11 @@
 import { AlertTriangle, ChevronDown } from "lucide-react";
 import { useId, useState } from "react";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
+import { walkStreetName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import type {
+  StepStreetName,
   WalkAbsoluteDirection,
   WalkRelativeDirection,
   WalkStep,
@@ -61,9 +64,9 @@ const ALONG_DIRECTIONS = new Set<WalkRelativeDirection>([
 
 function useStepText() {
   const { t } = useAppTranslation();
-  return (step: WalkStep): string => {
+  return (step: WalkStep, streetName: string): string => {
     const action = t(DIRECTION_KEY[step.relativeDirection]);
-    const street = step.bogusName ? "" : step.streetName.trim();
+    const street = step.bogusName ? "" : streetName.trim();
     const text =
       !street || FACILITY_DIRECTIONS.has(step.relativeDirection)
         ? action
@@ -80,7 +83,15 @@ function useStepText() {
   };
 }
 
-export function WalkStepsList({ steps }: { steps?: WalkStep[] }) {
+export function WalkStepsList({
+  steps,
+  stepStreetNames,
+  displayLanguage,
+}: {
+  steps?: WalkStep[];
+  stepStreetNames?: StepStreetName[];
+  displayLanguage?: "en" | "zh-TW";
+}) {
   const { t } = useAppTranslation();
   const stepText = useStepText();
   const [isOpen, setIsOpen] = useState(false);
@@ -115,7 +126,7 @@ export function WalkStepsList({ steps }: { steps?: WalkStep[] }) {
       >
         <div className="overflow-hidden">
           <ul className="pl-3.5 my-2 space-y-1.5 border-l border-muted-foreground/30 ml-3.5">
-            {steps.map((step) => (
+            {steps.map((step, index) => (
               <li
                 key={`${step.relativeDirection}-${step.streetName}-${step.distanceM}-${step.location.join(",")}`}
                 className="text-xs text-muted-foreground"
@@ -129,7 +140,16 @@ export function WalkStepsList({ steps }: { steps?: WalkStep[] }) {
                         : "text-foreground",
                   )}
                 >
-                  {stepText(step)}
+                  {stepText(
+                    step,
+                    walkStreetName(
+                      steps,
+                      index,
+                      stepStreetNames,
+                      getAppLanguage(),
+                      displayLanguage,
+                    ),
+                  )}
                 </span>
                 {step.stairs && (
                   <>
