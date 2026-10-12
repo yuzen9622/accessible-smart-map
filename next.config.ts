@@ -6,6 +6,21 @@ const nextConfig: NextConfig = {
   output: isCapacitorBuild ? "export" : "standalone",
   /* config options here */ trailingSlash: true,
 
+  // Apple fetches the Universal Links file without an extension; serve it as JSON.
+  // (Static export builds have no server, so headers only apply to the web host.)
+  ...(isCapacitorBuild
+    ? {}
+    : {
+        async headers() {
+          return [
+            {
+              source: "/.well-known/apple-app-site-association",
+              headers: [{ key: "Content-Type", value: "application/json" }],
+            },
+          ];
+        },
+      }),
+
   images: {
     unoptimized: true,
     remotePatterns: [

@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["4RMY49Z36V.com.accessiblemap.app"],
+        "components": [
+          { "/": "/zh-TW/sos/*", "comment": "SOS live-location link" },
+          { "/": "/en/sos/*", "comment": "SOS live-location link" }
+        ]
+      }
+    ]
+  }
+}

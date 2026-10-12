@@ -994,6 +994,7 @@
   "sosTrackingNoLocation": "請先開啟定位以規劃前往路線",
   "sosTrackingRequesterLabel": "求助者位置",
   "sosTrackingLastUpdate": "位置更新時間：{{time}}",
+  "sosTrackingOpenInApp": "在 App 中開啟",
   "transit": "大眾運輸",
   "drive": "開車",
   "motorcycle": "機車",

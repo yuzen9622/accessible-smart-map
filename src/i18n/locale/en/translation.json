@@ -1001,6 +1001,7 @@
   "sosTrackingNoLocation": "Enable location to plan a route to the requester",
   "sosTrackingRequesterLabel": "Requester's location",
   "sosTrackingLastUpdate": "Updated at: {{time}}",
+  "sosTrackingOpenInApp": "Open in app",
   "transit": "Transit",
   "drive": "Drive",
   "motorcycle": "Motorcycle",

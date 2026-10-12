@@ -8,6 +8,7 @@ import {
   Locate,
   MapPin,
   Navigation,
+  Smartphone,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -53,6 +54,18 @@ const HANDLING_LABEL_KEY: Record<HandlingStatus, string> = {
   arrived: "sosHandlingArrived",
   resolved: "sosHandlingResolved",
 };
+
+/** Opens the native app's tracker; Universal Links never fire for a same-site tap. */
+function appTrackerUrl(token: string): string {
+  return `accessiblesmartmap://sos-track/${encodeURIComponent(token)}`;
+}
+
+function isMobileBrowser(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  );
+}
 
 const SOS_TYPE_ICON: Record<SosType, typeof AlertTriangle> = {
   body: AlertTriangle,
@@ -241,6 +254,7 @@ export default function SosTrackerWrapper() {
     session?.handlingStatus && session.handlingStatus !== "pending"
       ? HANDLING_LABEL_KEY[session.handlingStatus]
       : undefined;
+  const showOpenInApp = Boolean(sessionId) && isMobileBrowser();
 
   return (
     <>
@@ -380,6 +394,15 @@ export default function SosTrackerWrapper() {
                   <Locate className="h-4 w-4" />
                 </button>
               </div>
+              {showOpenInApp && sessionId && (
+                <a
+                  href={appTrackerUrl(sessionId)}
+                  className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors"
+                >
+                  <Smartphone className="h-4 w-4" />
+                  {t("sosTrackingOpenInApp")}
+                </a>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
