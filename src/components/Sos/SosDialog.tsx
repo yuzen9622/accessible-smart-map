@@ -5,11 +5,13 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Eye,
   HelpCircle,
   Loader2,
   MapPin,
   PersonStanding,
   PhoneCall,
+  RefreshCw,
   Share2,
   X,
 } from "lucide-react";
@@ -32,10 +34,12 @@ import {
   getEmergencyContacts,
   getSosSession,
   resolveSosSession,
+  rotateSosShareToken,
   updateSosLocation,
 } from "@/lib/api/sos";
 import { ApiError } from "@/lib/fetch";
 import { clearActiveSos, loadActiveSos, saveActiveSos } from "@/lib/sosSession";
+import { buildSosTrackingUrl, countActiveSosViewers } from "@/lib/sosTracking";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
 import type {
@@ -47,6 +51,7 @@ import type {
 
 const SOS_COUNTDOWN_MS = 5000;
 const LOCATION_UPDATE_MS = 12000;
+const VIEWER_REFRESH_MS = 15000;
 // SVG progress ring geometry (viewBox 160×160, r=70).
 const RING_RADIUS = 70;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -126,7 +131,12 @@ export default function SosDialog({
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [shareToken, setShareToken] = useState<string | null>(null);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [resettingShareLink, setResettingShareLink] = useState(false);
+  const [activeViewerCount, setActiveViewerCount] = useState(0);
+  const [viewerRefreshEpoch, setViewerRefreshEpoch] = useState(0);
+  const viewerRefreshGenerationRef = useRef(0);
   const [boundContacts, setBoundContacts] = useState<EmergencyContact[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
@@ -196,6 +206,9 @@ export default function SosDialog({
     countdownTimer.current = null;
     setStep("countdown");
     setSessionId(null);
+    setShareToken(null);
+    setActiveViewerCount(0);
+    viewerRefreshGenerationRef.current += 1;
     setBoundContacts([]);
     setExpanded(false);
     setTimelineExpanded(false);
@@ -226,8 +239,9 @@ export default function SosDialog({
       }
       if (response.data) {
         setSessionId(response.data.sessionId);
-        // Persist so a reload can recover this active session.
-        saveActiveSos(response.data.sessionId);
+        setShareToken(response.data.shareToken);
+        // Persist so a reload can recover this active session and its share link.
+        saveActiveSos(response.data.sessionId, response.data.shareToken);
       }
     } catch (err) {
       if (openRef.current) {
@@ -309,6 +323,44 @@ export default function SosDialog({
     }
   }, [step, snapshot?.status]);
 
+  // Public tracking reads do not emit owner SSE events. Refresh the owner
+  // snapshot separately so the displayed viewer count reflects new readers
+  // and naturally ages out at viewerActiveWindowSeconds.
+  useEffect(() => {
+    if (step !== "active" || !sessionId) {
+      setActiveViewerCount(0);
+      return;
+    }
+    const generation = viewerRefreshEpoch;
+    viewerRefreshGenerationRef.current = generation;
+    let disposed = false;
+
+    const refreshViewerCount = async () => {
+      try {
+        const response = await getSosSession(sessionId);
+        if (
+          !disposed &&
+          viewerRefreshGenerationRef.current === generation &&
+          response.data
+        ) {
+          setActiveViewerCount(
+            countActiveSosViewers(response.data, Date.now()),
+          );
+        }
+      } catch {
+        // Keep the last known count; the lifecycle channel still handles the
+        // safety-critical SOS state independently.
+      }
+    };
+
+    void refreshViewerCount();
+    const interval = window.setInterval(refreshViewerCount, VIEWER_REFRESH_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [step, sessionId, viewerRefreshEpoch]);
+
   // Clear the persisted session whenever the SOS ends, so a later reload
   // doesn't try to recover a finished event.
   useEffect(() => {
@@ -321,16 +373,17 @@ export default function SosDialog({
   useEffect(() => {
     if (recoveryTriedRef.current || open || !authToken) return;
     recoveryTriedRef.current = true;
-    const storedId = loadActiveSos();
-    if (!storedId) return;
+    const stored = loadActiveSos();
+    if (!stored) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await getSosSession(storedId);
+        const res = await getSosSession(stored.sessionId);
         if (cancelled) return;
         if (res.data?.status === "active") {
           skipCountdownRef.current = true;
-          setSessionId(storedId);
+          setSessionId(stored.sessionId);
+          setShareToken(stored.shareToken);
           setStep("active");
           onOpenChange(true);
         } else if (res.data?.status === "resolved") {
@@ -371,10 +424,10 @@ export default function SosDialog({
     return () => controller.abort();
   }, [step, userLocation, i18n.language]);
 
-  const shareUrl = sessionId
-    ? `${window.location.origin}/${i18n.language}?sos=${sessionId}`
+  const shareUrl = shareToken
+    ? buildSosTrackingUrl(window.location.origin, i18n.language, shareToken)
     : "";
-  const sosMessage = `${t("sosShareText", { address: address ?? t("myLocation") })} ${shareUrl}`;
+  const sosMessage = `${t("sosShareText", { address: address ?? t("myLocation") })}${shareUrl ? ` ${shareUrl}` : ""}`;
   const boundContactNames = boundContacts
     .filter((c) => c.bindStatus === "bound")
     .map((c) => c.name);
@@ -391,6 +444,35 @@ export default function SosDialog({
     : ackCount > 0
       ? t("sosAckCount", { count: ackCount })
       : t("sosContinuousSharing");
+
+  const handleResetShareLink = async () => {
+    if (
+      !sessionId ||
+      resettingShareLink ||
+      !window.confirm(t("sosResetShareConfirm"))
+    ) {
+      return;
+    }
+    setResettingShareLink(true);
+    try {
+      const response = await rotateSosShareToken(sessionId);
+      if (!response.data || response.data.sessionId !== sessionId) {
+        throw new Error("Invalid share-token response");
+      }
+      // The backend clears viewers when rotating. Invalidate any in-flight
+      // pre-rotation refresh before showing the new link.
+      viewerRefreshGenerationRef.current += 1;
+      setViewerRefreshEpoch((current) => current + 1);
+      setActiveViewerCount(0);
+      setShareToken(response.data.shareToken);
+      saveActiveSos(sessionId, response.data.shareToken);
+      toast.success(t("sosResetShareSuccess"));
+    } catch {
+      toast.error(t("sosResetShareFailed"));
+    } finally {
+      setResettingShareLink(false);
+    }
+  };
 
   // When in active state, render as non-modal floating card
   if (open && step === "active" && sessionId) {
@@ -533,12 +615,36 @@ export default function SosDialog({
                 </div>
 
                 {/* Share */}
-                <div className="space-y-1.5">
+                <div className="space-y-2">
+                  <p
+                    className="text-xs font-medium text-muted-foreground flex items-center gap-1"
+                    aria-live="polite"
+                  >
+                    <Eye className="h-3 w-3" />
+                    {t("sosViewerCount", { count: activeViewerCount })}
+                  </p>
                   <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
                     <Share2 className="h-3 w-3" />
                     {t("sosManualShareLabel")}
                   </p>
                   <ShareTargets message={sosMessage} />
+                  <div className="flex items-start gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={resettingShareLink}
+                      onClick={handleResetShareLink}
+                      className="shrink-0 rounded-xl min-h-11 gap-1.5 text-xs"
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${resettingShareLink ? "animate-spin" : ""}`}
+                      />
+                      {t("sosResetShareLink")}
+                    </Button>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {t("sosResetShareWarning")}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Event timeline — collapsed by default to keep the card

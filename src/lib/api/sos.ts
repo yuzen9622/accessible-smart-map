@@ -7,6 +7,7 @@ import type {
   CreateSosSessionResult,
   EmergencyContact,
   ResolveSosSessionResult,
+  RotateSosShareTokenResult,
   SosPublicSession,
   SosSnapshot,
 } from "@/types/sos";
@@ -61,6 +62,14 @@ export async function resolveSosSession(sessionId: string) {
     { method: "PATCH" },
   );
   return response as ApiResponse<ResolveSosSessionResult>;
+}
+
+export async function rotateSosShareToken(sessionId: string) {
+  const response = await authenticatedRequest(
+    `${SOS_BASE}/${encodeURIComponent(sessionId)}/share-token`,
+    { method: "POST" },
+  );
+  return response as ApiResponse<RotateSosShareTokenResult>;
 }
 
 // Owner-only full lifecycle snapshot — used for the victim's initial load

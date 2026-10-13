@@ -35,13 +35,20 @@ export interface ResolveSosSessionResult {
   status: "resolved";
 }
 
+export interface RotateSosShareTokenResult {
+  sessionId: string;
+  shareToken: string;
+}
+
 export interface SosPublicSession {
   type: SosType;
   status: SosStatus;
-  lat: number;
-  lng: number;
-  address: string | null;
-  updatedAt: string;
+  /** Resolved public responses intentionally omit all location fields. */
+  lat?: number;
+  lng?: number;
+  address?: string | null;
+  updatedAt?: string;
+  resolvedAt?: string | null;
   /** Family handling progress; never carries contact names. Older servers omit it. */
   handlingStatus?: HandlingStatus | "pending";
 }
@@ -99,6 +106,10 @@ export interface SosSnapshot {
     address: string | null;
     updatedAt: string;
   } | null;
+  /** Anonymous public-link readers; older servers omit viewer fields. */
+  viewers?: { firstSeenAt: string; lastSeenAt: string }[];
+  activeViewerCount?: number;
+  viewerActiveWindowSeconds?: number;
   resolvedAt: string | null;
   updatedAt: string;
 }

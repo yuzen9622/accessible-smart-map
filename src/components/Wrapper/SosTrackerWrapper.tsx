@@ -26,10 +26,16 @@ import useComputeRoute from "@/hook/useComputeRoute";
 import { useAppTranslation } from "@/i18n/client";
 import { getPublicSosSession } from "@/lib/api/sos";
 import { ApiError } from "@/lib/fetch";
+import {
+  isTrackableSosSession,
+  readSosTrackingToken,
+  type TrackableSosSession,
+} from "@/lib/sosTracking";
 import useMapStore from "@/stores/useMapStore";
-import type { HandlingStatus, SosPublicSession, SosType } from "@/types/sos";
+import type { HandlingStatus, SosType } from "@/types/sos";
 
 const POLL_MS = 10000;
+const RATE_LIMIT_RETRY_MS = 30000;
 
 type Phase =
   | "none"
@@ -94,38 +100,47 @@ export default function SosTrackerWrapper() {
   );
   const { handleComputeRoute } = useComputeRoute();
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [session, setSession] = useState<SosPublicSession | null>(null);
+  const [session, setSession] = useState<TrackableSosSession | null>(null);
   const [phase, setPhase] = useState<Phase>("none");
   const [hasCentered, setHasCentered] = useState(false);
   const [showResolvedDialog, setShowResolvedDialog] = useState(false);
   const [resolvedMessage, setResolvedMessage] = useState("");
 
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Parse sessionId from URL query param
+  // Prefer the fragment so the share token never reaches servers or Referer.
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const urlParams = new URLSearchParams(window.location.search);
-      const sos = urlParams.get("sos");
-      if (sos) {
-        setSessionId(sos);
-        setPhase("loading");
-      }
+    const token = readSosTrackingToken(window.location, ["sos", "token"]);
+    if (token) {
+      setSessionId(token);
+      setHasCentered(false);
+      setPhase("loading");
     }
   }, []);
 
   const stopPolling = useCallback(() => {
     if (pollTimer.current) {
-      clearInterval(pollTimer.current);
+      clearTimeout(pollTimer.current);
       pollTimer.current = null;
     }
   }, []);
 
   const cleanUrl = useCallback(() => {
-    if (typeof window !== "undefined") {
+    try {
       const url = new URL(window.location.href);
       url.searchParams.delete("sos");
-      window.history.replaceState({}, "", url.pathname + url.search);
+      url.searchParams.delete("token");
+      const fragment = new URLSearchParams(url.hash.replace(/^#/, ""));
+      fragment.delete("token");
+      const remainingFragment = fragment.toString();
+      url.hash = remainingFragment ? `#${remainingFragment}` : "";
+      window.history.replaceState(
+        {},
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    } catch {
+      window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
@@ -144,41 +159,58 @@ export default function SosTrackerWrapper() {
 
   useEffect(() => {
     if (!sessionId) return;
+    let disposed = false;
 
     const tick = async () => {
+      let keepPolling = true;
+      let nextDelay = POLL_MS;
       try {
         const res = await getPublicSosSession(sessionId);
         if (!res.data) return;
 
-        setSession(res.data);
-
+        // Resolved responses intentionally have no coordinates. Handle them
+        // before storing anything that can drive map movement.
         if (res.data.status === "resolved") {
+          keepPolling = false;
           handleResolveState("sosTrackingResolved");
-        } else {
-          setPhase("active");
+          return;
         }
+        if (!isTrackableSosSession(res.data)) {
+          setPhase((prev) => (prev === "loading" ? "error" : prev));
+          return;
+        }
+
+        setSession(res.data);
+        setPhase("active");
       } catch (err) {
         if (err instanceof ApiError) {
           if (err.code === 404) {
+            keepPolling = false;
             handleResolveState("sosTrackingNotFound");
             return;
           }
           if (err.code === 410) {
+            keepPolling = false;
             handleResolveState("sosTrackingExpired");
             return;
           }
+          if (err.code === 429) {
+            nextDelay = RATE_LIMIT_RETRY_MS;
+            return;
+          }
         }
-        setPhase((prev) => {
-          if (prev === "loading") return "error";
-          return prev;
-        });
+        setPhase((prev) => (prev === "loading" ? "error" : prev));
+      } finally {
+        if (!disposed && keepPolling) {
+          pollTimer.current = setTimeout(tick, nextDelay);
+        }
       }
     };
 
-    tick();
-    pollTimer.current = setInterval(tick, POLL_MS);
+    void tick();
 
     return () => {
+      disposed = true;
       stopPolling();
     };
   }, [sessionId, handleResolveState, stopPolling]);

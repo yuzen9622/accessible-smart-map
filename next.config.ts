@@ -17,6 +17,13 @@ const nextConfig: NextConfig = {
               source: "/.well-known/apple-app-site-association",
               headers: [{ key: "Content-Type", value: "application/json" }],
             },
+            {
+              source: "/:lng(zh-TW|en)/sos/:path*",
+              headers: [
+                { key: "Referrer-Policy", value: "no-referrer" },
+                { key: "X-Robots-Tag", value: "noindex, nofollow" },
+              ],
+            },
           ];
         },
       }),

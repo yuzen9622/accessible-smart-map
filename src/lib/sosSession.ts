@@ -1,11 +1,11 @@
 /**
- * Persist the victim's own active SOS session id across page reloads.
+ * Persist the victim's own active SOS session across page reloads.
  *
  * The SOS lifecycle otherwise lives entirely in `SosDialog` component state,
  * so a refresh (or an accidental navigation) would silently drop an active
- * emergency. We stash only the session id here and re-validate it against
- * `GET /sessions/:id` on boot — the server remains the source of truth for
- * whether the session is still active.
+ * emergency. The session id is always re-validated against `GET /sessions/:id`;
+ * the opaque share token is retained only so the owner can keep sharing the
+ * same public link after a reload.
  */
 
 const KEY = "sos.activeSession";
@@ -13,22 +13,26 @@ const KEY = "sos.activeSession";
 // would likely have expired it anyway.
 const MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12h
 
-interface StoredSos {
+export interface StoredSos {
   sessionId: string;
+  shareToken: string | null;
   savedAt: number;
 }
 
-export function saveActiveSos(sessionId: string): void {
+export function saveActiveSos(
+  sessionId: string,
+  shareToken: string | null,
+): void {
   if (typeof window === "undefined") return;
   try {
-    const payload: StoredSos = { sessionId, savedAt: Date.now() };
+    const payload: StoredSos = { sessionId, shareToken, savedAt: Date.now() };
     localStorage.setItem(KEY, JSON.stringify(payload));
   } catch {
     // storage unavailable (private mode / quota) — recovery just won't work
   }
 }
 
-export function loadActiveSos(): string | null {
+export function loadActiveSos(): StoredSos | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(KEY);
@@ -39,7 +43,12 @@ export function loadActiveSos(): string | null {
       localStorage.removeItem(KEY);
       return null;
     }
-    return parsed.sessionId;
+    return {
+      sessionId: parsed.sessionId,
+      shareToken:
+        typeof parsed.shareToken === "string" ? parsed.shareToken : null,
+      savedAt: parsed.savedAt ?? 0,
+    };
   } catch {
     return null;
   }
