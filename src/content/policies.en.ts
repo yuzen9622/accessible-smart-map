@@ -140,7 +140,9 @@ export const privacyPolicyEn: Policy = {
         ],
       },
       items: [
-        "Anyone holding a valid SOS tracking link may be able to view location and related information without signing in. Share it only with people you trust; recipients may forward it. Under the current design, tracking information remains viewable for 24 hours after an SOS is resolved, after which the link expires. Link expiry does not mean the backend record has been deleted.",
+        "Anyone holding a valid SOS tracking link may view location and related information while the SOS is active without signing in. Share it only with people you trust; recipients may forward it. Once the SOS ends, the public link no longer provides location. It may return only the ended status for up to 24 hours, after which it expires. Link expiry does not mean the backend record has been deleted.",
+        "The person who started an active SOS can reset its sharing link. Resetting immediately invalidates the old link, including links already sent to family through LINE; the new link must be shared again with anyone who still needs access.",
+        "To estimate how many devices are currently viewing for the SOS sender, the Service uses a server-held secret key to hash each reader's combined IP address and User-Agent (UA), then records first- and last-seen times. This identifier is used only to deduplicate devices within the same SOS event. Raw IP/UA values are not stored in SOS viewer records, and devices are not tracked across SOS events.",
         "Photos, descriptions and reviews may identify people, license plates, addresses or other information. Avoid submitting unnecessary personal data. Others may copy or cache public content.",
         "Where permitted by applicable law and necessary, data may be provided to competent authorities or relevant parties to meet legal obligations, respond to lawful requests, handle infringement or protect personal and service safety.",
       ],
@@ -178,7 +180,7 @@ export const privacyPolicyEn: Policy = {
           ],
           [
             "SOS location and events",
-            "The entire event and its location are deleted within 30 days after resolution. An active SOS with no location update for more than 24 hours is automatically resolved, recorded as a system resolution, and contacts are notified; failed notifications are retried. Automatic resolution does not confirm personal safety. Sharing links expire 24 hours after resolution; link expiry and record deletion are separate events.",
+            "The entire event and its location are deleted within 30 days after resolution. An active SOS with no location update for more than 24 hours is automatically resolved, recorded as a system resolution, and contacts are notified; failed notifications are retried. Automatic resolution does not confirm personal safety. After resolution, a sharing link immediately stops providing location, may return only the ended status for up to 24 hours, and then expires. Link expiry and record deletion are separate events.",
           ],
           [
             "Contact locations shared through LINE",
