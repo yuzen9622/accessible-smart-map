@@ -2,6 +2,7 @@
 
 import { Bookmark, MapPin, Navigation, Tag, Trash2, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import {
   DropdownMenu,
@@ -11,7 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppTranslation } from "@/i18n/client";
+import { refreshVenuePlace } from "@/lib/indoor/catalog";
 import { cn } from "@/lib/utils";
+import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore, {
   placeKey,
   SAVED_PLACE_CATEGORIES,
@@ -156,6 +159,19 @@ export default function SavedPlacesPanel({
 
   const handleNavigate = useCallback(
     (item: PlaceDetail) => {
+      if (item.kind === "venue-place") {
+        const catalog = useIndoorCatalog.getState();
+        const current = refreshVenuePlace(catalog.models, item);
+        if (!current) {
+          toast.error("此校園地點的資料已更新或尚未載入，請重新搜尋。");
+          return;
+        }
+        setSearchPlace(current);
+        setInfoShow({ ...current, isOpen: true });
+        catalog.previewPlace(current);
+        setSheetMode("place");
+        return;
+      }
       setSearchPlace(item);
       if (item.kind === "place") {
         setInfoShow({ isOpen: true, kind: "place", place: item.place });

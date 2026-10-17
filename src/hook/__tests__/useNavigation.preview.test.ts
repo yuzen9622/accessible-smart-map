@@ -54,12 +54,15 @@ vi.mock("../useRouteReroute", () => ({
 }));
 vi.mock("@/lib/api/a11y", () => ({ getRouteInstructions: vi.fn() }));
 
+import { localToLngLat } from "@/lib/indoor/coordinates";
+import type { VenueJourney } from "@/lib/indoor/journey";
 import {
   newTransitRide,
   sampleBoarding,
 } from "@/lib/navigation/transitRideRuntime";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
+import type { VenuePlaceDetail } from "@/types";
 import type { AccessibleRoute, NavInstruction } from "@/types/route";
 import useNavigation from "../useNavigation";
 
@@ -112,11 +115,234 @@ beforeEach(() => {
     activeNavigationRoute: route,
     isNavigating: true,
     userLocation: null,
+    venueJourney: null,
   });
   useNavStore.getState().setNavigationIdentity("n", 1);
   useNavStore.getState().setInstructions(steps);
   h.reroute.mockClear();
   h.clear.mockClear();
+});
+
+describe("mixed venue final walking arrival", () => {
+  const origin: [number, number] = [10, 10];
+  const coordinates = (
+    [
+      [0, -6],
+      [15, -6],
+      [15, 0],
+      [0, 0],
+    ] as [number, number][]
+  ).map((point) => localToLngLat(point, origin));
+  const walking: AccessibleRoute = {
+    routeId: "tail",
+    routeToken: "tail-token",
+    navigationId: "tail-nav",
+    routeVersion: 1,
+    routeName: "Gate walk",
+    totalMinutes: 1,
+    transferCount: 0,
+    accessibilityHighlights: [],
+    legs: [
+      {
+        type: "WALK",
+        from: "Parking",
+        to: "Gate",
+        distanceM: 36,
+        minutesEst: 1,
+        a11yFacilities: [],
+        polyline: coordinates,
+      },
+    ],
+  };
+  const gate: VenuePlaceDetail = {
+    kind: "venue-place",
+    name: "Gate",
+    address: "Gate",
+    venueId: "campus",
+    buildingId: null,
+    buildingName: "Campus",
+    levelRef: null,
+    placeId: "gate",
+    sourceVersion: "v1",
+    dataSource: "local",
+    arrivalKind: "place",
+    position: { lat: 10, lng: 10 },
+  };
+  function install(phase: "travel" | "approach" = "approach", vehicle = false) {
+    const active: AccessibleRoute = vehicle
+      ? {
+          ...walking,
+          routeId: "primary",
+          routeToken: "primary-token",
+          navigationId: "primary-nav",
+          legs: [
+            {
+              type: "DRIVE",
+              from: "Street",
+              to: "Parking",
+              distanceM: 36,
+              durationMin: 1,
+              polyline: coordinates,
+            },
+          ],
+        }
+      : walking;
+    const journey: VenueJourney = {
+      id: "journey",
+      venueId: "campus",
+      buildingId: "hall",
+      sourceVersion: "v1",
+      from: gate,
+      to: {
+        ...gate,
+        name: "Room",
+        placeId: "room",
+        buildingId: "hall",
+        levelRef: "1F",
+        arrivalKind: "corridor",
+      },
+      mode: "normal",
+      verticalPreference: "auto",
+      route: {
+        ok: true,
+        fromPlaceId: "gate",
+        toPlaceId: "room",
+        points: [
+          [0, 0, 0],
+          [5, 0, 0],
+        ],
+        kinds: ["footway"],
+        steps: [],
+        distanceM: 5,
+        animationSafe: false,
+        warnings: [],
+        edgeIds: ["entry"],
+      },
+      preview: { progress: 0, playing: false, direction: 1 },
+      guidance: { status: "outdoor", stepIndex: 0 },
+      outdoor: {
+        origin: {
+          kind: "coordinate",
+          address: "Start",
+          position: { lat: 10, lng: 9.99 },
+        },
+        routes: [active],
+        selectedIndex: 0,
+        arrival: gate,
+        phase,
+        ...(vehicle ? { approachRoutes: { "primary-token": walking } } : {}),
+      },
+    };
+    useMapStore.setState({
+      venueJourney: journey,
+      activeNavigationRoute: active,
+    });
+    useNavStore
+      .getState()
+      .setNavigationIdentity(active.navigationId ?? null, 1);
+    useNavStore.getState().setInstructions(
+      coordinates.map((_, index) => ({
+        ...steps[0],
+        type: index === 0 ? "depart" : index === 3 ? "arrive" : "turn",
+        text: index === 3 ? "Gate" : "Continue on the planned path",
+        legType: vehicle ? "DRIVE" : "WALK",
+        polylineIndex: index,
+      })),
+    );
+    return { active, journey };
+  }
+  const atStart = () => ({ lng: coordinates[0][0], lat: coordinates[0][1] });
+  it.each(["travel", "approach"] as const)(
+    "keeps the 36-metre walk active in %s phase despite a six-metre straight-line gate distance",
+    (phase) => {
+      install(phase);
+      frame(atStart());
+      expect(useNavStore.getState().arrived).toBe(false);
+      expect(useNavStore.getState().remainingM).toBeCloseTo(36, 1);
+      expect(
+        useNavStore.getState().instructions[
+          useNavStore.getState().currentStepIndex
+        ].type,
+      ).toBe("turn");
+    },
+  );
+  it("marks actual final five-metre walking progress as near the gate", () => {
+    install();
+    const [lng, lat] = localToLngLat([5, 0], origin);
+    frame({ lat, lng });
+    expect(useNavStore.getState().arrived).toBe(true);
+  });
+  it("preserves ordinary outdoor arrival behavior", () => {
+    install();
+    useMapStore.setState({ venueJourney: null });
+    frame(atStart());
+    expect(useNavStore.getState().arrived).toBe(true);
+  });
+  it("preserves vehicle-primary arrival at the drop-off point before its walking tail starts", () => {
+    install("travel", true);
+    frame(atStart());
+    expect(useNavStore.getState().arrived).toBe(true);
+  });
+  it("does not arrive early on a walking primary that has a separate tail", () => {
+    const { active, journey } = install("travel");
+    if (!journey.outdoor) throw new Error("Missing outdoor journey");
+    journey.outdoor.approachRoutes = {
+      "tail-token": {
+        ...walking,
+        routeToken: "next-walk-token",
+      },
+    };
+    useMapStore.setState({
+      venueJourney: { ...journey },
+      activeNavigationRoute: active,
+    });
+    frame(atStart());
+    expect(useNavStore.getState().arrived).toBe(false);
+    const [lng, lat] = localToLngLat([5, 0], origin);
+    frame({ lng, lat });
+    expect(useNavStore.getState().arrived).toBe(false);
+    frame(gate.position);
+    expect(useNavStore.getState().arrived).toBe(true);
+  });
+  it("keeps the walking navigation candidate's two-metre handoff radius after overview selection changes", () => {
+    const { active, journey } = install("travel");
+    if (!journey.outdoor) throw new Error("Missing outdoor journey");
+    journey.outdoor.routes = [
+      active,
+      { ...walking, routeToken: "overview-token" },
+    ];
+    journey.outdoor.navigationIndex = 0;
+    journey.outdoor.selectedIndex = 1;
+    journey.outdoor.approachRoutes = {
+      "tail-token": {
+        ...walking,
+        routeToken: "next-walk-token",
+      },
+    };
+    useMapStore.setState({ venueJourney: { ...journey } });
+    const [lng, lat] = localToLngLat([5, 0], origin);
+    frame({ lng, lat });
+    expect(useNavStore.getState().arrived).toBe(false);
+    frame(gate.position);
+    expect(useNavStore.getState().arrived).toBe(true);
+  });
+  it("keeps the vehicle navigation candidate's drop-off arrival after overview selection changes", () => {
+    const { active, journey } = install("travel", true);
+    if (!journey.outdoor) throw new Error("Missing outdoor journey");
+    journey.outdoor.routes = [active, walking];
+    journey.outdoor.navigationIndex = 0;
+    journey.outdoor.selectedIndex = 1;
+    useMapStore.setState({ venueJourney: { ...journey } });
+    frame(atStart());
+    expect(useNavStore.getState().arrived).toBe(true);
+  });
+  it("clears an obsolete early arrival flag when the current walking path still has a detour", () => {
+    install();
+    useNavStore.getState().setArrived(true);
+    frame(atStart());
+    expect(useNavStore.getState().arrived).toBe(false);
+    expect(useNavStore.getState().remainingM).toBeCloseTo(36, 1);
+  });
 });
 afterEach(() => {
   cleanup?.();

@@ -23,7 +23,7 @@ import useQuickActionsStore from "@/stores/useQuickActionsStore";
 // panel / side rail / onboarding card behind them made no sense and visually
 // overlapped, since the map app underneath was never actually initialized
 // for this visit (no location, no session context to speak of yet).
-const BARE_ROUTE_SEGMENTS = ["reset-password"];
+const BARE_ROUTE_SEGMENTS = ["reset-password", "indoor"];
 
 function isBareRoute(pathname: string) {
   // pathname is like "/zh-TW/reset-password" — segment [1] is the locale,

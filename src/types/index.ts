@@ -70,7 +70,34 @@ type Base = {
   position: LatLng;
 };
 
-export type PlaceDetail = (PlaceType | CoordinateType) & Base;
+/** A campus endpoint keeps its graph identity, even when floors overlap on a map. */
+export type VenuePlaceDetail = Base & {
+  kind: "venue-place";
+  address: string;
+  name: string;
+  venueId: string;
+  buildingId: string | null;
+  buildingName: string;
+  levelRef: string | null;
+  placeId: string;
+  sourceVersion: string;
+  dataSource: "local" | "api";
+  arrivalKind: "door" | "corridor" | "place";
+};
+
+export type PlaceDetail =
+  | ((PlaceType | CoordinateType) & Base)
+  | VenuePlaceDetail;
+
+export type VenueFeatureDetail = Base & {
+  kind: "venue-feature";
+  venueId: string;
+  buildingId: string;
+  featureId: string;
+  name: string;
+  address: string;
+  levelRef: string | null;
+};
 
 // --- AiResultMarker: AI 工具結果在地圖/聊天卡片上的可點標記 ---
 export type AiResultMarker = {
@@ -87,6 +114,8 @@ export type AiResultMarker = {
 export type InfoShow =
   | (PlaceType & { isOpen: boolean })
   | (CoordinateType & { isOpen: boolean; position?: LatLng })
+  | (VenuePlaceDetail & { isOpen: boolean })
+  | (VenueFeatureDetail & { isOpen: boolean })
   | { isOpen: boolean; kind: null };
 
 export type metroA11yData = {

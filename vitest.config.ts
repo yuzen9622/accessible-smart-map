@@ -15,6 +15,13 @@ export default defineConfig({
   oxc: {
     jsx: { runtime: "automatic" },
   },
+  // These Node unit tests import CSS modules through client components but
+  // do not test generated styles. Next's PostCSS config uses string plugin
+  // entries, whereas Vite's loader expects plugin objects. Keep the app's
+  // Tailwind pipeline intact and avoid loading it in the test runner.
+  css: {
+    postcss: { plugins: [] },
+  },
   test: {
     environment: "node",
     env: {

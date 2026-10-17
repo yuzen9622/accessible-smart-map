@@ -8,6 +8,7 @@ import { useAppTranslation } from "@/i18n/client";
 import { fitRouteBounds, routeBoundsFromLegs } from "@/lib/mapCamera";
 import { hasRouteSession, shouldShowRoutePill } from "@/lib/route/routeSession";
 import { cn } from "@/lib/utils";
+import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore from "@/stores/useMapStore";
 import useVoiceStore from "@/stores/useVoiceStore";
 
@@ -31,6 +32,7 @@ export default function RouteSessionPill() {
     selectRoute,
     destination,
     destinationName,
+    venueJourney,
     sheetMode,
     isNavigating,
     resumeRouteSession,
@@ -41,6 +43,7 @@ export default function RouteSessionPill() {
       selectRoute: s.selectRoute,
       destination: s.destination,
       destinationName: s.destinationName,
+      venueJourney: s.venueJourney,
       sheetMode: s.sheetMode,
       isNavigating: s.isNavigating,
       resumeRouteSession: s.resumeRouteSession,
@@ -58,6 +61,10 @@ export default function RouteSessionPill() {
   // can't do this itself: `mapCamera` imports the store.
   const handleResume = () => {
     resumeRouteSession();
+    if (venueJourney && !venueJourney.outdoor) {
+      useIndoorCatalog.getState().showPlace(venueJourney.from);
+      return;
+    }
     const { map } = useMapStore.getState();
     const legs = selectRoute?.route.legs;
     if (map && legs?.length) {
@@ -66,7 +73,12 @@ export default function RouteSessionPill() {
   };
 
   const visible = shouldShowRoutePill({
-    hasSession: hasRouteSession({ computeRoutes, selectRoute, destination }),
+    hasSession: hasRouteSession({
+      computeRoutes,
+      selectRoute,
+      destination,
+      venueJourney,
+    }),
     sheetMode,
     isNavigating,
     chatOpen,

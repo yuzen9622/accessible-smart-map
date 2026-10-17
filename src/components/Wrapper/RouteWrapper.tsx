@@ -202,13 +202,32 @@ function getLegIcon(leg: RouteLeg) {
 }
 
 export default function RouteLine() {
-  const { selectRoute, routeWaypoints, sosNavActive } = useMapStore(
+  const {
+    selectRoute,
+    routeWaypoints,
+    sosNavActive,
+    isNavigating,
+    activeNavigationRoute,
+    venueJourney,
+  } = useMapStore(
     useShallow((s) => ({
       selectRoute: s.selectRoute,
       routeWaypoints: s.routeWaypoints,
       sosNavActive: s.sosNavActive,
+      isNavigating: s.isNavigating,
+      activeNavigationRoute: s.activeNavigationRoute,
+      venueJourney: s.venueJourney,
     })),
   );
+  const displayedRoute =
+    isNavigating && activeNavigationRoute
+      ? activeNavigationRoute
+      : selectRoute?.route;
+  const selectedToken = selectRoute?.route.routeToken;
+  const approachOverview =
+    !isNavigating && venueJourney?.guidance.status === "idle" && selectedToken
+      ? venueJourney.outdoor?.approachRoutes?.[selectedToken]
+      : undefined;
 
   const waypointMarkers = useMemo(() => {
     if (!routeWaypoints.length) return null;
@@ -233,9 +252,9 @@ export default function RouteLine() {
   }, [routeWaypoints]);
 
   const polylinesElement = useMemo(() => {
-    if (!selectRoute?.route) return null;
+    if (!displayedRoute) return null;
 
-    const route = selectRoute.route;
+    const route = displayedRoute;
     const markers: JSX.Element[] = [];
     let lastLegType: string | null = null;
 
@@ -260,7 +279,12 @@ export default function RouteLine() {
             anchor="center"
           >
             {/* Origin: hollow ring, same emerald as the plan-panel origin dot */}
-            <div className="h-4.5 w-4.5 rounded-full bg-white dark:bg-zinc-900 border-[3.5px] border-emerald-500 shadow-[0_1px_4px_rgba(0,0,0,0.35)]" />
+            <div
+              role="img"
+              aria-label="路線起點"
+              title="路線起點"
+              className="h-4.5 w-4.5 rounded-full bg-white dark:bg-zinc-900 border-[3.5px] border-emerald-500 shadow-[0_1px_4px_rgba(0,0,0,0.35)]"
+            />
           </Marker>
         )}
         {!sosNavActive && lastPath?.[lastPath.length - 1] && (
@@ -389,11 +413,40 @@ export default function RouteLine() {
         {startEndMarker}
       </div>
     );
-  }, [selectRoute?.route, sosNavActive]);
+  }, [displayedRoute, sosNavActive]);
+
+  if (
+    venueJourney?.guidance.status === "guiding" ||
+    venueJourney?.guidance.status === "arrived"
+  )
+    return null;
 
   return (
     <>
       {polylinesElement}
+      {approachOverview?.legs.map((leg) => {
+        if (leg.type !== "WALK" || leg.polyline?.length < 2) return null;
+        const id = [
+          "venue-approach",
+          approachOverview.routeId,
+          leg.polyline[0].join("-"),
+          leg.polyline.at(-1)?.join("-"),
+          leg.polyline.length,
+        ].join("-");
+        return (
+          <Polyline
+            key={id}
+            id={id}
+            path={polylineToPath(leg.polyline)}
+            strokeColor="#2563eb"
+            strokeOpacity={0.9}
+            strokeWeight={6}
+            dashArray={[2, 4]}
+            lineCap="round"
+            lineJoin="round"
+          />
+        );
+      })}
       {waypointMarkers}
     </>
   );

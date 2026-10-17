@@ -3,7 +3,7 @@ import type { AutocompleteItem, PlaceResult } from "@/types/place";
 
 const h = vi.hoisted(() => ({
   language: "zh-TW",
-  callbacks: [] as unknown[],
+  callbacks: [] as { callback: unknown; deps?: unknown[] }[],
   effects: [] as { effect: () => undefined | (() => void); deps: unknown[] }[],
   store: {} as Record<string, unknown>,
   details: vi.fn(),
@@ -20,8 +20,9 @@ vi.mock("react", async (original) => ({
     vi.fn(),
   ],
   useRef: (current: unknown) => ({ current }),
-  useCallback: (fn: unknown) => {
-    h.callbacks.push(fn);
+  useMemo: (fn: () => unknown) => fn(),
+  useCallback: (fn: unknown, deps?: unknown[]) => {
+    h.callbacks.push({ callback: fn, deps });
     return fn;
   },
   useEffect: (effect: () => undefined | (() => void), deps: unknown[]) =>
@@ -31,6 +32,10 @@ vi.mock("zustand/react/shallow", () => ({ useShallow: (s: unknown) => s }));
 vi.mock("@/stores/useMapStore", () => ({
   default: (s: (state: typeof h.store) => unknown) => s(h.store),
   placeKey: () => "id",
+}));
+vi.mock("@/stores/useIndoorCatalog", () => ({
+  default: (selector: (state: { models: never[] }) => unknown) =>
+    selector({ models: [] }),
 }));
 vi.mock("@/i18n/client", () => ({
   useAppTranslation: () => ({
@@ -111,7 +116,7 @@ function deferred() {
   return { promise, resolve };
 }
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   h.language = "zh-TW";
   h.callbacks = [];
   h.effects = [];
@@ -130,7 +135,16 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 function inputDetails() {
   PlaceInput({ onPlaceSelect: h.select });
-  return h.callbacks[0] as (item: AutocompleteItem) => Promise<void>;
+  // Identify the provider detail resolver by its request/selection owners,
+  // not its hook ordinal: venue selection has its own preceding callback.
+  const resolvers = h.callbacks.filter(
+    ({ deps }) =>
+      deps?.includes("session") &&
+      deps.includes(h.history) &&
+      deps.includes(h.select),
+  );
+  expect(resolvers).toHaveLength(1);
+  return resolvers[0].callback as (item: AutocompleteItem) => Promise<void>;
 }
 function linkDetails() {
   ClientMap();

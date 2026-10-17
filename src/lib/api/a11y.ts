@@ -59,12 +59,16 @@ export async function getNearbyRouteA11yPlaces(
   }>;
 }
 
-export async function getAccessibleRoute(request: AccessibleRouteRequest) {
+export async function getAccessibleRoute(
+  request: AccessibleRouteRequest,
+  signal?: AbortSignal,
+) {
   const response = await fetchRequest(
     `${END_POINT}/api/v1/a11y/accessible-route`,
     {
       method: "POST",
       body: request,
+      signal,
     },
   );
   const result = response as ApiResponse<AccessibleRouteData>;

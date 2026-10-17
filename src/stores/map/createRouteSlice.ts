@@ -1,7 +1,107 @@
 "use client";
+import { advanceVenueJourney } from "@/lib/indoor/journey";
 import type { MapSliceCreator, MapStore, RouteSlice } from "./types";
 
 export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
+  venueJourney: null,
+  setVenueJourney: (journey) => {
+    const outdoor = journey?.outdoor;
+    const selected = outdoor?.routes[outdoor.selectedIndex];
+    set({
+      venueJourney: journey,
+      routeGeneration: get().routeGeneration + 1,
+      activeNavigationRoute: null,
+      isNavigating: false,
+      planId: journey?.id ?? null,
+      selectedRouteId: selected?.routeId ?? journey?.id ?? null,
+      effectivePreferences: null,
+      aiRouteMetadata: null,
+      computeRoutes: outdoor?.routes ?? null,
+      selectRoute: selected
+        ? { index: outdoor?.selectedIndex ?? 0, route: selected }
+        : null,
+      routeWaypoints: [],
+      metroAlerts: null,
+      transitAlerts: null,
+      activeBusLeg: null,
+      liveBusPositions: [],
+      routeInfoShow: Boolean(journey),
+      ...(journey
+        ? {
+            origin: outdoor?.origin ?? journey.from,
+            destination: journey.to,
+            originName: outdoor
+              ? outdoor.origin.kind === "place"
+                ? outdoor.origin.place.name
+                : outdoor.origin.address
+              : journey.from.name,
+            destinationName: journey.to.name,
+            sheetMode: "route" as const,
+            routeSubPanel: "none" as const,
+            indoorPanelOpen: false,
+            sidebarCollapsed: false,
+            chatOpen: false,
+          }
+        : {}),
+    });
+  },
+  setVenueJourneyPreview: (patch) => {
+    const journey = get().venueJourney;
+    if (journey?.guidance.status !== "idle") return;
+    const progress = patch.progress ?? journey.preview.progress;
+    if (!Number.isFinite(progress)) return;
+    set({
+      venueJourney: {
+        ...journey,
+        preview: {
+          ...journey.preview,
+          ...patch,
+          progress: Math.max(0, Math.min(1, progress)),
+          playing: journey.route.animationSafe
+            ? (patch.playing ?? journey.preview.playing)
+            : false,
+        },
+      },
+    });
+  },
+  startVenueGuidance: () => {
+    const journey = get().venueJourney;
+    if (!journey) return;
+    set({
+      venueJourney: {
+        ...journey,
+        preview: { ...journey.preview, playing: false },
+        guidance: { status: "guiding", stepIndex: 0 },
+      },
+      activeNavigationRoute: null,
+    });
+  },
+  advanceVenueGuidance: () => {
+    const journey = get().venueJourney;
+    if (journey) set({ venueJourney: advanceVenueJourney(journey) });
+  },
+  stopVenueGuidance: () => {
+    const journey = get().venueJourney;
+    if (journey)
+      set({
+        venueJourney: {
+          ...journey,
+          guidance: { status: "idle", stepIndex: 0 },
+          preview: { ...journey.preview, playing: false },
+        },
+      });
+  },
+  beginVenueOutdoorNavigation: () => {
+    const journey = get().venueJourney;
+    if (journey?.outdoor)
+      set({
+        venueJourney: {
+          ...journey,
+          preview: { ...journey.preview, playing: false },
+          guidance: { status: "outdoor", stepIndex: 0 },
+        },
+      });
+  },
   activeNavigationRoute: null,
   routeGeneration: 0,
   planId: null,
@@ -20,6 +120,10 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
     );
     if (index < 0) return;
     set({
+      venueJourney: null,
+      ...(get().venueJourney
+        ? { isNavigating: false, activeNavigationRoute: null }
+        : {}),
       routeGeneration: get().routeGeneration + 1,
       planId: plan.planId,
       selectedRouteId: plan.selectedRouteId,
@@ -69,6 +173,10 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
       (route) => route === state.selectRoute?.route,
     );
     set({
+      venueJourney: null,
+      ...(state.venueJourney
+        ? { isNavigating: false, activeNavigationRoute: null }
+        : {}),
       routeGeneration: state.routeGeneration + 1,
       computeRoutes: routes,
       selectRoute:
@@ -100,7 +208,23 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
     const selected =
       route.route ?? get().computeRoutes?.[route.index ?? -1] ?? prev?.route;
     if (!selected) return;
+    const journey = get().venueJourney;
+    const journeyIndex = journey?.outdoor?.routes.indexOf(selected) ?? -1;
     const next = {
+      ...(journey
+        ? {
+            venueJourney:
+              journey.outdoor && journeyIndex >= 0
+                ? {
+                    ...journey,
+                    outdoor: {
+                      ...journey.outdoor,
+                      selectedIndex: journeyIndex,
+                    },
+                  }
+                : null,
+          }
+        : {}),
       selectedRouteId: selected.routeId,
       routeGeneration:
         get().routeGeneration + (selected === prev?.route ? 0 : 1),
@@ -139,6 +263,10 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   // place view clear those themselves.
   endRouteSession: () =>
     set({
+      venueJourney: null,
+      ...(get().venueJourney
+        ? { isNavigating: false, activeNavigationRoute: null }
+        : {}),
       routeGeneration: get().routeGeneration + 1,
       planId: null,
       selectedRouteId: null,

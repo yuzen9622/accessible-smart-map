@@ -1,5 +1,5 @@
 import { AlertTriangle, ChevronDown } from "lucide-react";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
 import { walkStreetName } from "@/lib/route/sourceNames";
@@ -83,21 +83,91 @@ function useStepText() {
   };
 }
 
+type WalkStepsProps = {
+  steps?: WalkStep[];
+  stepStreetNames?: StepStreetName[];
+  displayLanguage?: "en" | "zh-TW";
+};
+
+/** UI-only continuation; the provider route, legs and tokens stay unchanged. */
+export type WalkingContinuation = {
+  destinationName: string;
+  summary: ReactNode;
+  steps: ReactNode;
+};
+
+/** Each provider leg retains its own street-name indexes. */
+export function WalkStepItems({
+  steps = [],
+  stepStreetNames,
+  displayLanguage,
+}: WalkStepsProps) {
+  const { t } = useAppTranslation();
+  const stepText = useStepText();
+  return (
+    <>
+      {steps.map((step, index) => (
+        <li
+          key={`${step.relativeDirection}-${step.streetName}-${step.distanceM}-${step.location.join(",")}`}
+          className="text-xs text-muted-foreground"
+        >
+          <span
+            className={cn(
+              step.stairs
+                ? "text-red-600 dark:text-red-400 font-medium"
+                : step.steepSlope
+                  ? "text-amber-600 dark:text-amber-400 font-medium"
+                  : "text-foreground",
+            )}
+          >
+            {stepText(
+              step,
+              walkStreetName(
+                steps,
+                index,
+                stepStreetNames,
+                getAppLanguage(),
+                displayLanguage,
+              ),
+            )}
+          </span>
+          {step.stairs && (
+            <>
+              {" · "}
+              <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400 font-medium">
+                <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+                {t("walkStepStairsWarning")}
+              </span>
+            </>
+          )}
+          {step.steepSlope && (
+            <>
+              {" · "}
+              <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-medium">
+                <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+                {t("walkStepSteepSlopeWarning")}
+              </span>
+            </>
+          )}
+          {" · "}
+          {formatDistance(step.distanceM)}
+        </li>
+      ))}
+    </>
+  );
+}
+
 export function WalkStepsList({
   steps,
   stepStreetNames,
   displayLanguage,
-}: {
-  steps?: WalkStep[];
-  stepStreetNames?: StepStreetName[];
-  displayLanguage?: "en" | "zh-TW";
-}) {
+  continuation,
+}: WalkStepsProps & { continuation?: ReactNode }) {
   const { t } = useAppTranslation();
-  const stepText = useStepText();
   const [isOpen, setIsOpen] = useState(false);
   const listId = useId();
 
-  if (!steps || steps.length === 0) return null;
+  if (!steps?.length && !continuation) return null;
 
   return (
     <div className="mt-1">
@@ -126,53 +196,12 @@ export function WalkStepsList({
       >
         <div className="overflow-hidden">
           <ul className="pl-3.5 my-2 space-y-1.5 border-l border-muted-foreground/30 ml-3.5">
-            {steps.map((step, index) => (
-              <li
-                key={`${step.relativeDirection}-${step.streetName}-${step.distanceM}-${step.location.join(",")}`}
-                className="text-xs text-muted-foreground"
-              >
-                <span
-                  className={cn(
-                    step.stairs
-                      ? "text-red-600 dark:text-red-400 font-medium"
-                      : step.steepSlope
-                        ? "text-amber-600 dark:text-amber-400 font-medium"
-                        : "text-foreground",
-                  )}
-                >
-                  {stepText(
-                    step,
-                    walkStreetName(
-                      steps,
-                      index,
-                      stepStreetNames,
-                      getAppLanguage(),
-                      displayLanguage,
-                    ),
-                  )}
-                </span>
-                {step.stairs && (
-                  <>
-                    {" · "}
-                    <span className="inline-flex items-center gap-0.5 text-red-600 dark:text-red-400 font-medium">
-                      <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
-                      {t("walkStepStairsWarning")}
-                    </span>
-                  </>
-                )}
-                {step.steepSlope && (
-                  <>
-                    {" · "}
-                    <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-medium">
-                      <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
-                      {t("walkStepSteepSlopeWarning")}
-                    </span>
-                  </>
-                )}
-                {" · "}
-                {formatDistance(step.distanceM)}
-              </li>
-            ))}
+            <WalkStepItems
+              steps={steps}
+              stepStreetNames={stepStreetNames}
+              displayLanguage={displayLanguage}
+            />
+            {continuation}
           </ul>
         </div>
       </div>

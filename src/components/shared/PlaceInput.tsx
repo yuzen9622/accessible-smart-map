@@ -24,17 +24,19 @@ import {
   Utensils,
 } from "lucide-react";
 import type { InputHTMLAttributes } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import useIsDesktop from "@/hook/useIsDesktop";
 import usePlacePredictions from "@/hook/usePlacePredictions";
 import { useAppTranslation } from "@/i18n/client";
 import { getPlaceAutocomplete, getPlaceDetails } from "@/lib/api/placeSearch";
+import { refreshVenuePlace, searchVenuePlaces } from "@/lib/indoor/catalog";
 import { toApiLang } from "@/lib/place/lang";
 import { cn } from "@/lib/utils";
+import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore, { placeKey } from "@/stores/useMapStore";
-import type { PlaceDetail } from "@/types";
+import type { PlaceDetail, VenuePlaceDetail } from "@/types";
 import type { AutocompleteItem, PlaceResult } from "@/types/place";
 import { formatDistance } from "@/types/route";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
@@ -178,6 +180,12 @@ function PlaceInput({
   const lang = toApiLang(i18n.language);
   const isDesktop = useIsDesktop();
   const [open, setOpen] = useState(false);
+  const models = useIndoorCatalog((state) => state.models);
+  const query = (value as string) ?? "";
+  const venueSuggestions = useMemo(
+    () => searchVenuePlaces(models, query).slice(0, 12),
+    [models, query],
+  );
   const {
     searchHistory,
     addSearchHistory,
@@ -196,6 +204,21 @@ function PlaceInput({
   const { suggestions, loading, sessionToken, resetSession } =
     usePlacePredictions((value as string) || "");
   const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const handleVenueSelect = useCallback(
+    (place: VenuePlaceDetail) => {
+      const current = refreshVenuePlace(models, place);
+      if (!current) {
+        toast.error("此校園地點的資料已更新或尚未載入，請重新搜尋。");
+        return;
+      }
+      addSearchHistory(current);
+      onPlaceSelect(current);
+      setOpen(false);
+      resetSession();
+    },
+    [models, addSearchHistory, onPlaceSelect, resetSession],
+  );
 
   const resolvePlace = useCallback(
     async (item: AutocompleteItem) => {
@@ -245,6 +268,17 @@ function PlaceInput({
     async (text: string) => {
       const query = text.trim();
       if (!query || pendingId) return;
+      if (venueSuggestions.length) {
+        // A room number can exist in several buildings or floors. Keep that
+        // choice visible rather than silently resolving it through geocoding.
+        if (venueSuggestions.length === 1)
+          handleVenueSelect(venueSuggestions[0]);
+        else {
+          setOpen(true);
+          toast.info("請從校園地點中選擇建築與樓層。");
+        }
+        return;
+      }
       setPendingId("submit");
       try {
         const response = await getPlaceAutocomplete({
@@ -272,6 +306,8 @@ function PlaceInput({
       i18n,
       lang,
       pendingId,
+      venueSuggestions,
+      handleVenueSelect,
       resolvePlace,
       sessionToken,
       userLocation?.lat,
@@ -316,10 +352,12 @@ function PlaceInput({
     setOpen(false);
   };
 
-  const query = (value as string) ?? "";
   // 沒有內容時不要撐出一塊空面板，否則會看到懸空的白框
   const hasPanelContent =
-    query === "" || suggestions.length > 0 || !!onSearchRequest;
+    query === "" ||
+    venueSuggestions.length > 0 ||
+    suggestions.length > 0 ||
+    !!onSearchRequest;
   const panelOpen = open && hasPanelContent;
 
   return (
@@ -349,6 +387,7 @@ function PlaceInput({
               onAiQuery &&
               !loading &&
               suggestions.length === 0 &&
+              venueSuggestions.length === 0 &&
               looksLikeAiQuery(text)
             ) {
               onAiQuery(text.trim());
@@ -434,6 +473,34 @@ function PlaceInput({
                     </span>
                   </CommandItem>
                   {searchHistory.map((history) => {
+                    if (history.kind === "venue-place") {
+                      return (
+                        <CommandItem
+                          itemType="button"
+                          key={placeKey(history)}
+                          onSelect={() => handleVenueSelect(history)}
+                          className="flex items-start gap-3 rounded-3xl p-2 cursor-pointer"
+                        >
+                          <ClockIcon
+                            size={16}
+                            className="mt-1 text-muted-foreground shrink-0"
+                          />
+                          <div className="min-w-0 text-start">
+                            <p className="font-medium truncate">
+                              {history.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {[
+                                history.buildingName,
+                                history.levelRef ?? "校園戶外",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </div>
+                        </CommandItem>
+                      );
+                    }
                     if (history.kind === "place") {
                       const { place } = history;
                       return (
@@ -468,6 +535,37 @@ function PlaceInput({
               )}
               {query !== "" && (
                 <>
+                  {venueSuggestions.length > 0 && (
+                    <CommandGroup heading="校園地點">
+                      {venueSuggestions.map((place) => (
+                        <CommandItem
+                          itemType="button"
+                          key={placeKey(place)}
+                          onSelect={() => handleVenueSelect(place)}
+                          className="flex items-start gap-3 rounded-3xl p-2 cursor-pointer"
+                        >
+                          <div className="mt-1 h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            {place.buildingId ? (
+                              <Building2 className="h-4 w-4 text-primary" />
+                            ) : (
+                              <MapPin className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                          <div className="min-w-0 text-start">
+                            <p className="font-medium truncate">{place.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {[
+                                place.buildingName,
+                                place.levelRef ?? "校園戶外",
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
                   <CommandGroup heading={t("searchResults")}>
                     {suggestions.map((suggestion) => {
                       const Icon = getPlaceIcon(
