@@ -166,15 +166,94 @@ export function assembleVenueJourney(
   };
 }
 
+function floorOrdinal(ref: string | null): number | null {
+  const above = ref?.match(/^(-?\d+)F$/i);
+  if (above) return Number(above[1]);
+  const basement = ref?.match(/^B(\d+)F?$/i);
+  return basement ? -Number(basement[1]) : null;
+}
+
+const compactVerticalKinds = new Set<IndoorRouteStep["kind"]>([
+  "steps",
+  "escalator",
+  "elevator",
+]);
+
+function verticalDirection(step: IndoorRouteStep) {
+  const from = floorOrdinal(step.fromLevel);
+  const to = floorOrdinal(step.toLevel);
+  return from === null || to === null ? 0 : Math.sign(to - from);
+}
+
+function canMergeVerticalSteps(
+  current: IndoorRouteStep,
+  next: IndoorRouteStep,
+) {
+  if (
+    current.kind !== next.kind ||
+    !compactVerticalKinds.has(current.kind) ||
+    current.endIndex !== next.startIndex ||
+    current.toLevel === null ||
+    current.toLevel !== next.fromLevel
+  )
+    return false;
+  const direction = verticalDirection(current);
+  if (direction === 0 || direction !== verticalDirection(next)) return false;
+  const currentBuilding =
+    current.toBuildingId ?? current.buildingId ?? current.fromBuildingId;
+  const nextBuilding =
+    next.fromBuildingId ?? next.buildingId ?? next.toBuildingId;
+  if (currentBuilding !== nextBuilding) return false;
+  // A different elevator or escalator can require an actual transfer. Stair
+  // spans are commonly authored one floor at a time despite being one climb.
+  return (
+    current.kind === "steps" ||
+    !current.connectionId ||
+    !next.connectionId ||
+    current.connectionId === next.connectionId
+  );
+}
+
+/** Collapse consecutive same-direction vertical spans for user-facing guidance
+ * while preserving the source route's geometry and authored step metadata. */
+export function venueJourneySteps(journey: VenueJourney): IndoorRouteStep[] {
+  const result: IndoorRouteStep[] = [];
+  for (const source of journey.route.steps) {
+    const current = result.at(-1);
+    if (!current || !canMergeVerticalSteps(current, source)) {
+      result.push({ ...source });
+      continue;
+    }
+    const sameConnection = current.connectionId === source.connectionId;
+    result[result.length - 1] = {
+      ...current,
+      toLevel: source.toLevel,
+      toBuildingId: source.toBuildingId ?? source.buildingId,
+      endIndex: source.endIndex,
+      distanceM: current.distanceM + source.distanceM,
+      durationS:
+        current.durationS === undefined && source.durationS === undefined
+          ? undefined
+          : (current.durationS ?? 0) + (source.durationS ?? 0),
+      heightPending: current.heightPending || source.heightPending,
+      instruction: undefined,
+      maneuver: undefined,
+      connectionId: sameConnection ? current.connectionId : undefined,
+    };
+  }
+  return result;
+}
+
 /** Manual confirmations never depend on selected floors or preview animation. */
 export function advanceVenueJourney(journey: VenueJourney): VenueJourney {
   if (journey.guidance.status !== "guiding") return journey;
+  const steps = venueJourneySteps(journey);
   const next = journey.guidance.stepIndex + 1;
   return {
     ...journey,
     guidance:
-      next >= journey.route.steps.length
-        ? { status: "arrived", stepIndex: journey.route.steps.length }
+      next >= steps.length
+        ? { status: "arrived", stepIndex: steps.length }
         : { status: "guiding", stepIndex: next },
   };
 }
@@ -187,7 +266,7 @@ export function venueJourneyPresentation(journey: VenueJourney): {
   if (status === "idle" || status === "outdoor" || status === "touring")
     return journey.preview;
   if (status === "arrived") return { progress: 1, direction: 1 };
-  const index = journey.route.steps[stepIndex]?.startIndex ?? 0;
+  const index = venueJourneySteps(journey)[stepIndex]?.startIndex ?? 0;
   const total = pathDistance(journey.route.points);
   const travelled = journey.route.points
     .slice(1, index + 1)
@@ -240,14 +319,8 @@ export function venueJourneyStepLabel(
       floor: step.toLevel ?? journeyText("venueDestinationFloor", t),
     });
   if (step.kind === "steps" || step.kind === "escalator") {
-    const ordinal = (ref: string | null): number | null => {
-      const above = ref?.match(/^(-?\d+)F$/i);
-      if (above) return Number(above[1]);
-      const basement = ref?.match(/^B(\d+)F?$/i);
-      return basement ? -Number(basement[1]) : null;
-    };
-    const from = ordinal(step.fromLevel),
-      to = ordinal(step.toLevel);
+    const from = floorOrdinal(step.fromLevel),
+      to = floorOrdinal(step.toLevel);
     if (from !== null && to !== null && from !== to)
       return journeyText(to > from ? "venueStepUp" : "venueStepDown", t, {
         name,
@@ -268,7 +341,8 @@ export function venueJourneyConfirmLabel(
   journey: VenueJourney,
   t?: TFunction,
 ): string {
-  const step = journey.route.steps[journey.guidance.stepIndex];
+  const steps = venueJourneySteps(journey);
+  const step = steps[journey.guidance.stepIndex];
   if (step?.fromLevel === null && step.toLevel !== null)
     return journeyText("venueConfirmEntry", t, {
       building: step.buildingName ?? journey.to.buildingName,
@@ -280,7 +354,7 @@ export function venueJourneyConfirmLabel(
     ["steps", "elevator", "escalator", "ramp"].includes(step.kind)
   )
     return journeyText("venueConfirmFloor", t, { floor: step.toLevel });
-  if (journey.guidance.stepIndex >= journey.route.steps.length - 1)
+  if (journey.guidance.stepIndex >= steps.length - 1)
     return journey.to.arrivalKind === "corridor"
       ? journeyText("venueConfirmCorridor", t)
       : journeyText("venueConfirmDestination", t);

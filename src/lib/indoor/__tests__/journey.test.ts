@@ -21,6 +21,7 @@ import {
   venueJourneyConfirmLabel,
   venueJourneyPresentation,
   venueJourneyStepLabel,
+  venueJourneySteps,
 } from "../journey";
 import { samplePath } from "../route";
 import type { IndoorRouteStep, LocalIndoorModel } from "../types";
@@ -569,6 +570,52 @@ describe("unified venue journey", () => {
       destinationName: "End",
     });
   });
+  it("collapses consecutive stair spans into one cross-floor instruction without changing source route data", () => {
+    const { journey } = setup();
+    const stair = (
+      fromLevel: string,
+      toLevel: string,
+      startIndex: number,
+      endIndex: number,
+      connectionId: string,
+    ): IndoorRouteStep => ({
+      kind: "steps",
+      name: "樓梯",
+      fromLevel,
+      toLevel,
+      distanceM: 10,
+      startIndex,
+      endIndex,
+      heightPending: false,
+      buildingId: "building-a",
+      connectionId,
+    });
+    journey.route.steps = [
+      stair("1F", "2F", 1, 2, "stairs-1"),
+      stair("2F", "3F", 2, 3, "stairs-2"),
+      stair("3F", "4F", 3, 4, "stairs-3"),
+      {
+        ...stair("4F", "4F", 4, 5, "corridor"),
+        kind: "corridor",
+        name: "4F 走廊",
+      },
+    ];
+    const before = JSON.stringify(journey.route.steps);
+    const steps = venueJourneySteps(journey);
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toMatchObject({
+      kind: "steps",
+      fromLevel: "1F",
+      toLevel: "4F",
+      startIndex: 1,
+      endIndex: 4,
+      distanceM: 30,
+    });
+    expect(steps[0].connectionId).toBeUndefined();
+    expect(venueJourneyStepLabel(steps[0])).toBe("上樓至 4F · 樓梯");
+    expect(JSON.stringify(journey.route.steps)).toBe(before);
+  });
+
   it("retains the actual outdoor origin and requires an explicit arrival confirmation before indoor guidance", () => {
     const { data, journey } = setup();
     useIndoorCatalog.getState().setModels([data]);
