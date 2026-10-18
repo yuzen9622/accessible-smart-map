@@ -49,6 +49,7 @@ export default function VenuePlaceContent({
   );
   const kind =
     feature?.displayKind ?? connection?.kind ?? feature?.kind ?? rawPlace?.kind;
+  const corridor = feature?.kind === "corridor";
   const elevator = kind === "elevator";
   const stairs = kind === "stairs" || kind === "steps";
   const stops = [...new Set(connection?.levelRefs.filter(Boolean) ?? [])];
@@ -138,12 +139,16 @@ export default function VenuePlaceContent({
       )}
       {place?.arrivalKind === "corridor" && (
         <p className="text-sm text-muted-foreground">
-          路線到達此空間前的公共走道，請依現場標示確認入口。
+          {corridor
+            ? "路線將到達所選公共走道的到達點。"
+            : "路線到達此空間前的公共走道，請依現場標示確認入口。"}
         </p>
       )}
       {!place && !elevator && (
         <p className="text-sm text-muted-foreground">
-          此空間尚無已確認的路線到達點。
+          {corridor
+            ? "此區為走廊範圍示意，尚無獨立到達點。可選擇沿線空間或設施規劃路線。"
+            : "此空間尚無已確認的路線到達點。"}
         </p>
       )}
       {place && serves && (

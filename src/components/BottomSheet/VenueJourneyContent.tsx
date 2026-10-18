@@ -16,6 +16,7 @@ import {
   type VenueJourney,
   venueJourneyConfirmLabel,
   venueJourneyStepLabel,
+  venueJourneySteps,
 } from "@/lib/indoor/journey";
 import { requiresElevatorOnly } from "@/lib/indoor/profilePolicy";
 import { isVenueTourAllowed } from "@/lib/indoor/tour";
@@ -30,6 +31,7 @@ import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type { AccessibleRoute } from "@/types/route";
+import VenueRouteSteps from "../shared/VenueRouteSteps";
 import { Button } from "../ui/button";
 
 function approachFor(journey: VenueJourney, route?: AccessibleRoute) {
@@ -150,7 +152,7 @@ export function VenueArrivalConfirmation({
   );
 }
 
-/** Route animation controls share the original navigation sheet. */
+/** Route animation stays active while the original navigation sheet is open. */
 function VenueRouteTour({ journey }: { journey: VenueJourney }) {
   const { t } = useAppTranslation();
   const models = useIndoorCatalog((state) => state.models);
@@ -160,9 +162,7 @@ function VenueRouteTour({ journey }: { journey: VenueJourney }) {
       item.building.id === journey.buildingId &&
       indoorModelVersion(item) === journey.sourceVersion,
   );
-  const { playing } = journey.preview;
   const allowed = Boolean(model && isVenueTourAllowed(journey.route));
-  const update = useMapStore.getState().setVenueJourneyPreview;
   return (
     <div
       className="space-y-3"
@@ -182,37 +182,10 @@ function VenueRouteTour({ journey }: { journey: VenueJourney }) {
           {t("venueTourUnavailable")}
         </p>
       )}
-      <Button
-        className="w-full gap-2"
-        disabled={!allowed}
-        aria-label={t(
-          playing ? "venueRouteAnimationPause" : "venueRouteAnimationPlay",
-        )}
-        onClick={() =>
-          update({ playing: !playing, following: false, direction: 1 })
-        }
-      >
-        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        {t(playing ? "venueRouteAnimationPause" : "venueRouteAnimationPlay")}
-      </Button>
       <p className="text-xs text-muted-foreground">
         {t("venueRouteManualView")}
       </p>
-      <details className="text-sm">
-        <summary className="cursor-pointer text-muted-foreground">
-          {t("venueRouteSteps")}
-        </summary>
-        <ol className="mt-2 space-y-2">
-          {journey.route.steps.map((step, index) => (
-            <li
-              key={`${step.startIndex}-${step.endIndex}-${step.kind}-${step.name}`}
-              className="text-muted-foreground"
-            >
-              {index + 1}. {venueJourneyStepLabel(step, t)}
-            </li>
-          ))}
-        </ol>
-      </details>
+      <VenueRouteSteps journey={journey} />
       <Button
         variant="outline"
         className="w-full gap-2"
@@ -238,6 +211,7 @@ export default function VenueJourneyContent({
   if (!journey) return null;
   if (journey.guidance.status === "touring")
     return <VenueRouteTour journey={journey} />;
+  const steps = venueJourneySteps(journey);
   const active = journey.guidance.stepIndex;
   const arrived = journey.guidance.status === "arrived";
   const outdoorRoute = journey.outdoor?.routes[journey.outdoor.selectedIndex];
@@ -350,15 +324,15 @@ export default function VenueJourneyContent({
               <p className="text-xs text-primary">
                 {t("venueStepCount", {
                   current: active + 1,
-                  total: journey.route.steps.length,
+                  total: steps.length,
                 })}
               </p>
               <p className="font-semibold">
-                {journey.route.steps[active]
-                  ? venueJourneyStepLabel(journey.route.steps[active], t)
+                {steps[active]
+                  ? venueJourneyStepLabel(steps[active], t)
                   : t("venueConfirmArrival")}
               </p>
-              {journey.route.steps[active]?.heightPending && (
+              {steps[active]?.heightPending && (
                 <p className="text-sm text-amber-800 dark:text-amber-300">
                   {t("venueStepHeightPending")}
                 </p>
@@ -534,29 +508,7 @@ export default function VenueJourneyContent({
         </>
       )}
 
-      {showIndoorDetails && (
-        <ol className="space-y-2" aria-label={t("venueRouteSteps")}>
-          {journey.route.steps.map((step, index) => (
-            <li
-              key={`${step.startIndex}-${step.endIndex}`}
-              aria-current={
-                navigating && !arrived && index === active ? "step" : undefined
-              }
-              className={`rounded-xl border p-3 text-sm ${navigating && index === active ? "border-primary bg-primary/5" : "border-transparent bg-muted/40"}`}
-            >
-              <span className="text-xs text-muted-foreground mr-2">
-                {index + 1}
-              </span>
-              {venueJourneyStepLabel(step, t)}
-              <span className="block mt-1 text-xs text-muted-foreground">
-                {t("venueStepDistance", {
-                  distance: Math.round(step.distanceM),
-                })}
-              </span>
-            </li>
-          ))}
-        </ol>
-      )}
+      {showIndoorDetails && <VenueRouteSteps journey={journey} />}
       {journey.to.arrivalKind === "corridor" && (
         <p className="text-sm text-muted-foreground">
           {t("venueCorridorEndpointNotice")}

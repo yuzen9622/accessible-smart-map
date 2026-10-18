@@ -11,7 +11,7 @@ import {
 import dynamic from "next/dynamic";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
-import { type VenueJourney, venueJourneyStepLabel } from "@/lib/indoor/journey";
+import type { VenueJourney } from "@/lib/indoor/journey";
 import {
   startNavigation,
   venueApproachRouteKind,
@@ -25,6 +25,7 @@ import {
   VenueWalkSteps,
   VenueWalkSummary,
 } from "../shared/RouteCard/VenueWalkContinuation";
+import VenueRouteSteps from "../shared/VenueRouteSteps";
 import { Button } from "../ui/button";
 import {
   EnvironmentSkeleton,
@@ -116,6 +117,8 @@ export default function RouteContent() {
   const handleStartNav = async () => {
     // iOS 13+ requires DeviceOrientation permission to be requested from a user
     // gesture — this tap is that gesture. Elsewhere no prompt is needed.
+    // SAFETY: Safari's runtime permission method is absent from the standard
+    // DeviceOrientationEvent type, so capability detection narrows it here.
     const DOE = (typeof DeviceOrientationEvent === "undefined"
       ? undefined
       : DeviceOrientationEvent) as unknown as
@@ -286,30 +289,13 @@ export default function RouteContent() {
       </div>
 
       {venueJourney && indoorOnly && (
-        <details className="border-t pt-3 text-sm" open={indoorOnly}>
-          <summary className="cursor-pointer font-medium">
-            {t("venueIndoorRouteSummary", {
-              distance: Math.round(venueJourney.route.distanceM),
-            })}
-          </summary>
-          <ol className="mt-2 space-y-2 text-muted-foreground">
-            {venueJourney.route.steps.map((step, index) => (
-              <li
-                key={`${step.startIndex}-${step.endIndex}-${step.kind}-${step.name}`}
-              >
-                {index + 1}. {venueJourneyStepLabel(step, t)}
-              </li>
-            ))}
-            <li>
-              {t(
-                venueJourney.to.arrivalKind === "corridor"
-                  ? "venueArriveAtCorridor"
-                  : "venueArriveAt",
-                { destination: venueJourney.to.name },
-              )}
-            </li>
-          </ol>
-        </details>
+        <VenueRouteSteps
+          journey={venueJourney}
+          showArrival
+          title={t("venueIndoorRouteSummary", {
+            distance: Math.round(venueJourney.route.distanceM),
+          })}
+        />
       )}
     </div>
   );

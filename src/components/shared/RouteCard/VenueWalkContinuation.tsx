@@ -1,6 +1,10 @@
 import { Fragment } from "react";
 import { useAppTranslation } from "@/i18n/client";
-import { type VenueJourney, venueJourneyStepLabel } from "@/lib/indoor/journey";
+import {
+  type VenueJourney,
+  venueJourneyStepLabel,
+  venueJourneySteps,
+} from "@/lib/indoor/journey";
 import type { AccessibleRoute } from "@/types/route";
 import { formatDistance } from "@/types/route";
 import { getLegKey } from "./utils";
@@ -67,7 +71,7 @@ export function VenueWalkSteps({ journey, approach }: Props) {
           {t("venueArriveAt", { destination: journey.from.name })}
         </li>
       )}
-      {journey.route.steps.map((step) => {
+      {venueJourneySteps(journey).map((step) => {
         const entersBuilding = step.fromLevel === null && step.toLevel !== null;
         const changesFloor =
           step.fromLevel !== null &&

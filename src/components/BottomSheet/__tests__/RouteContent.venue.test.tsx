@@ -513,6 +513,33 @@ describe("venue journeys retain the existing route-results interface", () => {
     expect(h.buttons[0].disabled).toBe(true);
   });
 
+  it("shows a multi-floor stair run as one direct indoor instruction", () => {
+    const value = journey(false);
+    value.route.steps = [
+      ["1F", "2F", 0, 1],
+      ["2F", "3F", 1, 2],
+      ["3F", "4F", 2, 3],
+    ].map(([fromLevel, toLevel, startIndex, endIndex], index) => ({
+      kind: "steps" as const,
+      name: "樓梯",
+      fromLevel: String(fromLevel),
+      toLevel: String(toLevel),
+      distanceM: 10,
+      startIndex: Number(startIndex),
+      endIndex: Number(endIndex),
+      heightPending: false,
+      buildingId: "a",
+      connectionId: `stairs-${index}`,
+    }));
+    const before = JSON.stringify(value.route.steps);
+    useMapStore.getState().setVenueJourney(value);
+    const { markup } = render();
+    expect(markup.match(/venueStepUp/g)).toHaveLength(1);
+    expect(markup).toContain("4F");
+    expect(markup).not.toContain("2F");
+    expect(JSON.stringify(value.route.steps)).toBe(before);
+  });
+
   it("starts an indoor-only route in the same result view without creating a backend route or token", async () => {
     useMapStore.getState().setVenueJourney(journey(false));
     const { markup } = render();
@@ -522,7 +549,7 @@ describe("venue journeys retain the existing route-results interface", () => {
     expect(markup).toContain("environment");
     expect(markup).toContain("reportHazard");
     expect(markup).not.toContain("aiExplanation");
-    expect(h.cards).toHaveLength(0);
+    expect(h.cards).toHaveLength(2);
     await h.buttons.find((button) => !button.disabled)?.onClick?.();
     expect(h.start).toHaveBeenCalledOnce();
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe(

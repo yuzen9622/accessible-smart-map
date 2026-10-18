@@ -237,6 +237,7 @@ beforeEach(() => {
     isNavigating: false,
     invalidRouteTokens: [],
     userLocation: null,
+    indoorExploring: false,
   });
   useIndoorCatalog.setState({
     showPlace: h.showPlace,
@@ -245,7 +246,11 @@ beforeEach(() => {
         venueId: classroom.venueId,
         source: { sha256: classroom.sourceVersion },
         origin: [0, 0],
-        building: { id: "building-a", name: "Building A" },
+        building: {
+          id: "building-a",
+          name: "Building A",
+          levels: [{ ordinal: 2, ref: "3F", elevationM: 8 }],
+        },
         preview: { gatePlaceIds: ["gate"] },
         connections: [],
         places: [
@@ -608,20 +613,23 @@ describe("route animation in the original navigation panel", () => {
     value.route.animationSafe = false;
     value.route.steps[0].heightPending = true;
     useMapStore.getState().setVenueJourney(value);
-    useMapStore.getState().startVenueTour(false);
+    useMapStore.getState().startVenueTour();
     return value;
   };
-  it("offers only route animation playback with endpoints and collapsible source steps", () => {
+  it("keeps route animation on without playback or step-highlight controls", () => {
     const value = begin();
     const source = JSON.stringify(value.route);
     const markup = renderTour();
     expect(markup).toContain(value.from.name);
     expect(markup).toContain(value.to.name);
-    expect(markup).toContain("播放路線動畫");
     expect(markup).toContain("結束導航");
     expect(markup).toContain("切換樓層查看路線");
+    expect(markup).toContain('data-slot="accordion"');
+    expect(markup).toContain('data-slot="card"');
+    expect(markup).not.toContain("在地圖強調");
     expect(markup.match(/INTERNAL_HALL_DETAIL/g)).toHaveLength(1);
-    expect(markup).toMatch(/<details[^>]*>.*INTERNAL_HALL_DETAIL.*<\/details>/);
+    expect(markup).not.toContain("播放路線動畫");
+    expect(markup).not.toContain("暫停路線動畫");
     expect(markup).not.toContain('type="range"');
     expect(markup).not.toContain('aria-current="step"');
     for (const removed of [
@@ -634,18 +642,9 @@ describe("route animation in the original navigation panel", () => {
       "已到教室前走道",
     ])
       expect(markup).not.toContain(removed);
-    expect(h.buttons).toHaveLength(2);
-    h.buttons.find((button) => button.label === "播放路線動畫")?.onClick?.();
+    expect(h.buttons).toHaveLength(1);
     expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
       playing: true,
-      following: false,
-      direction: 1,
-      progress: 0,
-    });
-    expect(renderTour()).toContain("暫停路線動畫");
-    h.buttons.find((button) => button.label === "暫停路線動畫")?.onClick?.();
-    expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
-      playing: false,
       following: false,
       direction: 1,
       progress: 0,
@@ -657,7 +656,7 @@ describe("route animation in the original navigation panel", () => {
       false,
     );
   });
-  it("does not use stale progress to declare completion or reset the route when animation resumes", () => {
+  it("does not use stale progress to declare completion or expose a playback toggle", () => {
     begin();
     useMapStore
       .getState()
@@ -665,11 +664,10 @@ describe("route animation in the original navigation panel", () => {
     const markup = renderTour();
     expect(markup).not.toContain("路線導覽結束");
     expect(markup).not.toContain("已抵達");
-    expect(markup).toContain("播放路線動畫");
-    h.buttons.find((button) => button.label === "播放路線動畫")?.onClick?.();
+    expect(markup).not.toContain("播放路線動畫");
     expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
       progress: 1,
-      playing: true,
+      playing: false,
       following: false,
     });
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe(
@@ -680,15 +678,16 @@ describe("route animation in the original navigation panel", () => {
   it("uses the real English dictionary and preserves source instructions across language changes", () => {
     begin();
     const source = JSON.stringify(useMapStore.getState().venueJourney);
-    expect(renderTour()).toContain("播放路線動畫");
+    expect(renderTour()).toContain("校內路線步驟");
     h.language = "en";
     const markup = renderTour();
-    expect(markup).toContain("Play route animation");
+    expect(markup).toContain("Campus route steps");
+    expect(markup).not.toContain("Highlight step");
     expect(markup).toContain("End Navigation");
     expect(markup).toContain("switch floors");
     expect(markup).toContain("INTERNAL_HALL_DETAIL");
     expect(markup).not.toContain("venueRouteAnimation");
-    expect(markup).not.toContain("播放路線動畫");
+    expect(markup).not.toContain("Play route animation");
     expect(JSON.stringify(useMapStore.getState().venueJourney)).toBe(source);
   });
 });
