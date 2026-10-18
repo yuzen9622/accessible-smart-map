@@ -883,8 +883,8 @@ export function rebuildIndoorContent(
   container.dataset.geometry = "shared-enu-metres";
 }
 
-/** Current-floor walking and its authored vertical spans. Physical diagnostics
- * retain the active transition; product line animation does not advance floors. */
+/** Product maps show only walking authored on the selected floor. Standalone
+ * physical diagnostics may still retain the active vertical transition. */
 export function indoorRouteDisplaySegments(
   p: IndoorSceneProps,
 ): IndoorRouteDisplaySegment[] {
@@ -921,21 +921,7 @@ export function indoorRouteDisplaySegments(
         step.toLevel === transition.toLevel) ||
         (step.fromLevel === transition.toLevel &&
           step.toLevel === transition.fromLevel));
-    const visibleVertical =
-      p.grounded && p.routeTour
-        ? step &&
-          (step.kind === "steps" ||
-            step.kind === "elevator" ||
-            step.kind === "ramp") &&
-          step.fromLevel !== null &&
-          step.toLevel !== null &&
-          step.fromLevel !== step.toLevel &&
-          (step.fromLevel === level.ref || step.toLevel === level.ref) &&
-          (step.fromBuildingId === undefined ||
-            step.fromBuildingId === p.model.building.id) &&
-          (step.toBuildingId === undefined ||
-            step.toBuildingId === p.model.building.id)
-        : activeVertical;
+    const visibleVertical = !p.grounded && activeVertical;
     // Height alone cannot identify a stair's platform: it belongs to its
     // vertical step, even where it is horizontal at the departure elevation.
     const onFloor = context
@@ -958,8 +944,8 @@ export function indoorRouteDisplaySegments(
         result.push(routeDisplaySegment(p.route, p.model, i - 1, segment));
     }
   }
-  // The route retains its surveyed/research XYZ. Only the map's guidance
-  // symbols use the current floor plane, including descending stair segments.
+  // The route retains its surveyed/research XYZ. Product guidance projects
+  // only the selected floor's authorized walking edges onto that floor plane.
   return p.grounded
     ? result.map((segment) => {
         const [a, b] = segment.coordinates;
@@ -983,8 +969,26 @@ export function rebuildIndoorRoute(s: IndoorContentState, p: IndoorSceneProps) {
   rebuildIndoorRouteSegments(s, p, indoorRouteDisplaySegments(p));
 }
 
-/** The caller supplies already-authorized segments. Disconnected segments stay
- * disconnected, and only the display elevation can be flattened by the host. */
+interface RouteFlowSection {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  length: number;
+  start: number;
+  role: IndoorMaterialRole;
+}
+
+interface RouteFlow {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  length: number;
+  index: number;
+  count: number;
+  totalLength: number;
+  sections: RouteFlowSection[];
+}
+
+/** The caller supplies already-authorized segments. Consecutive edges share a
+ * continuous flow path and round joint; real gaps remain disconnected. */
 export function rebuildIndoorRouteSegments(
   s: IndoorContentState,
   p: IndoorSceneProps,
@@ -993,18 +997,20 @@ export function rebuildIndoorRouteSegments(
   disposeTree(s.routeGroup);
   s.routeGroup.clear();
   s.routeGroup.renderOrder = p.grounded ? 20 : 0;
+  const chains: RouteFlowSection[][] = [];
   for (const segment of segments) {
     const [a, b] = routeSegmentCoordinates(segment);
-    const role =
+    const role: IndoorMaterialRole =
       !Array.isArray(segment) && segment.accessibleRamp
         ? "accessibleRamp"
         : "primary";
     const from = v3([a[0], a[1], a[2] + 0.09]),
       to = v3([b[0], b[1], b[2] + 0.09]);
     const delta = to.clone().sub(from);
-    if (delta.length() < 0.001) continue;
+    const length = delta.length();
+    if (length < 0.001) continue;
     const tube = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.07, delta.length(), 8),
+      new THREE.CylinderGeometry(0.07, 0.07, length, 12),
       themedMaterial(
         new THREE.MeshBasicMaterial({
           depthTest: !p.grounded,
@@ -1022,11 +1028,50 @@ export function rebuildIndoorRouteSegments(
     tube.userData.routeTube = { from, to };
     if (!Array.isArray(segment)) tube.userData.routeSegment = segment;
     s.routeGroup.add(tube);
-    if (p.grounded && p.routeTour && delta.length() > 0) {
-      const length = from.distanceTo(to);
-      // Small directional symbols follow each original straight segment. They
-      // never interpolate across a corner, gap, or separate building segment.
-      const count = Math.max(1, Math.floor(length / 3));
+
+    const previousChain = chains.at(-1);
+    const previous = previousChain?.at(-1);
+    const connected = Boolean(previous && previous.to.distanceTo(from) < 0.001);
+    let chain: RouteFlowSection[];
+    if (connected && previousChain) chain = previousChain;
+    else {
+      chain = [];
+      chains.push(chain);
+    }
+    const start = connected && previous ? previous.start + previous.length : 0;
+    const section: RouteFlowSection = {
+      from,
+      to,
+      length,
+      start,
+      role,
+    };
+    if (connected && previous) {
+      const joint = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 12, 8),
+        themedMaterial(
+          new THREE.MeshBasicMaterial({
+            depthTest: !p.grounded,
+            depthWrite: !p.grounded,
+          }),
+          previous.role === "accessibleRamp" ? previous.role : role,
+        ),
+      );
+      joint.position.copy(from);
+      joint.renderOrder = p.grounded ? 21 : 0;
+      joint.userData.routeJoint = { from: previous.from, to: previous.to };
+      s.routeGroup.add(joint);
+    }
+    chain.push(section);
+  }
+
+  if (p.grounded && p.routeTour)
+    for (const sections of chains) {
+      const totalLength = sections.reduce(
+        (sum, section) => sum + section.length,
+        0,
+      );
+      const count = Math.max(1, Math.floor(totalLength / 3));
       for (let index = 0; index < count; index++) {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute(
@@ -1036,6 +1081,7 @@ export function rebuildIndoorRouteSegments(
             3,
           ),
         );
+        const first = sections[0];
         const arrow = new THREE.Mesh(
           geometry,
           themedMaterial(
@@ -1044,17 +1090,23 @@ export function rebuildIndoorRouteSegments(
               depthWrite: false,
               side: THREE.DoubleSide,
             }),
-            role,
+            first.role,
           ),
         );
         arrow.name = "indoor-route-direction";
         arrow.renderOrder = 22;
-        arrow.userData.routeFlow = { from, to, index, count, length };
-        if (!Array.isArray(segment)) arrow.userData.routeSegment = segment;
+        arrow.userData.routeFlow = {
+          from: first.from,
+          to: first.to,
+          length: first.length,
+          index,
+          count,
+          totalLength,
+          sections,
+        } satisfies RouteFlow;
         s.routeGroup.add(arrow);
       }
     }
-  }
   updateIndoorRouteFlow(s, p, 0);
   updateIndoorTheme(s, p);
 }
@@ -1067,27 +1119,34 @@ export function updateIndoorRouteFlow(
 ) {
   const direction = p.routeDirection ?? 1;
   for (const arrow of s.routeGroup.children) {
-    const flow = arrow.userData.routeFlow as
-      | {
-          from: THREE.Vector3;
-          to: THREE.Vector3;
-          index: number;
-          count: number;
-          length: number;
-        }
-      | undefined;
+    const flow = arrow.userData.routeFlow as RouteFlow | undefined;
     if (!flow) continue;
-    const offset = (elapsedSeconds * direction * 0.9) / flow.length;
-    const raw = ((((flow.index + 0.5) / flow.count + offset) % 1) + 1) % 1;
-    const tail = ((direction === 1 ? 0.18 : 0.3) * arrow.scale.z) / flow.length;
-    const head = ((direction === 1 ? 0.3 : 0.18) * arrow.scale.z) / flow.length;
-    const fraction = Math.max(tail, Math.min(1 - head, raw));
-    arrow.position.lerpVectors(flow.from, flow.to, fraction);
+    const rawDistance =
+      ((flow.index + 0.5) / flow.count) * flow.totalLength +
+      elapsedSeconds * direction * 0.9;
+    const distance =
+      ((rawDistance % flow.totalLength) + flow.totalLength) % flow.totalLength;
+    const section =
+      flow.sections.find(
+        (candidate) => distance < candidate.start + candidate.length,
+      ) ?? flow.sections.at(-1);
+    if (!section) continue;
+    const fraction = Math.max(
+      0,
+      Math.min(1, (distance - section.start) / section.length),
+    );
+    flow.from = section.from;
+    flow.to = section.to;
+    flow.length = section.length;
+    arrow.position.lerpVectors(section.from, section.to, fraction);
     arrow.position.y += 0.04;
     arrow.rotation.y = Math.atan2(
-      (flow.to.x - flow.from.x) * direction,
-      (flow.to.z - flow.from.z) * direction,
+      (section.to.x - section.from.x) * direction,
+      (section.to.z - section.from.z) * direction,
     );
+    const material = (arrow as THREE.Mesh).material as THREE.MeshBasicMaterial;
+    material.userData.indoorColorRole = section.role;
+    material.color.setHex(getIndoorPalette(p.theme).material[section.role]);
   }
 }
 
@@ -1124,6 +1183,19 @@ export function updateIndoorOverlayScale(
         const scale = Math.max(1, 4 / (0.14 * pixelsPerMetre));
         object.scale.set(scale, 1, scale);
       }
+    }
+    const joint = object.userData.routeJoint as
+      | { from: THREE.Vector3; to: THREE.Vector3 }
+      | undefined;
+    if (joint) {
+      const direction = joint.to.clone().sub(joint.from).normalize();
+      const side = new THREE.Vector3(-direction.z, 0, direction.x);
+      const pixelsPerMetre = pixelsBetween(
+        object.position.clone().addScaledVector(side, -0.5),
+        object.position.clone().addScaledVector(side, 0.5),
+      );
+      if (pixelsPerMetre > 1e-6)
+        object.scale.setScalar(Math.max(1, 4 / (0.14 * pixelsPerMetre)));
     }
     const flow = object.userData.routeFlow as
       | { from: THREE.Vector3; to: THREE.Vector3; length: number }

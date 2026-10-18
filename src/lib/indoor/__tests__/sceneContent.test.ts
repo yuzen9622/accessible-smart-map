@@ -400,16 +400,17 @@ describe("single-floor scene rendering", () => {
     const tubes = s.routeGroup.children.filter(
       (child) => child.userData.routeTube,
     );
-    const ramps = s.routeGroup.children.filter((child) => {
-      const edge = child.userData.routeTube ?? child.userData.routeFlow;
-      return edge?.from.x === 2 && edge?.to.x === 5;
-    });
     expect(tubes).toHaveLength(3);
-    expect(ramps.length).toBeGreaterThan(1);
     for (const theme of ["light", "dark"] as const)
       for (const routeDirection of [1, -1] as const) {
         updateIndoorTheme(s, { ...p, theme });
         updateIndoorRouteFlow(s, { ...p, routeDirection }, 1.25);
+        const ramps = s.routeGroup.children.filter((child) => {
+          const material = (child as THREE.Mesh)
+            .material as THREE.MeshBasicMaterial;
+          return material.userData.indoorColorRole === "accessibleRamp";
+        });
+        expect(ramps.length).toBeGreaterThan(1);
         for (const child of ramps)
           expect(
             (
@@ -555,7 +556,7 @@ describe("single-floor scene rendering", () => {
     expect(JSON.stringify({ sourceRoute, value })).toBe(snapshot);
   });
 
-  it("shows an authored accessible ramp between floors on either endpoint floor in both travel directions", () => {
+  it("does not project an authored cross-floor ramp onto either endpoint floor", () => {
     const value = model();
     const sourcePoints: XYZ[] = [
       [0, 0, 0],
@@ -600,10 +601,7 @@ describe("single-floor scene rendering", () => {
       levelRefs: ["L", null, "M"],
     });
     const snapshot = JSON.stringify(sourceRoute);
-    for (const [ordinal, elevation] of [
-      [10, 0],
-      [20, 4],
-    ] as const)
+    for (const ordinal of [10, 20] as const)
       for (const routeDirection of [1, -1] as const) {
         const segments = indoorRouteDisplaySegments(
           props({
@@ -615,13 +613,9 @@ describe("single-floor scene rendering", () => {
             routeDirection,
           }),
         );
-        const ramps = segments.filter((segment) => segment.accessibleRamp);
-        expect(ramps.map((segment) => segment.pathStart)).toEqual([1, 2]);
-        expect(
-          ramps
-            .flatMap((segment) => segment.coordinates)
-            .every((point) => point[2] === elevation),
-        ).toBe(true);
+        expect(segments.filter((segment) => segment.accessibleRamp)).toEqual(
+          [],
+        );
       }
     expect(JSON.stringify(sourceRoute)).toBe(snapshot);
   });
@@ -786,15 +780,11 @@ describe("single-floor scene rendering", () => {
         expect(object.scale.z * 0.48).toBeLessThanOrEqual(
           flow.length * 0.8 + 1e-10,
         );
-        for (const offset of [-0.18, 0.3]) {
-          const endpoint = new THREE.Vector3(0, 0, offset * object.scale.z)
-            .applyEuler(object.rotation)
-            .add(object.position);
-          const direction = flow.to.clone().sub(flow.from).normalize();
-          const distance = endpoint.sub(flow.from).dot(direction);
-          expect(distance).toBeGreaterThanOrEqual(-1e-8);
-          expect(distance).toBeLessThanOrEqual(flow.length + 1e-8);
-        }
+        expect(
+          new THREE.Line3(flow.from, flow.to)
+            .closestPointToPoint(object.position, true, new THREE.Vector3())
+            .distanceTo(object.position),
+        ).toBeCloseTo(0.04);
       }
     }
     expect(s.marker.children[0].scale.x).toBeGreaterThan(1);
@@ -825,7 +815,7 @@ describe("single-floor scene rendering", () => {
     disposeTree(s.marker);
   });
 
-  it("keeps overlay arrows on the original disconnected straight segments in both directions", () => {
+  it("flows through connected corners without bridging disconnected route paths", () => {
     const p = props({ grounded: true, routeTour: true, routePlaying: true });
     const segments: [XYZ, XYZ][] = [
       [
@@ -849,6 +839,16 @@ describe("single-floor scene rendering", () => {
       (child) => child.name === "indoor-route-direction",
     );
     expect(arrows.length).toBeGreaterThan(0);
+    const flowChains = new Set(
+      arrows.map((arrow) => arrow.userData.routeFlow.sections),
+    );
+    expect(flowChains.size).toBe(2);
+    expect(
+      arrows.some((arrow) => arrow.userData.routeFlow.sections.length === 2),
+    ).toBe(true);
+    expect(
+      s.routeGroup.children.filter((child) => child.userData.routeJoint),
+    ).toHaveLength(1);
     for (const direction of [1, -1] as const)
       for (const seconds of [0, 1.3, 30]) {
         updateIndoorRouteFlow(s, { ...p, routeDirection: direction }, seconds);
@@ -1111,7 +1111,7 @@ describe("single-floor scene rendering", () => {
     expect(indoorRouteSegments(p)).toEqual([]);
   });
 
-  it("shows each selected floor's authored vertical spans without advancing route progress or borrowing another building", () => {
+  it("shows only each selected floor's walking edges without borrowing vertical spans or another building", () => {
     const sourceRoute: IndoorRoute = {
       ...route,
       context: {
@@ -1121,9 +1121,9 @@ describe("single-floor scene rendering", () => {
     };
     const source = JSON.stringify(sourceRoute);
     for (const [ordinal, floor, indices] of [
-      [10, 0, [1, 2, 3]],
-      [20, 4, [2, 3, 4, 5]],
-      [30, 8, [5, 6]],
+      [10, 0, [1]],
+      [20, 4, [4]],
+      [30, 8, [6]],
     ] as const) {
       const p = props({
         route: sourceRoute,
@@ -1546,12 +1546,16 @@ describe("single-floor scene rendering", () => {
           ),
         ).toBe(true);
       }
-      expect(indoorRouteSegments(p)).toEqual([
-        [
-          [0.5, 0.5, grounded ? floor : 0],
-          [0.5, 0.5, grounded ? floor : 8],
-        ],
-      ]);
+      expect(indoorRouteSegments(p)).toEqual(
+        grounded
+          ? []
+          : [
+              [
+                [0.5, 0.5, 0],
+                [0.5, 0.5, 8],
+              ],
+            ],
+      );
       expect([...s.featureMeshes.keys()]).toEqual(
         direction === 1 ? ["room-low", "other-0"] : ["room-high", "other-2"],
       );
@@ -1727,7 +1731,12 @@ describe("single-floor scene rendering", () => {
     ]);
     const s = createIndoorContent();
     rebuildIndoorRoute(s, p);
-    expect(s.routeGroup.children).toHaveLength(3);
+    expect(
+      s.routeGroup.children.filter((child) => child.userData.routeTube),
+    ).toHaveLength(3);
+    expect(
+      s.routeGroup.children.filter((child) => child.userData.routeJoint),
+    ).toHaveLength(2);
     disposeTree(s.routeGroup);
   });
 
