@@ -1,0 +1,5 @@
+simulation: venue-contract-synthetic
+routing: path
+mocks:
+  - routeKey: venue
+    path: ../mocks/venue-contract/config.yaml
