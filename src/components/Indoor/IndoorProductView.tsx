@@ -102,6 +102,12 @@ export default function IndoorProductView({
                     {
                       buildingId: item.model.building.id,
                       levelRef: item.levelRef,
+                      groundElevationM:
+                        item.levelOrdinal === 0
+                          ? item.model.building.levels.find(
+                              (level) => level.ordinal === 0,
+                            )?.elevationM
+                          : undefined,
                     },
                   ]
                 : [],

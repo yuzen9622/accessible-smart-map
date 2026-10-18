@@ -237,6 +237,53 @@ beforeEach(() => {
 });
 
 describe("one-map cross-building display", () => {
+  it("keeps the ground-floor route continuous through outdoor entrances, only on the ground floor", () => {
+    const a = model("a"),
+      b = model("b");
+    for (const item of [a, b])
+      item.building.levels.push({ ordinal: 1, ref: "2F", elevationM: 4 });
+    const value = journey();
+    const snapshot = JSON.stringify(value.route);
+    useIndoorCatalog.setState({
+      models: [a, b],
+      activeBuildingKey: "synthetic-campus/a",
+      activeLevel: 0,
+    });
+    useMapStore.setState({ venueJourney: value, indoorExploring: true });
+    expect(productView(a).scene.props.campusRouteSegments).toEqual(
+      [1, 2].map((index) =>
+        expect.objectContaining({
+          pathStart: index,
+          pathEnd: index + 1,
+          coordinates: [
+            value.route.points[index],
+            value.route.points[index + 1],
+          ],
+        }),
+      ),
+    );
+    useIndoorCatalog.setState({ activeLevel: 1 });
+    expect(productView(a).scene.props.campusRouteSegments).toEqual([]);
+    useIndoorCatalog.setState({ activeLevel: 0 });
+    expect(productView(a).scene.props.campusRouteSegments).toHaveLength(2);
+    expect(JSON.stringify(value.route)).toBe(snapshot);
+  });
+
+  it("does not overlay floorless campus links on a selected upper floor", () => {
+    const a = model("a"),
+      b = model("b");
+    for (const item of [a, b])
+      item.building.levels.push({ ordinal: 1, ref: "2F", elevationM: 4 });
+    useIndoorCatalog.setState({
+      models: [a, b],
+      activeBuildingKey: "synthetic-campus/a",
+      activeLevel: 1,
+    });
+    useMapStore.setState({ venueJourney: journey(), indoorExploring: true });
+    const { scene } = productView(a);
+    expect(scene.props.campusRouteSegments).toEqual([]);
+  });
+
   it("lists only the active building's own floors instead of the whole campus", () => {
     const information = model("information"),
       other = model("other");
@@ -411,23 +458,16 @@ describe("one-map cross-building display", () => {
     ]);
   });
 
-  it("keeps an indoor view's own entrance link without showing the other building's entrance", () => {
+  it("omits floorless entrance links from every indoor floor view", () => {
     const route = journey().route;
-    expect(
-      campusRouteSegments(route, model("a"), {
-        buildingId: "a",
-        levelRef: "1F",
-      }),
-    ).toEqual([[route.points[1], route.points[2]]]);
-    expect(
-      campusRouteSegments(route, model("a"), {
-        buildingId: "b",
-        levelRef: "1F",
-      }),
-    ).toEqual([[route.points[2], route.points[3]]]);
+    for (const view of [
+      { buildingId: "a", levelRef: "1F" },
+      { buildingId: "b", levelRef: "1F" },
+    ])
+      expect(campusRouteSegments(route, model("a"), view)).toEqual([]);
   });
 
-  it("shows a bridge only from its connected building and floor, including different floor names", () => {
+  it("shows a bridge only when both connected building floors are displayed", () => {
     const route = journey().route;
     route.points = [
       [0, 0, 8],
@@ -438,17 +478,19 @@ describe("one-map cross-building display", () => {
       buildingIds: ["a", "b", "b"],
       levelRefs: ["3F", "2F", "2F"],
     };
+    expect(
+      campusRouteSegments(route, model("a"), [
+        { buildingId: "a", levelRef: "3F" },
+        { buildingId: "b", levelRef: "2F" },
+      ]),
+    ).toEqual([[route.points[0], route.points[1]]]);
     for (const view of [
-      { buildingId: "a", levelRef: "3F" },
-      { buildingId: "b", levelRef: "2F" },
-    ])
-      expect(campusRouteSegments(route, model("a"), view)).toEqual([
-        [route.points[0], route.points[1]],
-      ]);
-    for (const view of [
-      { buildingId: "a", levelRef: "1F" },
-      { buildingId: "b", levelRef: "3F" },
-      { buildingId: "c", levelRef: "3F" },
+      [{ buildingId: "a", levelRef: "3F" }],
+      [{ buildingId: "b", levelRef: "2F" }],
+      [
+        { buildingId: "a", levelRef: "1F" },
+        { buildingId: "b", levelRef: "3F" },
+      ],
     ])
       expect(campusRouteSegments(route, model("a"), view)).toEqual([]);
   });

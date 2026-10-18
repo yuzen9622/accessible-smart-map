@@ -3,6 +3,8 @@ import type { IndoorRoute, LocalIndoorModel, XYZ } from "./types";
 export interface CampusFloorView {
   buildingId: string;
   levelRef: string;
+  /** Only a source-declared ground floor admits outdoor venue-datum edges. */
+  groundElevationM?: number;
 }
 
 /** Renderer geometry retains its original inclusive navigation indices even
@@ -80,8 +82,8 @@ export function routeDisplaySegment(
 }
 
 /** Authored outdoor and inter-building edges only, in source order and XYZ.
- * A campus view requires every indoor endpoint to belong to a visible floor.
- * The legacy single-floor view retains links touching that one cutaway. */
+ * Both endpoints must belong to displayed floors or to the ground-level
+ * outdoor network while a source-declared ground floor is displayed. */
 export function campusRouteDisplaySegments(
   route: IndoorRoute,
   model: LocalIndoorModel,
@@ -94,9 +96,24 @@ export function campusRouteDisplaySegments(
       levelRefs.length !== route.points.length
     )
       return [];
-    const visible = (index: number, floor: CampusFloorView) =>
-      buildingIds[index] === floor.buildingId &&
-      levelRefs[index] === floor.levelRef;
+    const visible = (index: number, floor: CampusFloorView) => {
+      if (
+        buildingIds[index] === floor.buildingId &&
+        levelRefs[index] === floor.levelRef
+      )
+        return true;
+      // Null is not a wildcard for any floor: only outdoor points at the
+      // venue datum or this ground floor's elevation are admitted. In
+      // particular, intermediate indoor stair/lift points stay excluded.
+      return (
+        floor.groundElevationM !== undefined &&
+        buildingIds[index] === null &&
+        levelRefs[index] === null &&
+        [0, floor.groundElevationM].some(
+          (height) => Math.abs(route.points[index][2] - height) <= 0.02,
+        )
+      );
+    };
     return route.points
       .slice(1)
       .flatMap((_, index): IndoorRouteDisplaySegment[] => {
@@ -105,15 +122,13 @@ export function campusRouteDisplaySegments(
         if (from !== null && from === to) return [];
         // Preserve every authored campus edge, including intermediate null/null
         // points. Never connect around an omitted indoor segment.
-        if (view && (from !== null || to !== null)) {
+        if (view) {
           const endpoints = [index, index + 1];
           const allowed =
             "buildingId" in view
-              ? endpoints.some((endpoint) => visible(endpoint, view))
-              : endpoints.every(
-                  (endpoint) =>
-                    buildingIds[endpoint] === null ||
-                    view.some((floor) => visible(endpoint, floor)),
+              ? endpoints.every((endpoint) => visible(endpoint, view))
+              : endpoints.every((endpoint) =>
+                  view.some((floor) => visible(endpoint, floor)),
                 );
           if (!allowed) return [];
         }

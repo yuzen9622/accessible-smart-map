@@ -69,21 +69,87 @@ describe("multi-building campus route segments", () => {
     return { source, value };
   }
 
-  it("retains original indices and accessible ramp identity after hidden indoor segments are omitted", () => {
+  it("omits floorless campus links from indoor floor views without joining the remaining bridges", () => {
     const { source, value } = rampSource();
     const snapshot = JSON.stringify({ source, value });
     const result = campusRouteDisplaySegments(source, value, views);
-    expect(result.map((segment) => segment.pathStart)).toEqual([1, 2, 3, 5, 7]);
+    expect(result.map((segment) => segment.pathStart)).toEqual([5, 7]);
+    expect(result.filter((segment) => segment.accessibleRamp)).toHaveLength(0);
+    expect(JSON.stringify({ source, value })).toBe(snapshot);
+  });
+
+  it("restores outdoor walking, entrance edges and accessible ramps only in an explicit ground-floor view", () => {
+    const { source, value } = rampSource();
+    // Ground source edges: indoor a -> outdoors -> indoors b; upstairs
+    // bridge edges remain separate and must not be borrowed for this floor.
+    source.points = source.points.map(([x, y], index) => [
+      x,
+      y,
+      index < 5 ? 0 : 8,
+    ]);
+    if (!source.context || !value.campus) throw new Error("Missing context");
+    source.context.levelRefs[4] = "1F";
+    value.campus.connections[0].coordinates = [
+      source.points[2],
+      source.points[3],
+    ];
+    const floorViews = [
+      { buildingId: "a", levelRef: "1F", groundElevationM: 0 },
+      { buildingId: "b", levelRef: "1F", groundElevationM: 0 },
+    ];
+    const snapshot = JSON.stringify({ source, value });
+    const result = campusRouteDisplaySegments(source, value, floorViews);
+    expect(result.map((segment) => segment.pathStart)).toEqual([1, 2, 3]);
     expect(result[1]).toMatchObject({
       coordinates: [source.points[2], source.points[3]],
-      pathStart: 2,
-      pathEnd: 3,
-      kind: "ramp",
-      connectionId: "campus-ramp",
       accessibleRamp: true,
+      connectionId: "campus-ramp",
     });
-    expect(result.filter((segment) => segment.accessibleRamp)).toHaveLength(1);
+    expect(campusRouteDisplaySegments(source, value, [])).toEqual([]);
+    expect(
+      campusRouteDisplaySegments(source, value, [
+        { buildingId: "a", levelRef: "2F" },
+        { buildingId: "b", levelRef: "2F" },
+      ]),
+    ).toEqual([]);
     expect(JSON.stringify({ source, value })).toBe(snapshot);
+
+    const count = source.points.length - 1;
+    source.points.reverse();
+    source.kinds.reverse();
+    source.context.buildingIds.reverse();
+    source.context.levelRefs.reverse();
+    source.steps = source.steps.map((step) => ({
+      ...step,
+      startIndex: count - step.endIndex,
+      endIndex: count - step.startIndex,
+    }));
+    expect(campusRouteSegments(source, value, floorViews)).toEqual(
+      result.toReversed().map(({ coordinates: [a, b] }) => [b, a]),
+    );
+  });
+
+  it("never treats null indoor transition points, elevated outdoor edges or a hidden-floor entrance as ground walking", () => {
+    const source = route();
+    source.points = source.points.map(([x, y]) => [x, y, 0]);
+    const ground = [{ buildingId: "a", levelRef: "1F", groundElevationM: 0 }];
+    if (!source.context) throw new Error("Missing context");
+    // The first entrance is valid, but its continuation into b's hidden
+    // floor is not; no chord is invented to complete the route.
+    expect(
+      campusRouteDisplaySegments(source, model, ground).map((s) => s.pathStart),
+    ).toEqual([1, 2]);
+    source.context.buildingIds[2] = "a";
+    expect(campusRouteDisplaySegments(source, model, ground)).toEqual([]);
+    source.context.buildingIds[2] = null;
+    source.points[2][2] = source.points[3][2] = 4;
+    expect(campusRouteDisplaySegments(source, model, ground)).toEqual([]);
+    expect(
+      campusRouteDisplaySegments(source, model, {
+        buildingId: "a",
+        levelRef: "B1",
+      }),
+    ).toEqual([]);
   });
 
   it.each(["no", "limited", "unknown"] as const)(
@@ -141,7 +207,7 @@ describe("multi-building campus route segments", () => {
       endIndex: count - step.startIndex,
     }));
     expect(
-      campusRouteDisplaySegments(source, value, views).find(
+      campusRouteDisplaySegments(source, value).find(
         (segment) => segment.accessibleRamp,
       ),
     ).toMatchObject({
@@ -217,11 +283,11 @@ describe("multi-building campus route segments", () => {
     const snapshot = JSON.stringify(source);
     const result = campusRouteSegments(source, model, views);
     expect(result).toEqual(
-      [1, 2, 3, 5, 7].map((i) => [source.points[i], source.points[i + 1]]),
+      [5, 7].map((i) => [source.points[i], source.points[i + 1]]),
     );
-    expect(result[0][0]).toBe(source.points[1]);
-    expect(result[3][1]).toBe(source.points[6]);
-    expect(result[3][1][2]).toBe(8);
+    expect(result[0][0]).toBe(source.points[5]);
+    expect(result[0][1]).toBe(source.points[6]);
+    expect(result[0][1][2]).toBe(8);
     expect(JSON.stringify(source)).toBe(snapshot);
   });
 
@@ -235,17 +301,13 @@ describe("multi-building campus route segments", () => {
           view.buildingId === "c" ? { ...view, levelRef: "1F" } : view,
         ),
       ),
-    ).toEqual([1, 2, 3].map((i) => [source.points[i], source.points[i + 1]]));
-    expect(campusRouteSegments(source, model, views.slice(0, 2))).toEqual(
-      [1, 2, 3].map((i) => [source.points[i], source.points[i + 1]]),
-    );
+    ).toEqual([]);
+    expect(campusRouteSegments(source, model, views.slice(0, 2))).toEqual([]);
   });
 
-  it("keeps null/null campus travel even when no indoor floor is available", () => {
+  it("omits floorless campus travel when no indoor floor is displayed", () => {
     const source = route();
-    expect(campusRouteSegments(source, model, [])).toEqual([
-      [source.points[2], source.points[3]],
-    ]);
+    expect(campusRouteSegments(source, model, [])).toEqual([]);
   });
 
   it("retains route direction and exact endpoints when the source path is reversed", () => {
