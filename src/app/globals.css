@@ -501,6 +501,54 @@ img.adp-marker2 {
   height: 44px;
 }
 
+/* MapLibre controls share the app's theme, including explicit dark mode on
+   devices using a light system theme. Keep its native SVG icons and hit areas. */
+.maplibregl-ctrl.maplibregl-ctrl-group {
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button + button {
+  border-top-color: var(--border);
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group
+  button:not(:disabled):is(:hover, :active) {
+  background-color: var(--accent);
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-group button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.maplibregl-map .maplibregl-ctrl.maplibregl-ctrl-attrib {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
+
+.maplibregl-ctrl.maplibregl-ctrl-attrib a {
+  color: inherit;
+}
+
+.maplibregl-map
+  .maplibregl-ctrl.maplibregl-ctrl-attrib
+  .maplibregl-ctrl-attrib-button {
+  background-color: transparent;
+}
+
+@media (forced-colors: none) {
+  :is(.dark, .high-contrast)
+    .maplibregl-ctrl-group
+    :is(.maplibregl-ctrl-zoom-in, .maplibregl-ctrl-zoom-out)
+    .maplibregl-ctrl-icon {
+    filter: brightness(0) invert(0.95);
+  }
+  :is(.dark, .high-contrast) .maplibregl-ctrl-attrib-button {
+    filter: brightness(0) invert(0.95);
+  }
+}
+
 /* Hazard report popups are themed independently of MapLibre's white default. */
 .hazard-map-popup .maplibregl-popup-content {
   padding: 0;
