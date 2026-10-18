@@ -1,7 +1,29 @@
+import type { IndoorSceneRouteSegment } from "./campusRouteSegments";
+import type { IndoorTheme } from "./indoorTheme";
 import type { IndoorRoute, LocalIndoorModel } from "./types";
 
-export interface IndoorSceneProps {
+export interface IndoorBuildingView {
+  key: string;
   model: LocalIndoorModel;
+  /** No source floor selected: keep this building's cutaway empty. */
+  levelOrdinal: number | null;
+}
+
+export interface IndoorSceneProps {
+  /** Legacy diagnostic scenes remain light unless explicitly themed. */
+  theme?: IndoorTheme;
+  model: LocalIndoorModel;
+  buildingViews?: IndoorBuildingView[];
+  activeBuildingKey?: string;
+  onSelectBuildingFeature?: (target: {
+    buildingKey: string;
+    featureId: string;
+  }) => void;
+  /** Planar route presentation only; never changes physical animation safety. */
+  routeTour?: boolean;
+  routePlaying?: boolean;
+  /** Authored cross-building/outdoor segments in model.origin's metre frame. */
+  campusRouteSegments?: IndoorSceneRouteSegment[];
   visibleLevels: number[];
   view: "top" | "perspective";
   selectedId: string | null;

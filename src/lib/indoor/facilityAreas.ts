@@ -1,11 +1,18 @@
 import polygonClipping from "polygon-clipping";
 import { area, centroid } from "./geometry";
 import type {
+  IndoorFeature,
   IndoorLevel,
   IndoorStairDesign,
   LocalIndoorModel,
   XY,
 } from "./types";
+
+export function indoorFeatureName(feature: IndoorFeature) {
+  return feature.tags["a11ymap:area_type"] === "vertical-core"
+    ? feature.name?.replace(/核心/g, "") || "電梯／樓梯"
+    : feature.name;
+}
 
 export interface IndoorFacilityArea {
   sourceFeatureId: string;
@@ -149,6 +156,7 @@ export function indoorFacilityAreas(
         sourceFeatureId: feature.id,
         anchor: anchorFor(entry.polygons),
         shortCaption:
+          (entry.kind === "core" ? "電梯／樓梯" : undefined) ||
           (entry.kind === "elevator" ? connection?.tags.ref : feature.ref) ||
           entry.name.match(
             /(?:電梯|樓梯|梯|elevator|lift|stairs?)\s*([a-z0-9]+)/i,
@@ -198,7 +206,7 @@ export function indoorFacilityAreas(
           selectionId: candidate.sourceConnectionId,
           kind: "stairs",
           polygons: polygonClipping.difference(rings, candidate.shaft.polygon),
-          name: shortName(stair?.name ?? "樓梯核心"),
+          name: shortName(stair?.name ?? "樓梯"),
           servesLevel: true,
           researchBoundary: true,
         });
@@ -215,7 +223,7 @@ export function indoorFacilityAreas(
           selectionId: feature.id,
           kind: "core",
           polygons: [rings],
-          name: feature.name ?? "垂直動線核心",
+          name: indoorFeatureName(feature) ?? "電梯／樓梯",
           servesLevel: null,
           researchBoundary: false,
         });

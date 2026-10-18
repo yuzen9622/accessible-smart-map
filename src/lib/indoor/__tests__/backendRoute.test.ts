@@ -138,6 +138,7 @@ function detailFor(model: LocalIndoorModel): BackendVenueDetail {
     places: model.places.map((p) => ({
       id: p.id,
       nodeId: p.nodeId,
+      arrivalNodeIds: p.arrivalNodeIds,
       buildingId: p.buildingId ?? null,
       levelRef: p.levelRef,
       location: localToLngLat([p.point[0], p.point[1]], model.origin),
@@ -287,6 +288,29 @@ describe("backend venue route through real HTTP", () => {
         },
       },
     ]);
+  });
+  it("accepts a backend-selected explicit alternate arrival without replacing its traversal", async () => {
+    model.places[1].arrivalNodeIds = ["n2", "n1"];
+    detail = detailFor(model);
+    response.path.coordinates.pop();
+    response.path.buildingIds.pop();
+    response.path.levelRefs.pop();
+    response.steps[0].pathEnd = 1;
+    const result = await planBackendVenueRoute(options());
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.message);
+    expect(result.route.toPlaceId).toBe("room");
+    for (const [axis, value] of model.nodes[1].point.entries())
+      expect(result.route.points.at(-1)?.[axis]).toBeCloseTo(value, 8);
+    expect(result.route.edgeIds).toEqual(["e0"]);
+  });
+  it("rejects alternate arrival metadata that differs from the loaded source", async () => {
+    model.places[1].arrivalNodeIds = ["n2", "n1"];
+    expect(await planBackendVenueRoute(options())).toMatchObject({
+      ok: false,
+      reason: "SOURCE_MISMATCH",
+    });
+    expect(requests.map((request) => request.method)).toEqual(["GET"]);
   });
   it("retains pending same-Z ramp semantics instead of the API's inferred descent", async () => {
     model.edges[0].ramp = true;

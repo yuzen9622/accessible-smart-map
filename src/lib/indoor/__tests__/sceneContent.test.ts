@@ -1,17 +1,25 @@
 import * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { A11Y_FEATURE_COLOR } from "@/types/route";
 import { indoorFacilityAreas } from "../facilityAreas";
 import { area } from "../geometry";
+import { getIndoorPalette } from "../indoorTheme";
 import { samplePath, segmentDistance } from "../route";
 import {
   createIndoorContent,
   disposeTree,
   indoorActiveSpanKey,
+  indoorRouteDisplaySegments,
   indoorRouteSegments,
   rebuildIndoorContent,
   rebuildIndoorRoute,
+  rebuildIndoorRouteSegments,
+  updateCampusTourMarker,
   updateIndoorLabels,
   updateIndoorMarker,
+  updateIndoorOverlayScale,
+  updateIndoorRouteFlow,
+  updateIndoorTheme,
   v3,
 } from "../sceneContent";
 import type { IndoorSceneProps } from "../sceneTypes";
@@ -348,6 +356,884 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("single-floor scene rendering", () => {
+  it("colors only the source-confirmed accessible ramp tube and arrows green in both themes and travel directions", () => {
+    const value = model();
+    const rampPoints: XYZ[] = [
+      [0, 1, 0],
+      [2, 1, 0],
+      [5, 1, 0.5],
+      [7, 1, 0.5],
+    ];
+    value.connections.push({
+      ...value.connections[0],
+      id: "accessible-ramp",
+      kind: "ramp",
+      wheelchair: "yes",
+      coordinates: rampPoints.slice(1, 3),
+      levelRefs: ["L", "L"],
+    });
+    const rampRoute: IndoorRoute = {
+      ...route,
+      points: rampPoints,
+      kinds: ["corridor", "ramp", "corridor"],
+      steps: [
+        { ...route.steps[0], startIndex: 0, endIndex: 1 },
+        {
+          ...route.steps[0],
+          kind: "ramp",
+          connectionId: "accessible-ramp",
+          startIndex: 1,
+          endIndex: 2,
+        },
+        { ...route.steps[0], startIndex: 2, endIndex: 3 },
+      ],
+    };
+    const source = JSON.stringify(rampRoute);
+    const p = props({
+      model: value,
+      route: rampRoute,
+      grounded: true,
+      routeTour: true,
+    });
+    const s = createIndoorContent();
+    rebuildIndoorRoute(s, p);
+    const tubes = s.routeGroup.children.filter(
+      (child) => child.userData.routeTube,
+    );
+    const ramps = s.routeGroup.children.filter((child) => {
+      const edge = child.userData.routeTube ?? child.userData.routeFlow;
+      return edge?.from.x === 2 && edge?.to.x === 5;
+    });
+    expect(tubes).toHaveLength(3);
+    expect(ramps.length).toBeGreaterThan(1);
+    for (const theme of ["light", "dark"] as const)
+      for (const routeDirection of [1, -1] as const) {
+        updateIndoorTheme(s, { ...p, theme });
+        updateIndoorRouteFlow(s, { ...p, routeDirection }, 1.25);
+        for (const child of ramps)
+          expect(
+            (
+              (child as THREE.Mesh).material as THREE.MeshBasicMaterial
+            ).color.getHexString(),
+          ).toBe(A11Y_FEATURE_COLOR.ramp.slice(1));
+        for (const child of [tubes[0], tubes[2]])
+          expect(
+            (
+              (child as THREE.Mesh).material as THREE.MeshBasicMaterial
+            ).color.getHex(),
+          ).toBe(getIndoorPalette(theme).material.primary);
+      }
+    expect(JSON.stringify(rampRoute)).toBe(source);
+    disposeTree(s.routeGroup);
+    disposeTree(s.marker);
+  });
+
+  it("keeps source space boundaries subtle and solid on the product map while retaining diagnostic dashes and picking", () => {
+    const value = model();
+    value.features.push(
+      {
+        ...value.features[0],
+        id: "pending-void",
+        kind: "area",
+        geometry: { type: "Polygon", coordinates: rect(12, 0) },
+        tags: { "a11ymap:area_type": "void", fixme: "位置待確認" },
+      },
+      {
+        ...value.features[0],
+        id: "unclassified-area",
+        kind: "area",
+        geometry: { type: "Polygon", coordinates: rect(16, 0) },
+      },
+    );
+    const source = JSON.stringify(value);
+    for (const grounded of [true, false]) {
+      const p = props({ model: value, route: null, grounded });
+      const s = createIndoorContent();
+      rebuildIndoorContent(s, container(), p, p.onSelect);
+      const boundaries = s.content.children.filter(
+        (child) =>
+          child instanceof THREE.Line &&
+          child.geometry.getAttribute("position").getX(0) >= 12,
+      ) as THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>[];
+      expect(boundaries).toHaveLength(2);
+      for (const boundary of boundaries) {
+        expect(boundary.material instanceof THREE.LineDashedMaterial).toBe(
+          !grounded,
+        );
+        if (grounded) {
+          expect(boundary.material.transparent).toBe(true);
+          expect(boundary.material.opacity).toBeLessThan(0.65);
+        }
+      }
+      expect(
+        s.pickable.some((child) => child.userData.id === "pending-void"),
+      ).toBe(true);
+      expect(
+        s.labels.find((label) => label.id === "pending-void")?.status,
+      ).toBe(true);
+      disposeTree(s.content);
+      disposeTree(s.marker);
+    }
+    expect(JSON.stringify(value)).toBe(source);
+  });
+
+  it("retains ramp source indices through height clipping and floor projection without changing the route", () => {
+    const value = model();
+    const sourcePoints: XYZ[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [5, 0, 2],
+      [6, 0, 2],
+    ];
+    const sourceRoute: IndoorRoute = {
+      ...route,
+      points: sourcePoints,
+      context: {
+        buildingIds: sourcePoints.map(() => value.building.id),
+        levelRefs: sourcePoints.map(() => "L"),
+      },
+      kinds: ["corridor", "ramp", "corridor"],
+      steps: [
+        { ...route.steps[0], startIndex: 0, endIndex: 1 },
+        {
+          ...route.steps[0],
+          kind: "ramp",
+          connectionId: "clipped-ramp",
+          startIndex: 1,
+          endIndex: 2,
+        },
+        { ...route.steps[0], startIndex: 2, endIndex: 3 },
+      ],
+    };
+    value.connections.push({
+      ...value.connections[0],
+      id: "clipped-ramp",
+      kind: "ramp",
+      wheelchair: "yes",
+      coordinates: sourcePoints.slice(1, 3),
+      levelRefs: ["L", "L"],
+    });
+    const snapshot = JSON.stringify({ sourceRoute, value });
+    for (const grounded of [false, true]) {
+      const p = props({
+        model: value,
+        route: sourceRoute,
+        grounded,
+        routeTour: true,
+      });
+      const segments = indoorRouteDisplaySegments(p);
+      expect(segments).toHaveLength(2);
+      expect(segments[1]).toMatchObject({
+        pathStart: 1,
+        pathEnd: 2,
+        kind: "ramp",
+        connectionId: "clipped-ramp",
+        accessibleRamp: true,
+      });
+      const [from, to] = segments[1].coordinates;
+      expect(from).toEqual(sourcePoints[1]);
+      expect(to[0]).toBeLessThan(sourcePoints[2][0]);
+      expect(to[2]).toBeCloseTo(grounded ? 0 : 0.85);
+      const s = createIndoorContent();
+      rebuildIndoorRouteSegments(s, p, segments);
+      const tube = s.routeGroup.children.find(
+        (child) => child.userData.routeSegment?.pathStart === 1,
+      );
+      expect(tube?.userData.routeSegment).toMatchObject({
+        pathStart: 1,
+        pathEnd: 2,
+        accessibleRamp: true,
+      });
+      expect(
+        (
+          (tube as THREE.Mesh).material as THREE.MeshBasicMaterial
+        ).color.getHexString(),
+      ).toBe(A11Y_FEATURE_COLOR.ramp.slice(1));
+      disposeTree(s.routeGroup);
+      disposeTree(s.marker);
+    }
+    expect(JSON.stringify({ sourceRoute, value })).toBe(snapshot);
+  });
+
+  it("shows an authored accessible ramp between floors on either endpoint floor in both travel directions", () => {
+    const value = model();
+    const sourcePoints: XYZ[] = [
+      [0, 0, 0],
+      [1, 0, 0],
+      [3, 0, 2],
+      [5, 0, 4],
+      [6, 0, 4],
+    ];
+    const sourceRoute: IndoorRoute = {
+      ...route,
+      points: sourcePoints,
+      context: {
+        buildingIds: sourcePoints.map(() => value.building.id),
+        levelRefs: ["L", "L", null, "M", "M"],
+      },
+      kinds: ["corridor", "ramp", "ramp", "corridor"],
+      steps: [
+        { ...route.steps[0], startIndex: 0, endIndex: 1 },
+        {
+          ...route.steps[0],
+          kind: "ramp",
+          connectionId: "floor-ramp",
+          toLevel: "M",
+          startIndex: 1,
+          endIndex: 3,
+        },
+        {
+          ...route.steps[0],
+          fromLevel: "M",
+          toLevel: "M",
+          startIndex: 3,
+          endIndex: 4,
+        },
+      ],
+    };
+    value.connections.push({
+      ...value.connections[0],
+      id: "floor-ramp",
+      kind: "ramp",
+      wheelchair: "yes",
+      coordinates: sourcePoints.slice(1, 4),
+      levelRefs: ["L", null, "M"],
+    });
+    const snapshot = JSON.stringify(sourceRoute);
+    for (const [ordinal, elevation] of [
+      [10, 0],
+      [20, 4],
+    ] as const)
+      for (const routeDirection of [1, -1] as const) {
+        const segments = indoorRouteDisplaySegments(
+          props({
+            model: value,
+            route: sourceRoute,
+            grounded: true,
+            routeTour: true,
+            visibleLevels: [ordinal],
+            routeDirection,
+          }),
+        );
+        const ramps = segments.filter((segment) => segment.accessibleRamp);
+        expect(ramps.map((segment) => segment.pathStart)).toEqual([1, 2]);
+        expect(
+          ramps
+            .flatMap((segment) => segment.coordinates)
+            .every((point) => point[2] === elevation),
+        ).toBe(true);
+      }
+    expect(JSON.stringify(sourceRoute)).toBe(snapshot);
+  });
+
+  it("keeps pending source ramp topology as a subtle solid line on the product map and dashed in diagnostics", () => {
+    const value = model();
+    value.connections.push({
+      ...value.connections[0],
+      id: "pending-source-ramp",
+      kind: "ramp",
+      wheelchair: "unknown",
+      coordinates: [
+        [12, 0, 0],
+        [18, 0, 0.3],
+      ],
+      levelRefs: ["L", "L"],
+      heightPending: true,
+    });
+    const snapshot = JSON.stringify(value);
+    for (const grounded of [true, false]) {
+      const p = props({ model: value, grounded, route: null });
+      const s = createIndoorContent();
+      rebuildIndoorContent(s, container(), p, p.onSelect);
+      const line = s.content.children.find(
+        (child) =>
+          child instanceof THREE.Line &&
+          child.geometry.getAttribute("position").getX(0) === 12,
+      ) as THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+      expect(line).toBeDefined();
+      expect(line.material instanceof THREE.LineDashedMaterial).toBe(!grounded);
+      if (grounded) {
+        expect(line.material.userData.indoorColorRole).toBe("spaceBoundary");
+        expect(line.material.opacity).toBeLessThan(0.65);
+        expect(
+          s.content.children.some(
+            (child) =>
+              child instanceof THREE.Line &&
+              child.material instanceof THREE.LineDashedMaterial,
+          ),
+        ).toBe(false);
+      }
+      expect(
+        s.labels.find((label) => label.id === "pending-source-ramp"),
+      ).toMatchObject({
+        status: true,
+        caption: expect.stringContaining("高差待確認"),
+      });
+      disposeTree(s.content);
+      disposeTree(s.marker);
+    }
+    expect(JSON.stringify(value)).toBe(snapshot);
+  });
+
+  it("keeps product cursors hidden while direction arrows move and source coordinates stay unchanged", () => {
+    const p = props({ grounded: true, routeTour: true, routePlaying: true });
+    const s = createIndoorContent(),
+      host = container();
+    const source = JSON.stringify(p.route);
+    rebuildIndoorRouteSegments(s, p, [
+      [
+        [0, 0, 0],
+        [6, 0, 0],
+      ],
+    ]);
+    const arrow = s.routeGroup.children.find(
+      (object) => object.userData.routeFlow,
+    );
+    if (!arrow) throw new Error("Expected route direction arrow");
+    updateIndoorRouteFlow(s, p, 0);
+    const before = arrow.position.clone();
+    updateIndoorRouteFlow(s, p, 1);
+    expect(arrow.position.equals(before)).toBe(false);
+    for (const routeTour of [true, false])
+      for (const routePlaying of [true, false]) {
+        updateIndoorMarker(s, host, { ...p, routeTour, routePlaying });
+        expect(s.marker.visible).toBe(false);
+        expect(JSON.parse(host.dataset.markerPosition ?? "null")).toEqual(
+          samplePath(points, p.progress),
+        );
+        expect(
+          JSON.parse(host.dataset.displayMarkerPosition ?? "null")[2],
+        ).toBe(0);
+      }
+    const campus = {
+      ...p,
+      progress: 0.99,
+      campusRouteSegments: [[points[5], points[6]]] as [XYZ, XYZ][],
+    };
+    updateCampusTourMarker(s, host, campus);
+    expect(s.marker.visible).toBe(false);
+    expect(JSON.parse(host.dataset.campusMarkerPosition ?? "null")).toEqual(
+      samplePath(points, campus.progress),
+    );
+    expect(s.marker.position.y).toBe(0);
+    expect(JSON.stringify(p.route)).toBe(source);
+    expect(p.progress).toBe(0.25);
+    updateIndoorMarker(s, host, { ...p, grounded: false });
+    expect(s.marker.visible).toBe(true);
+    disposeTree(s.routeGroup);
+    disposeTree(s.marker);
+  });
+
+  it("keeps route thickness visible at campus scale without moving segment endpoints or rebuilding buffers", () => {
+    const p = props({ grounded: true, routeTour: true });
+    const s = createIndoorContent();
+    const segments: [XYZ, XYZ][] = [
+      [
+        [0, 0, 0],
+        [30, 0, 0],
+      ],
+      [
+        [30, 0, 0],
+        [30, 0.2, 0],
+      ],
+    ];
+    rebuildIndoorRouteSegments(s, p, segments);
+    const snapshots = s.routeGroup.children.map((child) => ({
+      object: child,
+      geometry: (child as THREE.Mesh).geometry,
+    }));
+    const camera = new THREE.PerspectiveCamera(40, 1440 / 900, 0.1, 5000);
+    camera.position.set(0, 260, 280);
+    camera.lookAt(15, 0, 0);
+    camera.updateMatrixWorld();
+    const pixel = (point: THREE.Vector3) => {
+      const projected = point.clone().project(camera);
+      return new THREE.Vector2(
+        (projected.x + 1) * 720,
+        (1 - projected.y) * 450,
+      );
+    };
+    updateIndoorOverlayScale(s, camera, 1440, 900);
+    updateIndoorRouteFlow(s, p, 1.2);
+    for (const object of s.routeGroup.children) {
+      const tube = object.userData.routeTube;
+      if (tube) {
+        expect(object.scale.y).toBe(1);
+        object.updateMatrix();
+        const length = tube.from.distanceTo(tube.to);
+        const actualStart = new THREE.Vector3(0, -length / 2, 0).applyMatrix4(
+          object.matrix,
+        );
+        const actualEnd = new THREE.Vector3(0, length / 2, 0).applyMatrix4(
+          object.matrix,
+        );
+        expect(actualStart.distanceTo(tube.from)).toBeLessThan(1e-8);
+        expect(actualEnd.distanceTo(tube.to)).toBeLessThan(1e-8);
+        const side = new THREE.Vector3(
+          -(tube.to.z - tube.from.z),
+          0,
+          tube.to.x - tube.from.x,
+        ).normalize();
+        const half = 0.07 * object.scale.x;
+        expect(
+          pixel(object.position.clone().addScaledVector(side, half)).distanceTo(
+            pixel(object.position.clone().addScaledVector(side, -half)),
+          ),
+        ).toBeGreaterThan(3.95);
+      }
+      const flow = object.userData.routeFlow;
+      if (flow) {
+        expect(object.scale.z * 0.48).toBeLessThanOrEqual(
+          flow.length * 0.8 + 1e-10,
+        );
+        for (const offset of [-0.18, 0.3]) {
+          const endpoint = new THREE.Vector3(0, 0, offset * object.scale.z)
+            .applyEuler(object.rotation)
+            .add(object.position);
+          const direction = flow.to.clone().sub(flow.from).normalize();
+          const distance = endpoint.sub(flow.from).dot(direction);
+          expect(distance).toBeGreaterThanOrEqual(-1e-8);
+          expect(distance).toBeLessThanOrEqual(flow.length + 1e-8);
+        }
+      }
+    }
+    expect(s.marker.children[0].scale.x).toBeGreaterThan(1);
+    for (const snapshot of snapshots)
+      expect((snapshot.object as THREE.Mesh).geometry).toBe(snapshot.geometry);
+    expect(s.marker.position.toArray()).toEqual([0, 0, 0]);
+    disposeTree(s.routeGroup);
+    disposeTree(s.marker);
+  });
+
+  it("retains planar tour position metadata without showing a cursor or claiming physical safety", () => {
+    const unsafe = { ...route, animationSafe: false };
+    const source = JSON.stringify(unsafe);
+    const p = props({ route: unsafe, grounded: true, visibleLevels: [20] });
+    const s = createIndoorContent(),
+      host = container();
+    updateIndoorMarker(s, host, p);
+    expect(s.marker.visible).toBe(false);
+    updateIndoorMarker(s, host, { ...p, routeTour: true });
+    expect(s.marker.visible).toBe(false);
+    expect(s.marker.position.y).toBe(4);
+    expect(JSON.parse(host.dataset.markerPosition ?? "null")).toEqual(
+      samplePath(unsafe.points, p.progress),
+    );
+    updateIndoorMarker(s, host, { ...p, grounded: false, routeTour: true });
+    expect(s.marker.visible).toBe(false);
+    expect(JSON.stringify(unsafe)).toBe(source);
+    disposeTree(s.marker);
+  });
+
+  it("keeps overlay arrows on the original disconnected straight segments in both directions", () => {
+    const p = props({ grounded: true, routeTour: true, routePlaying: true });
+    const segments: [XYZ, XYZ][] = [
+      [
+        [0, 0, 4],
+        [6, 0, 4],
+      ],
+      [
+        [6, 0, 4],
+        [6, 6, 4],
+      ],
+      [
+        [20, 20, 4],
+        [23, 20, 4],
+      ],
+    ];
+    const source = JSON.stringify(segments);
+    const s = createIndoorContent();
+    rebuildIndoorRouteSegments(s, p, segments);
+    const identities = s.routeGroup.children.map((child) => child.uuid);
+    const arrows = s.routeGroup.children.filter(
+      (child) => child.name === "indoor-route-direction",
+    );
+    expect(arrows.length).toBeGreaterThan(0);
+    for (const direction of [1, -1] as const)
+      for (const seconds of [0, 1.3, 30]) {
+        updateIndoorRouteFlow(s, { ...p, routeDirection: direction }, seconds);
+        for (const arrow of arrows) {
+          const { from, to } = arrow.userData.routeFlow as {
+            from: THREE.Vector3;
+            to: THREE.Vector3;
+          };
+          expect(
+            new THREE.Line3(from, to)
+              .closestPointToPoint(arrow.position, true, new THREE.Vector3())
+              .distanceTo(arrow.position),
+          ).toBeCloseTo(0.04);
+          const displayedDirection = new THREE.Vector3(0, 0, 1).applyEuler(
+            arrow.rotation,
+          );
+          expect(
+            displayedDirection.dot(to.clone().sub(from).normalize()) *
+              direction,
+          ).toBeCloseTo(1);
+        }
+      }
+    for (const object of s.routeGroup.children) {
+      const material = (object as THREE.Mesh).material as THREE.Material;
+      expect(material.depthTest).toBe(false);
+      expect(material.depthWrite).toBe(false);
+    }
+    expect(s.routeGroup.children.map((child) => child.uuid)).toEqual(
+      identities,
+    );
+    expect(JSON.stringify(segments)).toBe(source);
+    disposeTree(s.routeGroup);
+  });
+
+  it("records campus tour position only on an authored link while keeping its cursor hidden", () => {
+    const p = props({
+      routeTour: true,
+      progress: 0.99,
+      campusRouteSegments: [[points[5], points[6]]],
+    });
+    const source = JSON.stringify(p.route);
+    const s = createIndoorContent(),
+      host = container();
+    updateCampusTourMarker(s, host, p);
+    expect(s.marker.visible).toBe(false);
+    expect(s.marker.position.y).toBe(0);
+    expect(JSON.parse(host.dataset.campusMarkerPosition ?? "null")[2]).toBe(8);
+    updateCampusTourMarker(s, host, {
+      ...p,
+      campusRouteSegments: [[points[0], points[1]]],
+    });
+    expect(s.marker.visible).toBe(false);
+    updateCampusTourMarker(s, host, { ...p, routeTour: false });
+    expect(s.marker.visible).toBe(false);
+    expect(JSON.stringify(p.route)).toBe(source);
+    disposeTree(s.marker);
+  });
+
+  it("changes theme in place without replacing geometry, selection targets or route progress", () => {
+    const p = props({
+      model: facilityModel(),
+      grounded: true,
+      visibleLevels: [20],
+      selectedId: "stairs-M",
+    });
+    const source = JSON.stringify({ model: p.model, route: p.route });
+    const s = createIndoorContent(),
+      host = container();
+    rebuildIndoorContent(s, host, p, p.onSelect);
+    rebuildIndoorRoute(s, p);
+    updateIndoorMarker(s, host, p);
+    const geometries: {
+      object: THREE.Object3D;
+      geometry: THREE.BufferGeometry;
+      positions: number[];
+      matrix: number[];
+    }[] = [];
+    for (const group of [s.content, s.routeGroup, s.marker])
+      group.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.geometry) return;
+        object.updateMatrix();
+        geometries.push({
+          object,
+          geometry: mesh.geometry,
+          positions: Array.from(mesh.geometry.getAttribute("position").array),
+          matrix: object.matrix.toArray(),
+        });
+      });
+    const labels = s.labels.map((entry) => entry.element);
+    const targets = [...s.targets.entries()];
+    const markerPosition = s.marker.position.toArray();
+    const markerSource = host.dataset.markerPosition;
+    const markerDisplay = host.dataset.displayMarkerPosition;
+    const selected = s.featureMeshes.get("stairs-M")?.[0];
+    if (!selected) throw new Error("Expected selected facility");
+    const material = (object: THREE.Object3D) =>
+      (object as THREE.Mesh).material as THREE.MeshStandardMaterial;
+
+    const dark = getIndoorPalette("dark");
+    updateIndoorTheme(s, { ...p, theme: "dark" });
+    expect(material(selected).color.getHex()).toBe(dark.selection);
+    expect(selected.userData.originalColor).toBe(dark.material.stairs);
+    expect(material(s.routeGroup.children[0]).color.getHex()).toBe(
+      dark.material.primary,
+    );
+    expect(material(s.marker.children[0]).color.getHex()).toBe(
+      dark.material.marker,
+    );
+    expect(
+      s.labels.find((entry) => entry.id === "stairs-M")?.element.style,
+    ).toMatchObject({
+      background: dark.labelSelectedBackground,
+      color: dark.labelSelectedInk,
+      borderColor: dark.labelSelectedBorder,
+    });
+    expect(
+      s.labels.find((entry) => entry.id === "stairs-M")?.iconElement?.style
+        .background,
+    ).toBe(dark.iconSelectedBackground);
+    expect(
+      s.labels.find((entry) => entry.id === "shaft-M")?.iconElement?.style
+        .background,
+    ).toBe(dark.iconMutedBackground);
+    expect(
+      s.labels.find((entry) => entry.id === "room-mid")?.element.style,
+    ).toMatchObject({
+      background: dark.labelBackground,
+      color: dark.labelInk,
+      borderColor: dark.labelBorder,
+      boxShadow: dark.labelShadow,
+    });
+
+    // Deselection restores the current theme, not the original light colour.
+    updateIndoorTheme(s, { ...p, theme: "dark", selectedId: null });
+    expect(material(selected).color.getHex()).toBe(dark.material.stairs);
+    updateIndoorTheme(s, p);
+    expect(material(selected).color.getHex()).toBe(
+      getIndoorPalette().selection,
+    );
+    expect(material(s.marker.children[0]).color.getHex()).toBe(
+      getIndoorPalette().material.marker,
+    );
+    for (const entry of geometries) {
+      const mesh = entry.object as THREE.Mesh;
+      expect(mesh.geometry).toBe(entry.geometry);
+      expect(Array.from(mesh.geometry.getAttribute("position").array)).toEqual(
+        entry.positions,
+      );
+      expect(entry.object.matrix.toArray()).toEqual(entry.matrix);
+    }
+    expect(s.featureMeshes.get("stairs-M")?.[0]).toBe(selected);
+    expect(s.labels.map((entry) => entry.element)).toEqual(labels);
+    expect([...s.targets.entries()]).toEqual(targets);
+    expect(s.marker.position.toArray()).toEqual(markerPosition);
+    expect(host.dataset.markerPosition).toBe(markerSource);
+    expect(host.dataset.displayMarkerPosition).toBe(markerDisplay);
+    expect(JSON.stringify({ model: p.model, route: p.route })).toBe(source);
+    for (const group of [s.content, s.routeGroup, s.marker]) disposeTree(group);
+  });
+
+  it("recreates the current dark materials and selection after a layer rebuild", () => {
+    const p = props({
+      model: facilityModel(),
+      grounded: true,
+      visibleLevels: [20],
+      selectedId: "room-mid",
+      theme: "dark",
+    });
+    const s = createIndoorContent(),
+      host = container();
+    rebuildIndoorContent(s, host, p, p.onSelect);
+    rebuildIndoorRoute(s, p);
+    updateIndoorMarker(s, host, p);
+    const palette = getIndoorPalette("dark");
+    const roles = new Set<string>();
+    for (const group of [s.content, s.routeGroup, s.marker])
+      group.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.material || Array.isArray(mesh.material)) return;
+        const material = mesh.material as THREE.MeshStandardMaterial;
+        const role = material.userData.indoorColorRole as
+          | keyof typeof palette.material
+          | undefined;
+        if (!role) return;
+        roles.add(role);
+        expect(material.color.getHex()).toBe(
+          mesh.userData.id === p.selectedId
+            ? palette.selection
+            : palette.material[role],
+        );
+      });
+    for (const role of ["wall", "slab", "room", "marker", "primary"])
+      expect(roles.has(role)).toBe(true);
+    expect(host.dataset.currentRouteFloor).toBe("L");
+    expect(host.dataset.displayMarkerPosition).toBe(
+      JSON.stringify([samplePath(points, p.progress)[0], 1, 4]),
+    );
+    expect(
+      s.labels.find((entry) => entry.id === "room-mid")?.element.style.color,
+    ).toBe(palette.labelSelectedInk);
+    for (const group of [s.content, s.routeGroup, s.marker]) disposeTree(group);
+  });
+
+  it("keeps same-named floors in other buildings out of this cutaway", () => {
+    const sourceRoute: IndoorRoute = {
+      ...route,
+      points: [
+        [0, 0, 0],
+        [2, 0, 0],
+        [4, 0, 0],
+        [6, 0, 0],
+      ],
+      context: {
+        buildingIds: ["other", "other", "synthetic", "synthetic"],
+        levelRefs: ["L", "L", "L", "L"],
+      },
+      kinds: ["corridor", "corridor", "corridor"],
+      steps: [
+        {
+          kind: "corridor",
+          name: "Shared floor name",
+          fromLevel: "L",
+          toLevel: "L",
+          startIndex: 0,
+          endIndex: 3,
+          distanceM: 6,
+          heightPending: false,
+        },
+      ],
+      distanceM: 6,
+    };
+    const snapshot = JSON.stringify(sourceRoute);
+    const p = props({ route: sourceRoute, grounded: true, progress: 0.1 });
+    expect(indoorRouteSegments(p)).toEqual([
+      [sourceRoute.points[2], sourceRoute.points[3]],
+    ]);
+    const s = createIndoorContent(),
+      host = container();
+    updateIndoorMarker(s, host, p);
+    expect(s.marker.visible).toBe(false);
+    expect(host.dataset.currentRouteBuilding).toBe("other");
+    expect(JSON.parse(host.dataset.markerPosition ?? "null")).toEqual(
+      samplePath(sourceRoute.points, 0.1),
+    );
+    updateIndoorMarker(s, host, { ...p, progress: 0.9 });
+    expect(s.marker.visible).toBe(false);
+    expect(JSON.stringify(sourceRoute)).toBe(snapshot);
+    disposeTree(s.marker);
+  });
+
+  it("does not fill missing context with another floor's or building's line", () => {
+    const p = props({
+      route: {
+        ...route,
+        context: { buildingIds: ["synthetic"], levelRefs: ["L"] },
+      },
+      grounded: true,
+    });
+    expect(indoorRouteSegments(p)).toEqual([]);
+  });
+
+  it("shows each selected floor's authored vertical spans without advancing route progress or borrowing another building", () => {
+    const sourceRoute: IndoorRoute = {
+      ...route,
+      context: {
+        buildingIds: points.map(() => "synthetic"),
+        levelRefs: ["L", "L", null, "M", "M", "H", "H"],
+      },
+    };
+    const source = JSON.stringify(sourceRoute);
+    for (const [ordinal, floor, indices] of [
+      [10, 0, [1, 2, 3]],
+      [20, 4, [2, 3, 4, 5]],
+      [30, 8, [5, 6]],
+    ] as const) {
+      const p = props({
+        route: sourceRoute,
+        grounded: true,
+        routeTour: true,
+        visibleLevels: [ordinal],
+        progress: 0,
+      });
+      const expected = indices.map((index) => [
+        [points[index - 1][0], points[index - 1][1], floor],
+        [points[index][0], points[index][1], floor],
+      ]);
+      expect(indoorRouteSegments(p)).toEqual(expected);
+      expect(
+        indoorRouteSegments({ ...p, progress: 1, routeDirection: -1 }),
+      ).toEqual(expected);
+      expect(
+        indoorRouteSegments({
+          ...p,
+          route: {
+            ...sourceRoute,
+            context: {
+              levelRefs: sourceRoute.context?.levelRefs ?? [],
+              buildingIds: points.map(() => "another-building"),
+            },
+          },
+        }),
+      ).toEqual([]);
+    }
+    expect(JSON.stringify(sourceRoute)).toBe(source);
+  });
+
+  it("does not display a passing elevator span on an unserved intermediate floor", () => {
+    const lift: IndoorRoute = {
+      ...route,
+      points: [
+        [0, 0, 0],
+        [0, 0, 8],
+      ],
+      kinds: ["elevator"],
+      steps: [
+        {
+          kind: "elevator",
+          name: "Lift",
+          fromLevel: "L",
+          toLevel: "H",
+          startIndex: 0,
+          endIndex: 1,
+          distanceM: 8,
+          heightPending: false,
+        },
+      ],
+      context: {
+        buildingIds: ["synthetic", "synthetic"],
+        levelRefs: ["L", "H"],
+      },
+    };
+    expect(
+      indoorRouteSegments(
+        props({
+          route: lift,
+          grounded: true,
+          routeTour: true,
+          visibleLevels: [20],
+          progress: 0.5,
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps context-based vertical navigation on a single display plane in both directions", () => {
+    const sourceRoute: IndoorRoute = {
+      ...route,
+      context: {
+        buildingIds: points.map(() => "synthetic"),
+        levelRefs: ["L", "L", null, "M", "M", null, "H"],
+      },
+    };
+    const source = JSON.stringify(sourceRoute);
+    for (const [direction, ordinal, level, elevation] of [
+      [1, 10, "L", 0],
+      [-1, 20, "M", 4],
+    ] as const) {
+      const p = props({
+        route: sourceRoute,
+        grounded: true,
+        routeDirection: direction,
+        visibleLevels: [ordinal],
+      });
+      const s = createIndoorContent(),
+        host = container();
+      const segments = indoorRouteSegments(p);
+      expect(segments.length).toBeGreaterThan(0);
+      expect(segments.flat().every((point) => point[2] === elevation)).toBe(
+        true,
+      );
+      updateIndoorMarker(s, host, p);
+      expect(host.dataset.currentRouteFloor).toBe(level);
+      expect(s.marker.visible).toBe(false);
+      expect(JSON.parse(host.dataset.markerPosition ?? "null")).toEqual(
+        samplePath(sourceRoute.points, p.progress),
+      );
+      expect(JSON.parse(host.dataset.displayMarkerPosition ?? "null")[2]).toBe(
+        elevation,
+      );
+      disposeTree(s.marker);
+    }
+    expect(JSON.stringify(sourceRoute)).toBe(source);
+  });
+
   it("uses source facility blocks, a separate contained research shaft, and the correct floor's span", () => {
     const data = facilityModel();
     const source = JSON.stringify(data);
@@ -651,7 +1537,7 @@ describe("single-floor scene rendering", () => {
         expect(host.dataset.cabinHeight).toBe("4");
         expect(host.dataset.displayCabinHeight).toBe(String(displayHeight));
       }
-      expect(s.marker.visible).toBe(true);
+      expect(s.marker.visible).toBe(!grounded);
       if (!grounded) {
         const material = cabin.material as THREE.Material;
         expect(
@@ -692,7 +1578,7 @@ describe("single-floor scene rendering", () => {
       const host = container();
       rebuildIndoorRoute(s, p);
       updateIndoorMarker(s, host, p);
-      expect(s.marker.visible).toBe(true);
+      expect(s.marker.visible).toBe(false);
       expect(s.marker.position.toArray()).toEqual(
         v3([point[0], point[1], floor]).toArray(),
       );

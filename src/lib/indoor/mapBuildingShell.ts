@@ -4,12 +4,12 @@ import {
   type VectorTileSource,
 } from "maplibre-gl";
 import { localToLngLat } from "./coordinates";
-import { transformIndoorBuildingTile } from "./mapBuildingTile";
+import { transformIndoorBuildingTiles } from "./mapBuildingTile";
 import { registerIndoorTileRequest } from "./mapRequests";
 import type { LocalIndoorModel } from "./types";
 
 const PROTOCOL = "local-indoor-shell";
-const models = new Map<string, LocalIndoorModel>();
+const models = new Map<string, readonly LocalIndoorModel[]>();
 let registered = false;
 type TileTemplate = {
   pattern: RegExp;
@@ -53,9 +53,9 @@ function registerProtocol() {
     const z = Number(zoom),
       x = Number(column),
       y = scheme === "tms" ? 2 ** z - 1 - Number(row) : Number(row);
-    const model = models.get(key);
-    const data = model
-      ? transformIndoorBuildingTile(original, { z, x, y }, model).data
+    const displayed = models.get(key);
+    const data = displayed
+      ? transformIndoorBuildingTiles(original, { z, x, y }, displayed).data
       : original;
     // Do not forward the server's ETag: MapLibre would treat different bytes
     // with that same ETag as unchanged and retain the old exterior roof.
@@ -98,27 +98,41 @@ function tileTemplate(url: string, scheme: "xyz" | "tms"): TileTemplate | null {
  */
 export function mountIndoorBuildingMask(
   map: MapLibreMap,
-  model: LocalIndoorModel,
+  input: LocalIndoorModel | readonly LocalIndoorModel[],
 ): () => void {
+  // The caller supplies the floors actually being displayed. An explicitly
+  // geometry-free building must never lose its ordinary basemap shell.
+  const displayed = ("building" in input ? [input] : input).filter(
+    (model) =>
+      !model.building.levels ||
+      model.building.levels.some(
+        (level) => level.coverage?.hasDisplayGeometry !== false,
+      ),
+  );
+  if (displayed.length === 0) return () => {};
   registerProtocol();
   const key = crypto.randomUUID();
-  models.set(key, model);
+  models.set(key, displayed);
   let states = new Map<string, SourceState>();
   let disposed = false;
   let scheduled = false;
-  const worldPoints = model.building.footprint.flat().map((point) => {
-    const [lng, lat] = localToLngLat(point, model.origin);
-    const latitude = Math.max(-85.051129, Math.min(85.051129, lat));
-    const sine = Math.sin((latitude * Math.PI) / 180);
-    return [
-      (lng + 180) / 360,
-      0.5 - Math.log((1 + sine) / (1 - sine)) / (4 * Math.PI),
-    ];
+  const footprints = displayed.map((model) => {
+    const worldPoints = model.building.footprint.flat().map((point) => {
+      const [lng, lat] = localToLngLat(point, model.origin);
+      const latitude = Math.max(-85.051129, Math.min(85.051129, lat));
+      const sine = Math.sin((latitude * Math.PI) / 180);
+      return [
+        (lng + 180) / 360,
+        0.5 - Math.log((1 + sine) / (1 - sine)) / (4 * Math.PI),
+      ];
+    });
+    return {
+      minX: Math.min(...worldPoints.map((p) => p[0])),
+      maxX: Math.max(...worldPoints.map((p) => p[0])),
+      minY: Math.min(...worldPoints.map((p) => p[1])),
+      maxY: Math.max(...worldPoints.map((p) => p[1])),
+    };
   });
-  const minX = Math.min(...worldPoints.map((p) => p[0]));
-  const maxX = Math.max(...worldPoints.map((p) => p[0]));
-  const minY = Math.min(...worldPoints.map((p) => p[1]));
-  const maxY = Math.max(...worldPoints.map((p) => p[1]));
   const unregisterRequest = registerIndoorTileRequest(
     map,
     (url, resourceType) => {
@@ -137,10 +151,13 @@ export function mountIndoorBuildingMask(
           const buffer = 0.125;
           if (
             z > 24 ||
-            x + 1 + buffer < minX * scale ||
-            x - buffer > maxX * scale ||
-            y + 1 + buffer < minY * scale ||
-            y - buffer > maxY * scale
+            !footprints.some(
+              ({ minX, maxX, minY, maxY }) =>
+                x + 1 + buffer >= minX * scale &&
+                x - buffer <= maxX * scale &&
+                y + 1 + buffer >= minY * scale &&
+                y - buffer <= maxY * scale,
+            )
           )
             return { url };
           return {

@@ -4,7 +4,12 @@ import { haversineMeters } from "@/lib/geo";
 import type { PlaceDetail, VenuePlaceDetail } from "@/types";
 import type { AccessibleRoute } from "@/types/route";
 import { routeReachesArrival, routeStartsAtOrigin } from "./arrival";
-import { findVenueModel, toVenuePlaceDetail } from "./catalog";
+import {
+  findVenueModel,
+  indoorModelVersion,
+  refreshVenuePlace,
+  toVenuePlaceDetail,
+} from "./catalog";
 import { effectiveVerticalPreference } from "./profilePolicy";
 
 export { routeReachesArrival } from "./arrival";
@@ -29,8 +34,13 @@ export interface PlanVenueJourneyOptions {
   signal?: AbortSignal;
 }
 export type PlanVenueJourneyResult =
-  | { ok: true; journey: VenueJourney }
-  | { ok: false; reason: string; message: string };
+  | { ok: true; journey: VenueJourney; refreshedModels?: LocalIndoorModel[] }
+  | {
+      ok: false;
+      reason: string;
+      message: string;
+      refreshedModels?: LocalIndoorModel[];
+    };
 
 const stairsConstraintWarnings = new Set([
   "ROUTE_STAIRS_CONSTRAINT_UNSATISFIED",
@@ -73,6 +83,47 @@ function outdoorStairEvidence(
 export async function planVenueJourney(
   options: PlanVenueJourneyOptions,
 ): Promise<PlanVenueJourneyResult> {
+  const initial = await planVenueJourneyOnce(options);
+  if (
+    initial.ok ||
+    initial.reason !== "VENUE_VERSION_CHANGED" ||
+    !initial.refreshedModels ||
+    options.signal?.aborted
+  )
+    return initial;
+  const refreshed = initial.refreshedModels;
+  const venueIds = new Set(refreshed.map((model) => model.venueId));
+  const models = [
+    ...options.models.filter((model) => !venueIds.has(model.venueId)),
+    ...refreshed,
+  ];
+  const origin =
+    options.origin.kind === "venue-place"
+      ? refreshVenuePlace(models, options.origin)
+      : options.origin;
+  const destination =
+    options.destination.kind === "venue-place"
+      ? refreshVenuePlace(models, options.destination)
+      : options.destination;
+  if (!origin || !destination)
+    return {
+      ok: false,
+      reason: "UNSUPPORTED_API_PLACE",
+      message: "更新後的圖資已無原地點或樓層，請重新選擇。",
+      refreshedModels: models,
+    };
+  const result = await planVenueJourneyOnce({
+    ...options,
+    models,
+    origin,
+    destination,
+  });
+  return { ...result, refreshedModels: result.refreshedModels ?? models };
+}
+
+async function planVenueJourneyOnce(
+  options: PlanVenueJourneyOptions,
+): Promise<PlanVenueJourneyResult> {
   const cancelled = (): PlanVenueJourneyResult => ({
     ok: false,
     reason: "ABORTED",
@@ -108,7 +159,7 @@ export async function planVenueJourney(
     from: VenuePlaceDetail,
     to: VenuePlaceDetail,
   ): Promise<PlanVenueJourneyResult> => {
-    if (options.routeProvider !== "backend")
+    if (!model.api && options.routeProvider !== "backend")
       return buildVenueJourney(model, from, to, mode, verticalPreference);
     const result = await planBackendVenueRoute({
       baseUrl: END_POINT,
@@ -143,7 +194,7 @@ export async function planVenueJourney(
       message:
         "目前尚未提供從教室接往校外目的地的完整路線。可先選擇校門為終點，再規劃校外行程。",
     };
-  if (destination.sourceVersion !== model.source.sha256)
+  if (!model.api && destination.sourceVersion !== indoorModelVersion(model))
     return {
       ok: false,
       reason: "STALE_SOURCE",
@@ -184,7 +235,11 @@ export async function planVenueJourney(
   if (!candidates.length) {
     const failure = gateResults.find(({ result }) => !result.ok)?.result;
     // A failed backend call must not silently fall back to locally chosen paths.
-    if (failure && !failure.ok && options.routeProvider === "backend")
+    if (
+      failure &&
+      !failure.ok &&
+      (model.api || options.routeProvider === "backend")
+    )
       return failure;
     return {
       ok: false,

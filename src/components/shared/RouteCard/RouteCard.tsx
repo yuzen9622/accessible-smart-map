@@ -276,12 +276,12 @@ export const RouteCard = memo(function RouteCard({
           {/* The only channel telling the user this route carries no
               accessibility guarantee, so it sits above the leg list. */}
           {!route.routeToken && (
-            <p role="status" className="text-amber-700">
+            <p role="status" className="text-amber-700 dark:text-amber-400">
               {t("routeTokenUnavailable")}
             </p>
           )}
           {route.legs.some((leg) => !leg.polyline?.length) && (
-            <p role="status" className="text-amber-700">
+            <p role="status" className="text-amber-700 dark:text-amber-400">
               {t("routeGeometryIncomplete")}
             </p>
           )}

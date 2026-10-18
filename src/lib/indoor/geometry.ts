@@ -191,13 +191,19 @@ export function roomWalls(
       }
     }
     cuts.sort((a, b) => a - b);
+    // Recomputing a + (b - a) can differ from b by one floating-point ULP.
+    // Preserve authored endpoints so adjoining wall strips share exactly the
+    // same vertex and polygon union can close their boundary rings.
+    const pointAt = (t: number): XY =>
+      t === 0
+        ? [...edge.a]
+        : t === 1
+          ? [...edge.b]
+          : [edge.a[0] + dx * t, edge.a[1] + dy * t];
     for (let i = 1; i < cuts.length; i++) {
       if ((cuts[i] - cuts[i - 1]) * len < EPS) continue;
-      const a: XY = [
-        edge.a[0] + dx * cuts[i - 1],
-        edge.a[1] + dy * cuts[i - 1],
-      ];
-      const b: XY = [edge.a[0] + dx * cuts[i], edge.a[1] + dy * cuts[i]];
+      const a = pointAt(cuts[i - 1]),
+        b = pointAt(cuts[i]);
       const id = [key(a), key(b)].sort().join(":");
       const existing = pieces.get(id);
       if (existing) existing.owners.add(edge.owner);
@@ -301,11 +307,58 @@ export function roomWalls(
 }
 
 export function unionWalls(walls: WallSegment[]): MultiPolygon {
-  if (!walls.length) return [];
-  return polygonClipping.union(
-    walls[0].polygon,
-    ...walls.slice(1).map((w) => w.polygon),
+  return unionWallPolygons(walls.map((wall) => wall.polygon));
+}
+
+/** Generated offset strips can differ by a few ULPs at a shared intersection.
+ * Use a common nanometre grid only for their Boolean overlay: it is far below
+ * both the millimetre topology tolerance and the GPU's Float32 precision.
+ * Authored room/corridor coordinates and navigation geometry stay untouched.
+ * All wall-overlay operands use this same grid so corridor subtraction cannot
+ * create sub-nanometre slivers between two versions of one shared boundary.
+ */
+function wallOverlayPolygon(polygon: Polygon): Polygon {
+  const precision = 1e9;
+  return polygon.map((ring) =>
+    ring.map(
+      ([x, y]): XY => [
+        Math.round(x * precision) / precision,
+        Math.round(y * precision) / precision,
+      ],
+    ),
   );
+}
+
+function unionWallPolygons(polygons: Polygon[]): MultiPolygon {
+  if (!polygons.length) return [];
+  const normalized = polygons.map(wallOverlayPolygon);
+  return cleanWallOverlay(
+    polygonClipping.union(normalized[0], ...normalized.slice(1)),
+  );
+}
+
+/** Intersections may reintroduce sub-grid triangular holes. Collapse only
+ * rings that have no area on the same overlay grid before triangulation. */
+function cleanWallOverlay(polygons: MultiPolygon): MultiPolygon {
+  return polygons.flatMap((polygon) => {
+    const rings = wallOverlayPolygon(polygon).map((ring) => {
+      const points = ring.filter(
+        (point, index) =>
+          index === 0 ||
+          point[0] !== ring[index - 1][0] ||
+          point[1] !== ring[index - 1][1],
+      );
+      if (points.length < 3) return [];
+      const [originX, originY] = points[0];
+      // Compute locally to avoid cancellation of large absolute coordinates.
+      const signedArea = area(
+        points.map(([x, y]): XY => [x - originX, y - originY]),
+      );
+      return signedArea === 0 ? [] : points;
+    });
+    if (!rings[0].length) return [];
+    return [[rings[0], ...rings.slice(1).filter((ring) => ring.length)]];
+  });
 }
 
 export interface IndoorWallGeometry {
@@ -336,14 +389,21 @@ function shaftApproaches(model: LocalIndoorModel, feature: IndoorFeature) {
     feature.geometry.type !== "Polygon"
   )
     return [];
+  const sourceStops = model.connections.find(
+    (connection) =>
+      connection.id === feature.connectionId && connection.kind === "elevator",
+  )?.nodeIds;
+  // Public connection stops need not be searchable places. Their exact source
+  // IDs are authoritative; only legacy models without that field use places.
   const stops = new Set(
-    model.places
-      .filter(
-        (place) =>
-          place.connectionId === feature.connectionId ||
-          place.connectionIds?.includes(feature.connectionId as string),
-      )
-      .map((place) => place.nodeId),
+    sourceStops ??
+      model.places
+        .filter(
+          (place) =>
+            place.connectionId === feature.connectionId ||
+            place.connectionIds?.includes(feature.connectionId as string),
+        )
+        .map((place) => place.nodeId),
   );
   const nodes = new Map(model.nodes.map((node) => [node.id, node.point]));
   const approaches: [XY, XY][] = [];
@@ -507,10 +567,15 @@ export function wallGeometry(
     }
   }
   if (!solids.length) return { polygons: [], boundaryWalls };
-  const merged = polygonClipping.union(solids[0], ...solids.slice(1));
+  const merged = unionWallPolygons(solids);
   return {
     polygons: corridors.length
-      ? polygonClipping.difference(merged, ...corridors)
+      ? cleanWallOverlay(
+          polygonClipping.difference(
+            merged,
+            ...corridors.map(wallOverlayPolygon),
+          ),
+        )
       : merged,
     boundaryWalls,
   };

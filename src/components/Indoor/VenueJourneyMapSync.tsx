@@ -2,19 +2,27 @@
 
 import { LngLatBounds } from "maplibre-gl";
 import { useEffect, useRef } from "react";
-import { localToLngLat } from "@/lib/indoor/coordinates";
+import { indoorModelVersion, venueBuildingKey } from "@/lib/indoor/catalog";
 import { venueJourneyPresentation } from "@/lib/indoor/journey";
 import { sampleRoutePresentation } from "@/lib/indoor/routePresentation";
 import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore, { getMapPadding } from "@/stores/useMapStore";
 
-/** Navigation progress controls the cutaway; browsing never confirms arrival. */
+/** Open the route start once. Animated arrows never own the map camera or
+ * advance a floor, a location fix, or arrival state. */
 export default function VenueJourneyMapSync() {
   const journey = useMapStore((s) => s.venueJourney);
   const models = useIndoorCatalog((s) => s.models);
-  const last = useRef<{ id: string; level: string | null } | null>(null);
-  const previewedRoute = useRef<string | null>(null);
   const map = useMapStore((s) => s.map);
+  const openedJourney = useRef<string | null>(null);
+  const last = useRef<{
+    id: string;
+    building: string | null;
+    level: string | null;
+    step: number | null;
+  } | null>(null);
+  const previewedRoute = useRef<string | null>(null);
+  const previewWasPlaying = useRef(false);
   useEffect(() => {
     const outdoor = journey?.outdoor;
     if (!map || !outdoor || journey.guidance.status !== "idle") {
@@ -44,7 +52,53 @@ export default function VenueJourneyMapSync() {
   }, [journey, map]);
 
   useEffect(() => {
-    if (!journey || !["guiding", "arrived"].includes(journey.guidance.status)) {
+    if (journey?.guidance.status !== "touring") {
+      openedJourney.current = null;
+      return;
+    }
+    if (openedJourney.current === journey.id) return;
+    const model = models.find(
+      (item) =>
+        item.venueId === journey.venueId &&
+        item.building.id === journey.buildingId &&
+        indoorModelVersion(item) === journey.sourceVersion,
+    );
+    if (!model) return;
+    const start = sampleRoutePresentation(model, journey.route, 0, 1);
+    const currentModel =
+      models.find(
+        (item) =>
+          item.venueId === journey.venueId &&
+          indoorModelVersion(item) === journey.sourceVersion &&
+          item.building.id === start.currentBuildingId,
+      ) ?? model;
+    const floor = currentModel.building.levels.find(
+      (item) => item.ref === start.currentLevelRef,
+    );
+    openedJourney.current = journey.id;
+    const catalog = useIndoorCatalog.getState();
+    catalog.showBuilding(currentModel);
+    if (floor) catalog.setActiveLevel(floor.ordinal);
+  }, [journey, models]);
+
+  // Retain explicit step confirmation and the separate diagnostic preview.
+  // Product route animation has no moving cursor and never enters this branch.
+  useEffect(() => {
+    if (journey?.guidance.status === "touring") {
+      last.current = null;
+      previewWasPlaying.current = false;
+      return;
+    }
+    const finishedPreview =
+      previewWasPlaying.current &&
+      (journey?.preview.progress === 0 || journey?.preview.progress === 1);
+    previewWasPlaying.current = journey?.preview.playing ?? false;
+    if (
+      !journey ||
+      (!journey.preview.playing &&
+        !finishedPreview &&
+        !["guiding", "arrived"].includes(journey.guidance.status))
+    ) {
       last.current = null;
       return;
     }
@@ -52,7 +106,7 @@ export default function VenueJourneyMapSync() {
       (item) =>
         item.venueId === journey.venueId &&
         item.building.id === journey.buildingId &&
-        item.source.sha256 === journey.sourceVersion,
+        indoorModelVersion(item) === journey.sourceVersion,
     );
     if (!model) return;
     const position = venueJourneyPresentation(journey);
@@ -63,32 +117,36 @@ export default function VenueJourneyMapSync() {
       position.direction,
     );
     const previous = last.current;
-    const level = presentation.currentLevelRef;
-    last.current = { id: journey.id, level };
-    if (previous?.id === journey.id && previous.level === level) return;
+    const level = presentation.currentLevelRef,
+      building = presentation.currentBuildingId;
+    const step =
+      journey.guidance.status === "guiding" ? journey.guidance.stepIndex : null;
+    const changed =
+      previous?.id !== journey.id ||
+      previous.building !== building ||
+      previous.level !== level ||
+      previous.step !== step;
+    last.current = { id: journey.id, building, level, step };
+    if (!changed) return;
     const state = useMapStore.getState();
-    const floor = model.building.levels.find((item) => item.ref === level);
-    if (floor) {
-      if (!state.indoorExploring)
-        useIndoorCatalog.getState().showBuilding(model);
-      useIndoorCatalog.getState().setActiveLevel(floor.ordinal);
-    } else {
-      state.setIndoorExploring(false);
-      const bounds = new LngLatBounds();
-      for (const step of journey.route.steps) {
-        if (step.fromLevel !== null && step.toLevel !== null) continue;
-        for (const point of journey.route.points.slice(
-          step.startIndex,
-          step.endIndex + 1,
-        ))
-          bounds.extend(localToLngLat([point[0], point[1]], model.origin));
-      }
-      if (!bounds.isEmpty())
-        state.map?.fitBounds(bounds, {
-          padding: getMapPadding(),
-          maxZoom: 19,
-          duration: 900,
-        });
+    const catalog = useIndoorCatalog.getState();
+    const currentModel = models.find(
+      (item) =>
+        item.venueId === journey.venueId &&
+        indoorModelVersion(item) === journey.sourceVersion &&
+        item.building.id === building,
+    );
+    const floor = currentModel?.building.levels.find(
+      (item) => item.ref === level,
+    );
+    // Authored outdoor links leave the campus cutaway open.
+    if (currentModel && floor) {
+      if (
+        !state.indoorExploring ||
+        catalog.activeBuildingKey !== venueBuildingKey(currentModel)
+      )
+        catalog.showBuilding(currentModel);
+      catalog.setActiveLevel(floor.ordinal);
     }
   }, [journey, models]);
   return null;

@@ -90,6 +90,7 @@ export interface RouteSlice {
   setVenueJourney: (journey: VenueJourney | null) => void;
   setVenueJourneyPreview: (preview: Partial<VenueJourney["preview"]>) => void;
   startVenueGuidance: () => void;
+  startVenueTour: (autoplay?: boolean) => void;
   advanceVenueGuidance: () => void;
   stopVenueGuidance: () => void;
   beginVenueOutdoorNavigation: () => void;

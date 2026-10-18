@@ -1,0 +1,112 @@
+import { A11Y_FEATURE_COLOR } from "@/types/route";
+
+export type IndoorTheme = "light" | "dark";
+
+const light = {
+  primary: 0x2563eb,
+  primaryCss: "#2563eb",
+  accessibleRampCss: A11Y_FEATURE_COLOR.ramp,
+  routeCasingCss: "#ffffff",
+  selection: 0xbfdbfe,
+  labelInk: "#334155",
+  labelBackground: "rgba(255,255,255,.94)",
+  labelBorder: "#d1d5db",
+  labelShadow: "0 1px 3px #0f172a12",
+  labelSelectedBackground: "#2563eb",
+  labelSelectedInk: "#ffffff",
+  labelSelectedBorder: "#1d4ed8",
+  labelPendingBorder: "#c9aa75",
+  labelLeader: "#64748b",
+  iconBackground: "#2563eb",
+  iconMutedBackground: "#64748b",
+  iconSelectedBackground: "#1d4ed8",
+  iconInk: "#ffffff",
+  material: {
+    primary: 0x2563eb,
+    accessibleRamp: Number.parseInt(A11Y_FEATURE_COLOR.ramp.slice(1), 16),
+    marker: 0x2563eb,
+    wall: 0xfafafa,
+    slab: 0xd6d6d6,
+    room: 0xf2f2f2,
+    toilet: 0xe8e8e8,
+    corridor: 0xdfdfdf,
+    unknownArea: 0xe5e5e5,
+    outline: 0xbababa,
+    unknownOutline: 0xb4b4b4,
+    spaceBoundary: 0x9aa7b4,
+    elevator: 0xbfdbfe,
+    stairs: 0xdbeafe,
+    core: 0xe2e8f0,
+    nonStopping: 0xe5e7eb,
+    facilityOutline: 0x93a9c9,
+    nonStoppingOutline: 0x94a3b8,
+    diagnosticInactive: 0xc8c8c8,
+    pendingOutline: 0xb68e51,
+    pendingPath: 0xb5834c,
+  },
+  lighting: {
+    hemisphereSky: 0xffffff,
+    hemisphereGround: 0xa6a6a6,
+    hemisphereIntensity: 1.7,
+    directionalColor: 0xffffff,
+    directionalIntensity: 2.2,
+    exposure: 0.9,
+  },
+};
+
+export type IndoorPalette = typeof light;
+export type IndoorMaterialRole = keyof IndoorPalette["material"];
+
+const dark: IndoorPalette = {
+  ...light,
+  primary: 0x60a5fa,
+  primaryCss: "#60a5fa",
+  routeCasingCss: "#111827",
+  selection: 0x305993,
+  labelInk: "#e2e8f0",
+  labelBackground: "rgba(15,23,42,.96)",
+  labelBorder: "#64748b",
+  labelShadow: "0 2px 5px #00000066",
+  labelSelectedBackground: "#60a5fa",
+  labelSelectedInk: "#0f172a",
+  labelSelectedBorder: "#93c5fd",
+  labelPendingBorder: "#d6b680",
+  labelLeader: "#94a3b8",
+  iconBackground: "#1d4ed8",
+  iconMutedBackground: "#475569",
+  iconSelectedBackground: "#17365c",
+  material: {
+    primary: 0x60a5fa,
+    accessibleRamp: light.material.accessibleRamp,
+    marker: 0x93c5fd,
+    wall: 0x768394,
+    slab: 0x242d38,
+    room: 0x354050,
+    toilet: 0x3e4958,
+    corridor: 0x293340,
+    unknownArea: 0x354050,
+    outline: 0x63738b,
+    unknownOutline: 0x7b8799,
+    spaceBoundary: 0x637083,
+    elevator: 0x233f62,
+    stairs: 0x273b52,
+    core: 0x354050,
+    nonStopping: 0x343d49,
+    facilityOutline: 0x6489b4,
+    nonStoppingOutline: 0x68778b,
+    diagnosticInactive: 0x68778b,
+    pendingOutline: 0xd4ad72,
+    pendingPath: 0xd4ad72,
+  },
+  lighting: {
+    ...light.lighting,
+    hemisphereGround: 0x718096,
+    hemisphereIntensity: 1.9,
+    directionalIntensity: 1.8,
+  },
+};
+
+/** Explicit theme input keeps the geometry module independent of React. */
+export function getIndoorPalette(theme: IndoorTheme = "light"): IndoorPalette {
+  return theme === "dark" ? dark : light;
+}

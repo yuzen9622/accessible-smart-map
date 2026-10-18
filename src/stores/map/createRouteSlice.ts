@@ -1,5 +1,6 @@
 "use client";
 import { advanceVenueJourney } from "@/lib/indoor/journey";
+import { isVenueTourAllowed } from "@/lib/indoor/tour";
 import type { MapSliceCreator, MapStore, RouteSlice } from "./types";
 
 export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
@@ -47,9 +48,16 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   },
   setVenueJourneyPreview: (patch) => {
     const journey = get().venueJourney;
-    if (journey?.guidance.status !== "idle") return;
+    if (!journey || !["idle", "touring"].includes(journey.guidance.status))
+      return;
     const progress = patch.progress ?? journey.preview.progress;
-    if (!Number.isFinite(progress)) return;
+    if (
+      !Number.isFinite(progress) ||
+      (patch.direction !== undefined &&
+        patch.direction !== 1 &&
+        patch.direction !== -1)
+    )
+      return;
     set({
       venueJourney: {
         ...journey,
@@ -57,11 +65,32 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
           ...journey.preview,
           ...patch,
           progress: Math.max(0, Math.min(1, progress)),
-          playing: journey.route.animationSafe
+          playing: (
+            journey.guidance.status === "touring"
+              ? isVenueTourAllowed(journey.route)
+              : journey.route.animationSafe
+          )
             ? (patch.playing ?? journey.preview.playing)
             : false,
         },
       },
+    });
+  },
+  startVenueTour: (autoplay = true) => {
+    const journey = get().venueJourney;
+    if (!journey || !isVenueTourAllowed(journey.route)) return;
+    set({
+      venueJourney: {
+        ...journey,
+        preview: {
+          progress: 0,
+          direction: 1,
+          playing: autoplay,
+          following: false,
+        },
+        guidance: { status: "touring", stepIndex: 0 },
+      },
+      activeNavigationRoute: null,
     });
   },
   startVenueGuidance: () => {

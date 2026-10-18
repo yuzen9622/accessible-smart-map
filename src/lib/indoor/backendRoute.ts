@@ -1,5 +1,6 @@
 import { ApiError, fetchRequest } from "@/lib/fetch";
 import type { VenuePlaceDetail } from "@/types";
+import { indoorModelVersion } from "./catalog";
 import { lngLatToLocal } from "./coordinates";
 import {
   isIndoorEdgeAllowedForProfile,
@@ -18,6 +19,13 @@ import type {
   XY,
   XYZ,
 } from "./types";
+import {
+  loadVenueCatalog,
+  officialRoute,
+  type VenueRouteResponse,
+  validateVenueDetail,
+  venueModels,
+} from "./venueApi";
 
 export interface BackendRouteProvenance {
   provider: "api";
@@ -43,6 +51,7 @@ export interface BackendVenueDetail {
     buildingId: string | null;
     levelRef: string | null;
     nodeId: string;
+    arrivalNodeIds?: string[];
     location: XY;
   }[];
   features: Pick<
@@ -84,6 +93,7 @@ export type BackendVenueRouteResult =
       ok: false;
       reason: string;
       message: string;
+      refreshedModels?: LocalIndoorModel[];
     };
 
 export interface BackendVenueRouteOptions {
@@ -199,7 +209,7 @@ function validateEndpoints(options: BackendVenueRouteOptions) {
     );
     requireMatch(
       endpoint.venueId === model.venueId &&
-        endpoint.sourceVersion === model.source.sha256 &&
+        endpoint.sourceVersion === indoorModelVersion(model) &&
         locals.length === 1,
       "STALE_SOURCE",
       geometryMessage,
@@ -267,6 +277,28 @@ function validateDetail(
       "這個電梯、樓梯或館外接點尚未列入後端可規劃地點，請選擇後端已提供的教室或校門。",
     );
     const other = matches[0];
+    const arrivals = place.arrivalNodeIds ?? [place.nodeId];
+    const otherArrivals = other.arrivalNodeIds ?? [other.nodeId];
+    requireMatch(
+      arrivals.length > 0 &&
+        arrivals.length <= 16 &&
+        new Set(arrivals).size === arrivals.length &&
+        arrivals.includes(place.nodeId) &&
+        Array.isArray(otherArrivals) &&
+        otherArrivals.length === arrivals.length &&
+        arrivals.every((id) => otherArrivals.includes(id)) &&
+        (!place.arrivalNodeIds ||
+          arrivals.every((id) => {
+            const nodes = model.nodes.filter((node) => node.id === id);
+            return (
+              nodes.length === 1 &&
+              buildingId(model, nodes[0]) === buildingId(model, place) &&
+              nodes[0].levelRef === place.levelRef
+            );
+          })),
+      "SOURCE_MISMATCH",
+      geometryMessage,
+    );
     requireMatch(
       other.nodeId === place.nodeId &&
         other.buildingId === endpoint.buildingId &&
@@ -391,11 +423,20 @@ function routeFromBackend(
     requireMatch(matches.length === 1, "UNMATCHED_BACKEND_PATH", pathMessage);
     return matches[0];
   });
+  const endpointPairs: [string, IndoorNode][] = [
+    [from.placeId, nodes[0]],
+    [to.placeId, nodes[nodes.length - 1]],
+  ];
   requireMatch(
-    nodes[0].id ===
-      model.places.find((place) => place.id === from.placeId)?.nodeId &&
-      nodes.at(-1)?.id ===
-        model.places.find((place) => place.id === to.placeId)?.nodeId,
+    endpointPairs.every(([id, node]) => {
+      const place = model.places.find((candidate) => candidate.id === id);
+      return (
+        place &&
+        (place.arrivalNodeIds ?? [place.nodeId]).includes(node.id) &&
+        buildingId(model, place) === buildingId(model, node) &&
+        place.levelRef === node.levelRef
+      );
+    }),
     "UNMATCHED_BACKEND_PATH",
     pathMessage,
   );
@@ -574,12 +615,15 @@ export async function planBackendVenueRoute(
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
   let timedOut = false;
+  let refreshedModels: LocalIndoorModel[] | undefined;
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
   }, 15_000);
   try {
-    validateEndpoints(options);
+    // Published endpoints are validated after fetching the current version, so
+    // a stale catalog can be refreshed before an explicit, bounded retry.
+    if (!options.model.api) validateEndpoints(options);
     requireMatch(!controller.signal.aborted, "ABORTED", "已取消這次規劃。");
     const baseUrl = options.baseUrl.replace(/\/$/, "");
     const url = `${baseUrl}/api/v1/a11y/venues/${encodeURIComponent(options.model.venueId)}`;
@@ -592,7 +636,30 @@ export async function planBackendVenueRoute(
       "目前無法載入室內後端資料，起終點已保留。",
     );
     const detail = detailResponse.data as BackendVenueDetail;
-    validateDetail(options, detail);
+    const published = options.model.api
+      ? validateVenueDetail(detailResponse.data)
+      : undefined;
+    if (published) {
+      if (
+        published.version !== options.model.api?.version ||
+        [options.from, options.to].some(
+          (endpoint) =>
+            endpoint.sourceVersion !== indoorModelVersion(options.model),
+        )
+      ) {
+        refreshedModels = venueModels(published);
+        throw new IncompatibleRoute(
+          "VENUE_VERSION_CHANGED",
+          "場域圖資已更新，請重新載入後規劃。",
+        );
+      }
+      requireMatch(
+        published.sourceSha256 === options.model.api?.sourceSha256,
+        "SOURCE_MISMATCH",
+        "同一圖資版本的來源內容已改變，請確認服務資料版本。",
+      );
+      validateEndpoints(options);
+    } else validateDetail(options, detail);
     const routeResponse = await fetchRequest(`${url}/route`, {
       method: "POST",
       signal: controller.signal,
@@ -611,11 +678,21 @@ export async function planBackendVenueRoute(
     requireMatch(!controller.signal.aborted, "ABORTED", "已取消這次規劃。");
     return {
       ok: true,
-      route: routeFromBackend(
-        options,
-        detail,
-        routeResponse.data as BackendVenueRoute,
-      ),
+      route: published
+        ? officialRoute(
+            published,
+            routeResponse.data as VenueRouteResponse,
+            options.from.placeId,
+            options.to.placeId,
+            options.mode,
+            options.language,
+            options.verticalPreference,
+          )
+        : routeFromBackend(
+            options,
+            detail,
+            routeResponse.data as BackendVenueRoute,
+          ),
       provenance: {
         provider: "api",
         baseUrl,
@@ -639,7 +716,28 @@ export async function planBackendVenueRoute(
         message: "室內路線服務超過 15 秒未回應，起終點已保留，請稍後重試。",
       };
     if (error instanceof IncompatibleRoute)
-      return { ok: false, reason: error.reason, message: error.message };
+      return {
+        ok: false,
+        reason: error.reason,
+        message: error.message,
+        ...(refreshedModels ? { refreshedModels } : {}),
+      };
+    if (error instanceof ApiError && error.reason === "VENUE_VERSION_CHANGED") {
+      try {
+        refreshedModels = await loadVenueCatalog(
+          options.baseUrl,
+          controller.signal,
+        );
+      } catch {
+        /* Preserve the original version error. */
+      }
+      return {
+        ok: false,
+        reason: error.reason,
+        message: error.message,
+        ...(refreshedModels ? { refreshedModels } : {}),
+      };
+    }
     if (
       error instanceof ApiError &&
       (error.reason === "NO_ROUTE" || error.reason === "NO_ACCESSIBLE_ROUTE")
@@ -652,12 +750,26 @@ export async function planBackendVenueRoute(
             ? "後端目前找不到符合輪椅條件的室內通路，起終點已保留。"
             : "後端目前找不到連通這兩個地點的通路，起終點已保留。",
       };
-    if (error instanceof ApiError && error.code === 404)
+    if (error instanceof ApiError && error.code === 404) {
+      if (options.model.api) {
+        try {
+          refreshedModels = await loadVenueCatalog(
+            options.baseUrl,
+            controller.signal,
+          );
+        } catch {
+          /* The missing endpoint remains unavailable. */
+        }
+      }
       return {
         ok: false,
         reason: "UNSUPPORTED_API_PLACE",
         message: "後端尚未提供這個場域或地點，請更新資料或選擇其他地點。",
+        ...(refreshedModels ? { refreshedModels } : {}),
       };
+    }
+    if (error instanceof ApiError && error.reason === "INVALID_BACKEND_DATA")
+      return { ok: false, reason: error.reason, message: error.message };
     return {
       ok: false,
       reason: "BACKEND_UNAVAILABLE",

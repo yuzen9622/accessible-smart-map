@@ -76,6 +76,7 @@ export default function BottomSheet() {
   const venueGuiding = useMapStore(
     (s) =>
       s.venueJourney?.guidance.status === "guiding" ||
+      s.venueJourney?.guidance.status === "touring" ||
       s.venueJourney?.guidance.status === "arrived",
   );
   const outdoorNavigation = isNavigating && !venueGuiding;

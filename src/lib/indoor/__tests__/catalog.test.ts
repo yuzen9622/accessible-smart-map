@@ -4,6 +4,7 @@ import useMapStore from "@/stores/useMapStore";
 import {
   featureForVenuePlace,
   findVenueModel,
+  indoorModelVersion,
   placeForVenueFeature,
   refreshVenuePlace,
   searchVenuePlaces,
@@ -75,6 +76,56 @@ function model(buildingId = "a"): LocalIndoorModel {
 }
 
 describe("venue catalog identity", () => {
+  it("ranks an exact building-floor anchor ahead of its rooms regardless of letter case", () => {
+    const data = model();
+    data.places.push({
+      ...data.places[0],
+      id: "anchor",
+      kind: "anchor",
+      name: "Building a 1F",
+      ref: undefined,
+    });
+    expect(searchVenuePlaces([data], "Building a 1F")[0].placeId).toBe(
+      "anchor",
+    );
+  });
+  it("uses published versions and each place's own building when models share the venue directory", () => {
+    const a = model("a"),
+      b = model("b");
+    for (const value of [a, b]) {
+      value.api = { version: 3, importedAt: "test", sourceSha256: "same-file" };
+      value.source.sha256 = "same-file";
+      value.places.forEach((p) => {
+        p.id = `${value.building.id}-${p.id}`;
+      });
+    }
+    const places = [...a.places, ...b.places];
+    a.places = places;
+    b.places = places;
+    b.building.aliases = ["West wing"];
+    const matches = searchVenuePlaces([a, b], "101");
+    expect(matches).toHaveLength(4);
+    expect(
+      matches.every((p) => p.buildingName === `Building ${p.buildingId}`),
+    ).toBe(true);
+    expect(
+      matches.every(
+        (p) =>
+          p.dataSource === "api" && p.sourceVersion === "synthetic-campus:3",
+      ),
+    ).toBe(true);
+    expect(
+      searchVenuePlaces([a, b], "West wing").map((p) => p.buildingId),
+    ).toEqual(["b", "b"]);
+    const saved = matches.find((p) => p.buildingId === "b");
+    if (!saved) throw new Error("Expected a B-building result");
+    b.api = { version: 4, importedAt: "test", sourceSha256: "same-file" };
+    expect(indoorModelVersion(b)).toBe("synthetic-campus:4");
+    expect(refreshVenuePlace([a, b], saved)?.sourceVersion).toBe(
+      "synthetic-campus:4",
+    );
+    expect(b.source.sha256).toBe("same-file");
+  });
   it("keeps equal coordinates and room numbers distinct across buildings and floors", () => {
     const a = model("a"),
       b = model("b");
@@ -119,6 +170,30 @@ describe("venue catalog identity", () => {
     a.features[0].kind = "elevator";
     a.features[0].displayKind = "elevator";
     a.features[0].connectionId = "nonstop-shaft";
+    expect(placeForVenueFeature(a, a.features[0])).toBeUndefined();
+  });
+  it("uses explicit source links despite duplicate room labels", () => {
+    const a = model();
+    const duplicate = { ...a.features[0], id: "same-label" };
+    a.features.push(duplicate);
+    a.places[0].featureId = "shape-0";
+    a.places.push({ ...a.places[0], id: "second", featureId: "same-label" });
+    expect(featureForVenuePlace(a, "room-0")?.id).toBe("shape-0");
+    expect(featureForVenuePlace(a, "second")?.id).toBe("same-label");
+    expect(placeForVenueFeature(a, a.features[0])?.id).toBe("room-0");
+    expect(placeForVenueFeature(a, duplicate)?.id).toBe("second");
+  });
+  it("does not reinterpret missing or wrong-context feature links by room label", () => {
+    const a = model();
+    for (const featureId of ["missing", "shape-1", "foreign"]) {
+      a.features.push({ ...a.features[0], id: "foreign", buildingId: "b" });
+      a.places[0].featureId = featureId;
+      expect(featureForVenuePlace(a, "room-0")).toBeUndefined();
+      expect(placeForVenueFeature(a, a.features[0])).toBeUndefined();
+      a.features.pop();
+    }
+    a.places[0].buildingId = "b";
+    a.places[0].featureId = "shape-0";
     expect(placeForVenueFeature(a, a.features[0])).toBeUndefined();
   });
   it("refreshes a saved room from the current source without changing its identity", () => {

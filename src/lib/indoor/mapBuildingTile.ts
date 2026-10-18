@@ -26,6 +26,32 @@ export interface IndoorBuildingTileResult {
     | "invalid-tile";
 }
 
+/** Apply the same exact component matcher independently to each displayed
+ * building. Never union footprints: their intervening campus is not a roof. */
+export function transformIndoorBuildingTiles(
+  data: ArrayBuffer,
+  tile: IndoorTileCoordinate,
+  models: readonly Pick<LocalIndoorModel, "origin" | "building">[],
+): IndoorBuildingTileResult {
+  let result: IndoorBuildingTileResult = {
+    data,
+    removedComponents: 0,
+    reason: "no-match",
+  };
+  for (const model of models) {
+    const next = transformIndoorBuildingTile(result.data, tile, model);
+    result = {
+      data: next.data,
+      removedComponents: result.removedComponents + next.removedComponents,
+      reason:
+        result.removedComponents || next.removedComponents
+          ? "removed"
+          : next.reason,
+    };
+  }
+  return result;
+}
+
 interface WireField {
   tag: number;
   wire: number;
@@ -95,8 +121,9 @@ function area(polygons: MultiPolygon) {
 }
 
 /**
- * Remove one confidently matched polygon component, never a whole shared ID.
- * Only the selected feature's geometry field is encoded; tags, IDs, string
+ * Remove a confidently matched building, including disjoint roof components,
+ * never a whole shared ID. Only matched features' geometry fields are encoded;
+ * tags, IDs, string
  * tables and every other feature/layer retain their original protobuf bytes.
  * Nonmatching/ambiguous tiles return the identical input ArrayBuffer.
  */
@@ -160,12 +187,12 @@ export function transformIndoorBuildingTile(
     const footprintArea = area([footprint]);
     if (!(footprintArea > 0)) return unchanged("invalid-tile");
 
-    let match:
-      | {
-          featureIndex: number;
-          retained: ReturnType<typeof classifyRings>[number];
-        }
-      | undefined;
+    const candidates: {
+      featureIndex: number;
+      rings: ReturnType<typeof classifyRings>[number];
+      component: ReturnType<typeof classifyRings>[number];
+      polygon: Polygon;
+    }[] = [];
     for (let i = 0; i < building.length; i++) {
       const feature = building.feature(i);
       if (feature.type !== 3) continue;
@@ -186,24 +213,52 @@ export function transformIndoorBuildingTile(
         );
         const componentArea = area([polygon]);
         const overlap = area(polygonClipping.intersection(footprint, polygon));
-        const iou = overlap / (footprintArea + componentArea - overlap);
-        if (
-          overlap / footprintArea < 0.7 ||
-          overlap / componentArea < 0.7 ||
-          !(iou >= 0.65)
-        )
-          continue;
-        if (match) return unchanged("ambiguous");
-        const removedRings = new Set(component);
-        // Filter the original ring array: even unrelated degenerate rings
-        // omitted by classifyRings keep their exact coordinates and order.
-        match = {
-          featureIndex: i,
-          retained: rings.filter((ring) => !removedRings.has(ring)),
-        };
+        if (!(componentArea > 0) || !(overlap / componentArea >= 0.7)) continue;
+        candidates.push({ featureIndex: i, rings, component, polygon });
       }
     }
-    if (!match) return unchanged("no-match");
+    if (!candidates.length) return unchanged("no-match");
+    // A building can have several disjoint roof polygons in the provider's
+    // tile. Match their union to the same footprint instead of requiring each
+    // roof to cover the whole building. Overlapping alternatives remain
+    // ambiguous; this does not broaden removal to shared IDs or neighbours.
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = 0; j < i; j++) {
+        if (
+          area(
+            polygonClipping.intersection(
+              candidates[i].polygon,
+              candidates[j].polygon,
+            ),
+          ) > 1e-6
+        )
+          return unchanged("ambiguous");
+      }
+    }
+    const combined = polygonClipping.union(
+      candidates[0].polygon,
+      ...candidates.slice(1).map((candidate) => candidate.polygon),
+    );
+    const combinedArea = area(combined);
+    const overlap = area(polygonClipping.intersection(footprint, combined));
+    if (
+      overlap / footprintArea < 0.7 ||
+      overlap / combinedArea < 0.7 ||
+      overlap / (footprintArea + combinedArea - overlap) < 0.65
+    )
+      return unchanged("no-match");
+    const matches = [...new Set(candidates.map((c) => c.featureIndex))]
+      .map((featureIndex) => {
+        const parts = candidates.filter((c) => c.featureIndex === featureIndex);
+        const removedRings = new Set(parts.flatMap((part) => part.component));
+        return {
+          featureIndex,
+          // Unrelated degenerate rings omitted by classifyRings also retain
+          // their exact coordinates and order.
+          retained: parts[0].rings.filter((ring) => !removedRings.has(ring)),
+        };
+      })
+      .sort((a, b) => b.featureIndex - a.featureIndex);
 
     const layers = fields(bytes).filter((f) => f.tag === 3 && f.wire === 2);
     const matchingLayers = layers.filter((layerField) => {
@@ -216,53 +271,58 @@ export function transformIndoorBuildingTile(
     if (matchingLayers.length !== 1) return unchanged("invalid-tile");
     const layerField = matchingLayers[0];
     const layerBytes = payload(bytes, layerField);
-    const featureField = fields(layerBytes).filter((f) => f.tag === 2)[
-      match.featureIndex
-    ];
-    if (!featureField) return unchanged("invalid-tile");
-    let replacement = new Uint8Array();
-    if (match.retained.length) {
-      // vt-pbf is used only for integer geometry commands. Never re-encode
-      // original names/values: that would also risk changing Unicode values.
-      const encoded = fromVectorTileJs({
-        layers: {
-          building: {
-            version: building.version,
-            name: "building",
-            extent: building.extent,
-            length: 1,
-            feature: () => ({
-              type: 3,
-              id: undefined,
+    const featureFields = fields(layerBytes).filter((f) => f.tag === 2);
+    let newLayer = layerBytes;
+    // Replace from the end so original offsets stay valid across features.
+    for (const match of matches) {
+      const featureField = featureFields[match.featureIndex];
+      if (!featureField) return unchanged("invalid-tile");
+      let replacement = new Uint8Array();
+      if (match.retained.length) {
+        // vt-pbf is used only for integer geometry commands. Never re-encode
+        // original names/values: that would also risk changing Unicode values.
+        const encoded = fromVectorTileJs({
+          layers: {
+            building: {
+              version: building.version,
+              name: "building",
               extent: building.extent,
-              properties: {},
-              loadGeometry: () => match.retained,
-            }),
+              length: 1,
+              feature: () => ({
+                type: 3,
+                id: undefined,
+                extent: building.extent,
+                properties: {},
+                loadGeometry: () => match.retained,
+              }),
+            },
           },
-        },
-      });
-      const encodedLayer = payload(encoded, fields(encoded)[0]);
-      const encodedFeatureField = fields(encodedLayer).find((f) => f.tag === 2);
-      if (!encodedFeatureField) return unchanged("invalid-tile");
-      const encodedFeature = payload(encodedLayer, encodedFeatureField);
-      const encodedGeometry = fields(encodedFeature).find((f) => f.tag === 4);
-      const featureBytes = payload(layerBytes, featureField);
-      const geometryFields = fields(featureBytes).filter((f) => f.tag === 4);
-      if (!encodedGeometry || geometryFields.length !== 1)
-        return unchanged("invalid-tile");
-      const newFeature = replace(
-        featureBytes,
-        geometryFields[0],
-        encodedFeature.subarray(encodedGeometry.start, encodedGeometry.end),
-      );
-      replacement = new Uint8Array(wrap(2, newFeature));
+        });
+        const encodedLayer = payload(encoded, fields(encoded)[0]);
+        const encodedFeatureField = fields(encodedLayer).find(
+          (f) => f.tag === 2,
+        );
+        if (!encodedFeatureField) return unchanged("invalid-tile");
+        const encodedFeature = payload(encodedLayer, encodedFeatureField);
+        const encodedGeometry = fields(encodedFeature).find((f) => f.tag === 4);
+        const featureBytes = payload(layerBytes, featureField);
+        const geometryFields = fields(featureBytes).filter((f) => f.tag === 4);
+        if (!encodedGeometry || geometryFields.length !== 1)
+          return unchanged("invalid-tile");
+        const newFeature = replace(
+          featureBytes,
+          geometryFields[0],
+          encodedFeature.subarray(encodedGeometry.start, encodedGeometry.end),
+        );
+        replacement = new Uint8Array(wrap(2, newFeature));
+      }
+      newLayer = replace(newLayer, featureField, replacement);
     }
-    const newLayer = replace(layerBytes, featureField, replacement);
     const output = replace(bytes, layerField, wrap(3, newLayer));
     return {
       data: output.buffer,
-      removedComponents: 1,
-      featureIndex: match.featureIndex,
+      removedComponents: candidates.length,
+      featureIndex: matches.length === 1 ? matches[0].featureIndex : undefined,
       reason: "removed",
     };
   } catch {

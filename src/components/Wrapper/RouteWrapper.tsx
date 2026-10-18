@@ -417,6 +417,7 @@ export default function RouteLine() {
 
   if (
     venueJourney?.guidance.status === "guiding" ||
+    venueJourney?.guidance.status === "touring" ||
     venueJourney?.guidance.status === "arrived"
   )
     return null;

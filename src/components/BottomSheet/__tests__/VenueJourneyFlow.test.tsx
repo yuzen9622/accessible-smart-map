@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
+  language: "zh-TW",
   buttons: [] as { onClick?: () => unknown; label?: string }[],
   inputs: [] as { onPlaceSelect?: (place: unknown) => void }[],
   states: [] as unknown[],
@@ -67,19 +68,28 @@ vi.mock("@/i18n/client", async () => {
   const { default: dictionary } = await import(
     "@/i18n/locale/zh-TW/translation.json"
   );
+  const { default: english } = await import(
+    "@/i18n/locale/en/translation.json"
+  );
   return {
     useAppTranslation: () => ({
       t: (key: string, values?: Record<string, unknown>) => {
-        const translated = (dictionary as Record<string, unknown>)[key];
+        const translated = (
+          (h.language === "en" ? english : dictionary) as Record<
+            string,
+            unknown
+          >
+        )[key];
         const text =
-          key.startsWith("venue") && typeof translated === "string"
+          (key.startsWith("venue") || key === "endNav") &&
+          typeof translated === "string"
             ? translated
             : key;
         return text.replace(/{{\s*(\w+)\s*}}/g, (match, name) =>
           values?.[name] === undefined ? match : String(values[name]),
         );
       },
-      i18n: { language: "zh-TW", resolvedLanguage: "zh-TW" },
+      i18n: { language: h.language, resolvedLanguage: h.language },
     }),
   };
 });
@@ -209,6 +219,7 @@ function journey(): VenueJourney {
 }
 
 beforeEach(() => {
+  h.language = "zh-TW";
   h.buttons.length = 0;
   h.inputs.length = 0;
   h.states.length = 0;
@@ -236,6 +247,7 @@ beforeEach(() => {
         origin: [0, 0],
         building: { id: "building-a", name: "Building A" },
         preview: { gatePlaceIds: ["gate"] },
+        connections: [],
         places: [
           {
             id: "gate",
@@ -583,4 +595,100 @@ describe("real final walk after parking is a separate navigation stage", () => {
       expect(markup).not.toContain("INTERNAL_HALL_DETAIL");
     },
   );
+});
+
+describe("route animation in the original navigation panel", () => {
+  const renderTour = () => {
+    h.buttons.length = 0;
+    return renderToStaticMarkup(<VenueJourneyContent navigating />);
+  };
+  const begin = () => {
+    const value = journey();
+    delete value.outdoor;
+    value.route.animationSafe = false;
+    value.route.steps[0].heightPending = true;
+    useMapStore.getState().setVenueJourney(value);
+    useMapStore.getState().startVenueTour(false);
+    return value;
+  };
+  it("offers only route animation playback with endpoints and collapsible source steps", () => {
+    const value = begin();
+    const source = JSON.stringify(value.route);
+    const markup = renderTour();
+    expect(markup).toContain(value.from.name);
+    expect(markup).toContain(value.to.name);
+    expect(markup).toContain("播放路線動畫");
+    expect(markup).toContain("結束導航");
+    expect(markup).toContain("切換樓層查看路線");
+    expect(markup.match(/INTERNAL_HALL_DETAIL/g)).toHaveLength(1);
+    expect(markup).toMatch(/<details[^>]*>.*INTERNAL_HALL_DETAIL.*<\/details>/);
+    expect(markup).not.toContain('type="range"');
+    expect(markup).not.toContain('aria-current="step"');
+    for (const removed of [
+      "反向檢視",
+      "從頭播放",
+      "再次播放",
+      "回到鏡頭導覽",
+      "並非即時定位或到達判定",
+      "手動確認引導",
+      "已到教室前走道",
+    ])
+      expect(markup).not.toContain(removed);
+    expect(h.buttons).toHaveLength(2);
+    h.buttons.find((button) => button.label === "播放路線動畫")?.onClick?.();
+    expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
+      playing: true,
+      following: false,
+      direction: 1,
+      progress: 0,
+    });
+    expect(renderTour()).toContain("暫停路線動畫");
+    h.buttons.find((button) => button.label === "暫停路線動畫")?.onClick?.();
+    expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
+      playing: false,
+      following: false,
+      direction: 1,
+      progress: 0,
+    });
+    expect(JSON.stringify(useMapStore.getState().venueJourney?.route)).toBe(
+      source,
+    );
+    expect(useMapStore.getState().venueJourney?.route.animationSafe).toBe(
+      false,
+    );
+  });
+  it("does not use stale progress to declare completion or reset the route when animation resumes", () => {
+    begin();
+    useMapStore
+      .getState()
+      .setVenueJourneyPreview({ progress: 1, playing: false });
+    const markup = renderTour();
+    expect(markup).not.toContain("路線導覽結束");
+    expect(markup).not.toContain("已抵達");
+    expect(markup).toContain("播放路線動畫");
+    h.buttons.find((button) => button.label === "播放路線動畫")?.onClick?.();
+    expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
+      progress: 1,
+      playing: true,
+      following: false,
+    });
+    expect(useMapStore.getState().venueJourney?.guidance.status).toBe(
+      "touring",
+    );
+    expect(useNavStore.getState().arrived).toBe(false);
+  });
+  it("uses the real English dictionary and preserves source instructions across language changes", () => {
+    begin();
+    const source = JSON.stringify(useMapStore.getState().venueJourney);
+    expect(renderTour()).toContain("播放路線動畫");
+    h.language = "en";
+    const markup = renderTour();
+    expect(markup).toContain("Play route animation");
+    expect(markup).toContain("End Navigation");
+    expect(markup).toContain("switch floors");
+    expect(markup).toContain("INTERNAL_HALL_DETAIL");
+    expect(markup).not.toContain("venueRouteAnimation");
+    expect(markup).not.toContain("播放路線動畫");
+    expect(JSON.stringify(useMapStore.getState().venueJourney)).toBe(source);
+  });
 });

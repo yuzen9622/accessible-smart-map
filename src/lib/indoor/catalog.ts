@@ -7,6 +7,13 @@ export function venueBuildingKey(model: LocalIndoorModel): string {
   return `${model.venueId}/${model.building.id}`;
 }
 
+/** Published revisions are independent of the source file's content hash. */
+export function indoorModelVersion(model: LocalIndoorModel): string {
+  return model.api
+    ? `${model.venueId}:${model.api.version}`
+    : model.source.sha256;
+}
+
 export function toVenuePlaceDetail(
   model: LocalIndoorModel,
   place: IndoorPlace,
@@ -35,8 +42,8 @@ export function toVenuePlaceDetail(
     buildingName,
     levelRef: place.levelRef,
     placeId: place.id,
-    sourceVersion: model.source.sha256,
-    dataSource: "local",
+    sourceVersion: indoorModelVersion(model),
+    dataSource: model.api ? "api" : "local",
     arrivalKind: place.routeEndpoint,
   };
 }
@@ -83,17 +90,24 @@ export function placeForVenueFeature(
   const candidates = model.places.filter(
     (place) =>
       place.levelRef === feature.levelRef &&
-      (!place.buildingId ||
-        !feature.buildingId ||
-        place.buildingId === feature.buildingId),
+      (place.buildingId === undefined
+        ? model.building.id
+        : place.buildingId) ===
+        (feature.buildingId === undefined
+          ? model.building.id
+          : feature.buildingId),
   );
-  const exact = candidates.filter(
+  const linked = candidates.filter((place) => place.featureId === feature.id);
+  if (linked.length) return linked.length === 1 ? linked[0] : undefined;
+  // An explicit source association must not be reassigned by a matching label.
+  const unlinked = candidates.filter((place) => !place.featureId);
+  const exact = unlinked.filter(
     (place) =>
       place.id === feature.id || feature.tags["a11ymap:id"] === place.id,
   );
   if (exact.length === 1) return exact[0];
   if (feature.connectionId) {
-    const connections = candidates.filter(
+    const connections = unlinked.filter(
       (place) =>
         place.connectionId === feature.connectionId ||
         place.connectionIds?.includes(feature.connectionId as string),
@@ -101,7 +115,7 @@ export function placeForVenueFeature(
     if (connections.length === 1) return connections[0];
   }
   if (feature.kind !== "room") return undefined;
-  const named = candidates.filter((place) =>
+  const named = unlinked.filter((place) =>
     feature.ref
       ? place.ref === feature.ref
       : feature.name && place.name === feature.name,
@@ -113,12 +127,23 @@ export function searchVenuePlaces(
   models: LocalIndoorModel[],
   query: string,
 ): VenuePlaceDetail[] {
-  const normalized = query.trim().normalize("NFKC").toLocaleLowerCase();
+  const normalize = (text: string) =>
+    text.trim().normalize("NFKC").toLocaleLowerCase();
+  const normalized = normalize(query);
   if (!normalized) return [];
   const terms = normalized.split(/\s+/);
   const seen = new Set<string>();
   return models
-    .flatMap((model) => model.places.map((place) => ({ model, place })))
+    .flatMap((model) =>
+      model.places
+        .filter(
+          (place) =>
+            !model.api ||
+            place.buildingId === null ||
+            place.buildingId === model.building.id,
+        )
+        .map((place) => ({ model, place })),
+    )
     .filter(({ model, place }) => {
       const buildingId =
         place.buildingId === undefined ? model.building.id : place.buildingId;
@@ -128,6 +153,7 @@ export function searchVenuePlaces(
       const haystack = [
         model.name,
         model.building.name,
+        ...(model.building.aliases ?? []),
         place.name,
         place.ref,
         place.levelRef,
@@ -140,8 +166,14 @@ export function searchVenuePlaces(
     })
     .sort(
       (a, b) =>
-        Number(b.place.ref === normalized || b.place.name === normalized) -
-          Number(a.place.ref === normalized || a.place.name === normalized) ||
+        Number(
+          normalize(b.place.ref ?? "") === normalized ||
+            normalize(b.place.name) === normalized,
+        ) -
+          Number(
+            normalize(a.place.ref ?? "") === normalized ||
+              normalize(a.place.name) === normalized,
+          ) ||
         (a.place.levelRef ?? "").localeCompare(
           b.place.levelRef ?? "",
           undefined,

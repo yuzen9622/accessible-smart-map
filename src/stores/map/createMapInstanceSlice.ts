@@ -66,8 +66,11 @@ export const createMapInstanceSlice: MapSliceCreator<MapInstanceSlice> = (
     // easing here would fight it, so only drive the camera outside navigation.
     // 2D means a flat, north-up plane — reset bearing along with pitch.
     const venueStatus = get().venueJourney?.guidance.status;
-    const manualVenue = venueStatus === "guiding" || venueStatus === "arrived";
-    if (map && (!isNavigating || manualVenue)) {
+    const venueView =
+      venueStatus === "guiding" ||
+      venueStatus === "arrived" ||
+      venueStatus === "touring";
+    if (map && (!isNavigating || venueView)) {
       if (v) map.easeTo({ pitch: 60, duration: 600 });
       else map.easeTo({ pitch: 0, bearing: 0, duration: 600 });
     }

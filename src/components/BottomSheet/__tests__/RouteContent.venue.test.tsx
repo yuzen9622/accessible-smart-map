@@ -526,7 +526,7 @@ describe("venue journeys retain the existing route-results interface", () => {
     await h.buttons.find((button) => !button.disabled)?.onClick?.();
     expect(h.start).toHaveBeenCalledOnce();
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe(
-      "guiding",
+      "touring",
     );
     expect(useMapStore.getState().computeRoutes).toBeNull();
     expect(useMapStore.getState().activeNavigationRoute).toBeNull();

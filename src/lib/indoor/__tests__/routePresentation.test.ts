@@ -131,6 +131,79 @@ function fractionAt(route: IndoorRoute, index: number): number {
 }
 
 describe("single-floor route presentation", () => {
+  it("keeps source building context across a same-floor bridge in both directions", () => {
+    const points: XYZ[] = [
+      [0, 0, 0],
+      [10, 0, 0],
+      [20, 0, 0],
+      [30, 0, 0],
+    ];
+    const data = model(points, ["L0", "L0", "L0", "L0"]);
+    data.edges = points.slice(1).map((_, i) => edge(i));
+    const route = plan(data);
+    route.context = {
+      buildingIds: ["a", "a", "b", "b"],
+      levelRefs: ["L0", "L0", "L0", "L0"],
+    };
+    expect(sampleRoutePresentation(data, route, 0.5, 1)).toMatchObject({
+      currentBuildingId: "a",
+      currentLevelRef: "L0",
+    });
+    expect(sampleRoutePresentation(data, route, 0.5, -1)).toMatchObject({
+      currentBuildingId: "b",
+      currentLevelRef: "L0",
+    });
+    expect(sampleRoutePresentation(data, route, 2 / 3, 1)).toMatchObject({
+      currentBuildingId: "b",
+      currentLevelRef: "L0",
+    });
+    expect(sampleRoutePresentation(data, route, 1, 1).currentBuildingId).toBe(
+      "b",
+    );
+    route.context.buildingIds[1] = null;
+    route.context.levelRefs[1] = null;
+    expect(sampleRoutePresentation(data, route, 0.5, 1)).toMatchObject({
+      currentBuildingId: null,
+      currentLevelRef: null,
+    });
+  });
+  it("does not treat unassigned intermediate stair levels as leaving the building", () => {
+    const { data, route } = stairsFixture();
+    route.context = {
+      buildingIds: route.points.map(() => "a"),
+      levelRefs: ["L0", "L0", null, null, "L1", "L1"],
+    };
+    const progress =
+      (pathDistance(route.points.slice(0, 3)) + 1) / pathDistance(route.points);
+    expect(sampleRoutePresentation(data, route, progress, 1)).toMatchObject({
+      currentBuildingId: "a",
+      currentLevelRef: "L0",
+    });
+    expect(sampleRoutePresentation(data, route, progress, -1)).toMatchObject({
+      currentBuildingId: "a",
+      currentLevelRef: "L1",
+    });
+  });
+  it("does not label a different building's matching room number as an endpoint", () => {
+    const data = model([[0, 0, 0]], ["L0"]);
+    data.places[0] = { ...data.places[0], buildingId: "other", ref: "101" };
+    data.features = [
+      {
+        id: "room",
+        kind: "room",
+        ordinal: 0,
+        levelRef: "L0",
+        ref: "101",
+        geometry: { type: "Point", coordinates: [0, 0] },
+        tags: {},
+        geometryStatus: "schematic",
+        heightStatus: "estimated",
+      },
+    ];
+    expect(
+      routeEndpointFeatureIds(data, { fromPlaceId: "p0", toPlaceId: "p0" }),
+    ).toEqual({ fromFeatureId: null, toFeatureId: null });
+  });
   it("keeps the departure floor across flights and a horizontal landing in either direction", () => {
     const { data, route } = stairsFixture();
     expect(route.steps[1]).toMatchObject({
@@ -363,6 +436,7 @@ describe("single-floor route presentation", () => {
       expect(result).toEqual({
         position: [1, 2, 4],
         currentLevelRef: "L1",
+        currentBuildingId: "building",
         activeConnectionId: null,
         transition: null,
       });

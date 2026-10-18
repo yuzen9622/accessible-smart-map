@@ -22,6 +22,16 @@ vi.mock("maplibre-gl", () => ({
 }));
 vi.mock("../mapBuildingTile", () => ({
   transformIndoorBuildingTile: mocks.transform,
+  transformIndoorBuildingTiles: (
+    data: ArrayBuffer,
+    tile: unknown,
+    models: LocalIndoorModel[],
+  ) => ({
+    data: models.reduce(
+      (bytes, model) => mocks.transform(bytes, tile, model).data,
+      data,
+    ),
+  }),
 }));
 
 import { mountIndoorBuildingMask } from "../mapBuildingShell";
@@ -160,7 +170,10 @@ const flush = async () => {
   // must settle without scheduling another refresh of the same source.
   for (let i = 0; i < 4; i++) await Promise.resolve();
 };
-function mount(map: MapLibreMap, data = model) {
+function mount(
+  map: MapLibreMap,
+  data: LocalIndoorModel | readonly LocalIndoorModel[] = model,
+) {
   const close = mountIndoorBuildingMask(map, data);
   cleanups.add(close);
   return () => {
@@ -210,6 +223,63 @@ afterEach(async () => {
 });
 
 describe("public indoor building tile request bridge", () => {
+  it("opens four cutaways with one request owner and one source refresh", async () => {
+    const campus = Array.from({ length: 4 }, (_, i) => ({
+      ...model,
+      building: { ...model.building, id: `synthetic-${i}` },
+    }));
+    const f = fixture();
+    const close = mount(f.map, campus);
+    await flush();
+    expect(f.refreshTiles.mock.calls).toEqual([["buildings"]]);
+    const buffers = campus.map((_, i) => new Uint8Array([i + 60]).buffer);
+    mocks.transform.mockImplementation((_bytes, _tile, candidate) => ({
+      data: buffers[campus.indexOf(candidate)],
+    }));
+    expect((await load(wrapped(f.map))).data).toBe(buffers[3]);
+    expect(mocks.transform.mock.calls).toEqual(
+      campus.map((candidate, i) => [
+        i === 0 ? original : buffers[i - 1],
+        tileAt(model.origin),
+        candidate,
+      ]),
+    );
+    const queued = wrapped(f.map);
+    close();
+    expect(f.refreshTiles.mock.calls).toEqual([["buildings"], ["buildings"]]);
+    mocks.transform.mockClear();
+    expect((await load(queued)).data).toBe(original);
+    expect(mocks.transform).not.toHaveBeenCalled();
+    expect(f.listenerCount()).toBe(0);
+  });
+
+  it("does not mask a building whose floors explicitly have no display geometry", async () => {
+    const unavailable = {
+      ...model,
+      building: {
+        ...model.building,
+        levels: [
+          {
+            ordinal: 0,
+            ref: "1F",
+            elevationM: 0,
+            coverage: {
+              hasAnchor: false,
+              hasRouteData: false,
+              hasDisplayGeometry: false,
+            },
+          },
+        ],
+      },
+    };
+    const f = fixture();
+    mount(f.map, [unavailable]);
+    await flush();
+    expect(request(f.map, tileUrl())).toEqual({ url: tileUrl() });
+    expect(f.refreshTiles).not.toHaveBeenCalled();
+    expect(f.listenerCount()).toBe(0);
+  });
+
   it("wraps only known nearby building tiles and preserves other resource requests", async () => {
     const f = fixture();
     const near = tileUrl();

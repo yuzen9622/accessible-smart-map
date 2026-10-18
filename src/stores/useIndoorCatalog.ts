@@ -1,9 +1,11 @@
 "use client";
 
 import { create } from "zustand";
+import { defaultIndoorLevel } from "@/lib/indoor/campusDisplay";
 import {
   featureForVenuePlace,
   findVenueModel,
+  indoorModelVersion,
   venueBuildingKey,
 } from "@/lib/indoor/catalog";
 import type { LocalIndoorModel } from "@/lib/indoor/types";
@@ -20,8 +22,27 @@ interface IndoorCatalog {
   showPlace: (place: VenuePlaceDetail) => void;
   previewPlace: (place: VenuePlaceDetail) => void;
   showBuilding: (model: LocalIndoorModel) => void;
+  /** Change the campus focus without remounting or resetting the camera. */
+  setActiveBuilding: (model: LocalIndoorModel) => void;
   setActiveLevel: (ordinal: number) => void;
   setSelectedFeatureId: (id: string | null) => void;
+}
+
+function levelForBuilding(model: LocalIndoorModel, current: IndoorCatalog) {
+  const previous = current.models.find(
+    (item) => venueBuildingKey(item) === current.activeBuildingKey,
+  );
+  const ref =
+    previous?.venueId === model.venueId &&
+    indoorModelVersion(previous) === indoorModelVersion(model)
+      ? previous.building.levels.find(
+          (level) => level.ordinal === current.activeLevel,
+        )?.ref
+      : undefined;
+  return (
+    model.building.levels.find((level) => level.ref === ref) ??
+    defaultIndoorLevel(model)
+  );
 }
 
 /** Catalog and viewing state only. The original map store owns every route session. */
@@ -34,11 +55,15 @@ const useIndoorCatalog = create<IndoorCatalog>((set, get) => ({
   setModels: (models) => set({ models }),
   previewPlace: (place) => {
     const model = findVenueModel(get().models, place);
-    if (!model || place.sourceVersion !== model.source.sha256) return;
+    if (!model || place.sourceVersion !== indoorModelVersion(model)) return;
     const state = useMapStore.getState();
     if (
       state.indoorExploring &&
-      get().activeBuildingKey === venueBuildingKey(model)
+      get().models.some(
+        (item) =>
+          venueBuildingKey(item) === get().activeBuildingKey &&
+          item.venueId === model.venueId,
+      )
     ) {
       get().showPlace(place);
       return;
@@ -54,7 +79,7 @@ const useIndoorCatalog = create<IndoorCatalog>((set, get) => ({
   },
   showPlace: (place) => {
     const model = findVenueModel(get().models, place);
-    if (!model || place.sourceVersion !== model.source.sha256) return;
+    if (!model || place.sourceVersion !== indoorModelVersion(model)) return;
     if (place.buildingId === null || place.levelRef === null) {
       const mapState = useMapStore.getState();
       mapState.setIndoorExploring(false);
@@ -70,26 +95,36 @@ const useIndoorCatalog = create<IndoorCatalog>((set, get) => ({
     );
     set({
       activeBuildingKey: venueBuildingKey(model),
-      activeLevel: level?.ordinal ?? model.building.levels[0].ordinal,
+      activeLevel: level?.ordinal ?? defaultIndoorLevel(model).ordinal,
       selectedFeatureId: featureForVenuePlace(model, place.placeId)?.id ?? null,
       focusVersion: get().focusVersion + 1,
     });
     useMapStore.getState().setIndoorExploring(true);
   },
   showBuilding: (model) => {
-    const sameBuilding = get().activeBuildingKey === venueBuildingKey(model);
+    const level = useMapStore.getState().indoorExploring
+      ? levelForBuilding(model, get())
+      : defaultIndoorLevel(model);
     set({
       activeBuildingKey: venueBuildingKey(model),
-      activeLevel: sameBuilding
-        ? get().activeLevel
-        : model.building.levels[0].ordinal,
+      activeLevel: level.ordinal,
       selectedFeatureId: null,
       focusVersion: get().focusVersion + 1,
     });
     useMapStore.getState().setIndoorExploring(true);
   },
-  setActiveLevel: (activeLevel) =>
-    set({ activeLevel, selectedFeatureId: null }),
+  setActiveBuilding: (model) => {
+    if (get().activeBuildingKey !== venueBuildingKey(model))
+      set({
+        activeBuildingKey: venueBuildingKey(model),
+        activeLevel: levelForBuilding(model, get()).ordinal,
+        selectedFeatureId: null,
+      });
+  },
+  setActiveLevel: (activeLevel) => {
+    if (get().activeLevel !== activeLevel)
+      set({ activeLevel, selectedFeatureId: null });
+  },
   setSelectedFeatureId: (selectedFeatureId) => set({ selectedFeatureId }),
 }));
 

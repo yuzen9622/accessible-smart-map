@@ -3,6 +3,7 @@ import zhTW from "@/i18n/locale/zh-TW/translation.json";
 import type { PlaceDetail, VenuePlaceDetail } from "@/types";
 import type { AccessibleRoute } from "@/types/route";
 import type { BackendRouteProvenance } from "./backendRoute";
+import { indoorModelVersion } from "./catalog";
 import { effectiveVerticalPreference } from "./profilePolicy";
 import { pathDistance, planIndoorRoute, segmentDistance } from "./route";
 import type {
@@ -25,9 +26,14 @@ export interface VenueJourney {
   mode: IndoorMode;
   verticalPreference: IndoorVerticalPreference;
   route: IndoorRoute;
-  preview: { progress: number; playing: boolean; direction: 1 | -1 };
+  preview: {
+    progress: number;
+    playing: boolean;
+    direction: 1 | -1;
+    following?: boolean;
+  };
   guidance: {
-    status: "idle" | "outdoor" | "guiding" | "arrived";
+    status: "idle" | "outdoor" | "touring" | "guiding" | "arrived";
     stepIndex: number;
   };
   /** Real outdoor results only. The venue path begins at this known arrival. */
@@ -133,7 +139,7 @@ export function assembleVenueJourney(
     id: JSON.stringify([
       model.venueId,
       model.building.id,
-      model.source.sha256,
+      indoorModelVersion(model),
       from.placeId,
       to.placeId,
       mode,
@@ -148,14 +154,14 @@ export function assembleVenueJourney(
     ]),
     venueId: model.venueId,
     buildingId: model.building.id,
-    sourceVersion: model.source.sha256,
+    sourceVersion: indoorModelVersion(model),
     from: { ...from },
     to: { ...to },
     mode,
     verticalPreference: preference,
     route,
     ...(backendRoute ? { backendRoute } : {}),
-    preview: { progress: 0, playing: false, direction: 1 },
+    preview: { progress: 0, playing: false, direction: 1, following: true },
     guidance: { status: "idle", stepIndex: 0 },
   };
 }
@@ -178,7 +184,8 @@ export function venueJourneyPresentation(journey: VenueJourney): {
   direction: 1 | -1;
 } {
   const { status, stepIndex } = journey.guidance;
-  if (status === "idle" || status === "outdoor") return journey.preview;
+  if (status === "idle" || status === "outdoor" || status === "touring")
+    return journey.preview;
   if (status === "arrived") return { progress: 1, direction: 1 };
   const index = journey.route.steps[stepIndex]?.startIndex ?? 0;
   const total = pathDistance(journey.route.points);
@@ -224,6 +231,7 @@ export function venueJourneyStepLabel(
   step: IndoorRouteStep,
   t?: TFunction,
 ): string {
+  if (step.instruction) return step.instruction;
   const genericName = genericStepNames.get(step.name);
   const name = genericName ? journeyText(genericName, t) : step.name;
   if (step.kind === "elevator")
@@ -263,7 +271,7 @@ export function venueJourneyConfirmLabel(
   const step = journey.route.steps[journey.guidance.stepIndex];
   if (step?.fromLevel === null && step.toLevel !== null)
     return journeyText("venueConfirmEntry", t, {
-      building: journey.to.buildingName,
+      building: step.buildingName ?? journey.to.buildingName,
       floor: step.toLevel,
     });
   if (

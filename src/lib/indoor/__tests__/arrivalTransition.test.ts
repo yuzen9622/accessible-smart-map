@@ -331,7 +331,7 @@ describe("GPS metadata and the real navigation lifecycle", () => {
     ).toBe(true);
     const state = useMapStore.getState();
     expect(state.venueJourney?.guidance).toEqual({
-      status: "guiding",
+      status: "touring",
       stepIndex: 0,
     });
     expect(state.origin).toEqual(journey.outdoor.origin);
@@ -478,7 +478,7 @@ describe("GPS metadata and the real navigation lifecycle", () => {
       tryAutoConfirmVenueArrival(first.candidate, NOW + 4_000).shouldTransition,
     ).toBe(true);
     expect(useMapStore.getState().venueJourney?.guidance).toEqual({
-      status: "guiding",
+      status: "touring",
       stepIndex: 0,
     });
   });

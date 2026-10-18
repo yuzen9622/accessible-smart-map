@@ -62,9 +62,11 @@ export function VenueWalkSteps({ journey, approach }: Props) {
           </Fragment>
         ) : null,
       )}
-      <li className="pt-1 text-xs font-medium text-foreground">
-        {t("venueArriveAt", { destination: journey.from.name })}
-      </li>
+      {!journey.route.context && (
+        <li className="pt-1 text-xs font-medium text-foreground">
+          {t("venueArriveAt", { destination: journey.from.name })}
+        </li>
+      )}
       {journey.route.steps.map((step) => {
         const entersBuilding = step.fromLevel === null && step.toLevel !== null;
         const changesFloor =
@@ -73,7 +75,7 @@ export function VenueWalkSteps({ journey, approach }: Props) {
           step.fromLevel !== step.toLevel;
         return (
           <li
-            key={`${step.startIndex}-${step.endIndex}-${step.kind}`}
+            key={`${step.startIndex}-${step.endIndex}-${step.action ?? step.kind}-${step.instruction ?? ""}`}
             className="text-xs text-muted-foreground"
           >
             <span
@@ -88,7 +90,7 @@ export function VenueWalkSteps({ journey, approach }: Props) {
             {step.distanceM > 0 && step.kind !== "elevator" && (
               <> · {formatDistance(step.distanceM)}</>
             )}
-            {entersBuilding && (
+            {entersBuilding && !step.instruction && (
               <span className="block text-blue-600 dark:text-blue-400">
                 {t("venueEnterBuilding", {
                   building: journey.to.buildingName,
@@ -99,14 +101,16 @@ export function VenueWalkSteps({ journey, approach }: Props) {
           </li>
         );
       })}
-      <li className="pt-1 text-xs font-medium text-blue-600 dark:text-blue-400">
-        {t(
-          journey.to.arrivalKind === "corridor"
-            ? "venueArriveAtCorridor"
-            : "venueArriveAt",
-          { destination: journey.to.name },
-        )}
-      </li>
+      {!journey.route.context && (
+        <li className="pt-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+          {t(
+            journey.to.arrivalKind === "corridor"
+              ? "venueArriveAtCorridor"
+              : "venueArriveAt",
+            { destination: journey.to.name },
+          )}
+        </li>
+      )}
     </>
   );
 }

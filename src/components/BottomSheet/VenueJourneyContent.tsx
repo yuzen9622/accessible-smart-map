@@ -11,12 +11,14 @@ import {
   Square,
 } from "lucide-react";
 import { useAppTranslation } from "@/i18n/client";
+import { indoorModelVersion } from "@/lib/indoor/catalog";
 import {
   type VenueJourney,
   venueJourneyConfirmLabel,
   venueJourneyStepLabel,
 } from "@/lib/indoor/journey";
 import { requiresElevatorOnly } from "@/lib/indoor/profilePolicy";
+import { isVenueTourAllowed } from "@/lib/indoor/tour";
 import {
   confirmVenueArrival,
   startNavigation,
@@ -148,6 +150,81 @@ export function VenueArrivalConfirmation({
   );
 }
 
+/** Route animation controls share the original navigation sheet. */
+function VenueRouteTour({ journey }: { journey: VenueJourney }) {
+  const { t } = useAppTranslation();
+  const models = useIndoorCatalog((state) => state.models);
+  const model = models.find(
+    (item) =>
+      item.venueId === journey.venueId &&
+      item.building.id === journey.buildingId &&
+      indoorModelVersion(item) === journey.sourceVersion,
+  );
+  const { playing } = journey.preview;
+  const allowed = Boolean(model && isVenueTourAllowed(journey.route));
+  const update = useMapStore.getState().setVenueJourneyPreview;
+  return (
+    <div
+      className="space-y-3"
+      data-venue-journey={journey.id}
+      data-venue-tour="true"
+    >
+      <div>
+        <p className="text-xs text-primary font-medium">
+          {t("venueTourTitle")}
+        </p>
+        <p className="text-sm text-muted-foreground">
+          {journey.from.name} → {journey.to.name}
+        </p>
+      </div>
+      {!allowed && (
+        <p className="text-sm text-muted-foreground">
+          {t("venueTourUnavailable")}
+        </p>
+      )}
+      <Button
+        className="w-full gap-2"
+        disabled={!allowed}
+        aria-label={t(
+          playing ? "venueRouteAnimationPause" : "venueRouteAnimationPlay",
+        )}
+        onClick={() =>
+          update({ playing: !playing, following: false, direction: 1 })
+        }
+      >
+        {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        {t(playing ? "venueRouteAnimationPause" : "venueRouteAnimationPlay")}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        {t("venueRouteManualView")}
+      </p>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted-foreground">
+          {t("venueRouteSteps")}
+        </summary>
+        <ol className="mt-2 space-y-2">
+          {journey.route.steps.map((step, index) => (
+            <li
+              key={`${step.startIndex}-${step.endIndex}-${step.kind}-${step.name}`}
+              className="text-muted-foreground"
+            >
+              {index + 1}. {venueJourneyStepLabel(step, t)}
+            </li>
+          ))}
+        </ol>
+      </details>
+      <Button
+        variant="outline"
+        className="w-full gap-2"
+        onClick={stopNavigation}
+      >
+        <Square className="h-4 w-4" />
+        {t("endNav")}
+      </Button>
+    </div>
+  );
+}
+
 /** The existing route/navigation sheet owns this content; no separate panel. */
 export default function VenueJourneyContent({
   navigating = false,
@@ -159,6 +236,8 @@ export default function VenueJourneyContent({
   const setPreview = useMapStore((s) => s.setVenueJourneyPreview);
   const invalidTokens = useMapStore((s) => s.invalidRouteTokens);
   if (!journey) return null;
+  if (journey.guidance.status === "touring")
+    return <VenueRouteTour journey={journey} />;
   const active = journey.guidance.stepIndex;
   const arrived = journey.guidance.status === "arrived";
   const outdoorRoute = journey.outdoor?.routes[journey.outdoor.selectedIndex];

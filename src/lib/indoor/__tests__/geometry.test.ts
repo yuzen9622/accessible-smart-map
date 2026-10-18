@@ -1,4 +1,5 @@
 import polygonClipping, { type MultiPolygon } from "polygon-clipping";
+import { ExtrudeGeometry, Path, Shape, Vector2 } from "three";
 import { describe, expect, it } from "vitest";
 import {
   area,
@@ -177,6 +178,71 @@ describe("indoor floor geometry", () => {
 });
 
 describe("shared room walls", () => {
+  it("closes rotated walls without rounding their shared source endpoints", () => {
+    // Independently generated room: a nearly collinear subdivision on one
+    // side exposes cancellation in a + (b - a), even at t = 1.
+    const angle = 11 * 0.173;
+    const ring: XY[] = [
+      [0, 0],
+      [7.3, 0],
+      [10.9, 0.0001],
+      [10.9, 6.1],
+      [0, 6.1],
+      [0, 0],
+    ].map(([x, y]) => [
+      9.841 + x * Math.cos(angle) - y * Math.sin(angle),
+      4.341 + x * Math.sin(angle) + y * Math.cos(angle),
+    ]);
+    const room = feature("rotated-room", ring);
+    const corridorRing: XY[] = [
+      [10.9, 0.0001],
+      [12.9, 0.0001],
+      [12.9, 6.1],
+      [10.9, 6.1],
+      [10.9, 0.0001],
+    ].map(([x, y]) => [
+      9.841 + x * Math.cos(angle) - y * Math.sin(angle),
+      4.341 + x * Math.sin(angle) + y * Math.cos(angle),
+    ]);
+    const data = model([
+      room,
+      feature("corridor", corridorRing, { kind: "corridor" }),
+    ]);
+    const before = JSON.stringify(data);
+    const solid = wallGeometry(data, 0).polygons;
+    expect(surfaceArea(solid)).toBeGreaterThan(3);
+    expect(surfaceArea(solid)).toBeLessThan(5);
+    // Sub-nanometre display-overlay rounding must not change usable space.
+    expect(surfaceArea(polygonClipping.difference(solid, [ring]))).toBeLessThan(
+      1e-8,
+    );
+    expect(
+      surfaceArea(polygonClipping.intersection(solid, [corridorRing])),
+    ).toBeLessThan(1e-8);
+    for (const [outline, ...holes] of solid) {
+      const shape = new Shape(outline.map((point) => new Vector2(...point)));
+      shape.holes = holes.map(
+        (hole) => new Path(hole.map((point) => new Vector2(...point))),
+      );
+      const mesh = new ExtrudeGeometry(shape, {
+        depth: 0.85,
+        bevelEnabled: false,
+        curveSegments: 1,
+      });
+      expect(mesh.attributes.position.count).toBeGreaterThan(0);
+      expect([...mesh.attributes.position.array].every(Number.isFinite)).toBe(
+        true,
+      );
+      mesh.dispose();
+    }
+    const walls = roomWalls([room]);
+    for (let index = 0; index < ring.length - 1; index++) {
+      expect(walls[index].a).toEqual(ring[index]);
+      expect(walls[index].b).toEqual(ring[index + 1]);
+    }
+    expect(JSON.stringify(data)).toBe(before);
+  });
+
   it("deduplicates a shared wall even when only one room subdivides the boundary", () => {
     const walls = roomWalls(
       [
@@ -394,6 +460,50 @@ describe("authored walls and public corridors", () => {
     expect(wallGeometry(data, 1).polygons).toEqual(
       wallGeometry(data, 0).polygons,
     );
+  });
+
+  function apiShafts() {
+    const data = shafts();
+    data.connections = [0, 1].map((index) => ({
+      id: `lift-${index}`,
+      kind: "elevator",
+      name: "Synthetic API lift",
+      nodeIds: [`stop-${index}`],
+      coordinates: [[index * 3 + 1.5, 1, 0]],
+      levelRefs: ["1F"],
+      wheelchair: "yes",
+      geometryStatus: "schematic",
+      heightStatus: "estimated",
+      heightPending: false,
+      tags: {},
+      osmRef: "synthetic",
+    }));
+    data.places = [];
+    return data;
+  }
+
+  it("uses source connection stops without requiring searchable elevator places", () => {
+    const data = apiShafts();
+    const before = JSON.stringify(data);
+    const expected = wallGeometry(shafts(), 0).polygons;
+    expect(expected.length).toBeGreaterThan(0);
+    expect(wallGeometry(data, 0).polygons).toEqual(expected);
+    // An upper shaft is visible even where this elevator does not stop. Its
+    // entrance-side orientation comes from actual source stops on other floors.
+    expect(wallGeometry(data, 1).polygons).toEqual(expected);
+    expect(data.places).toEqual([]);
+    expect(JSON.stringify(data)).toBe(before);
+  });
+
+  it("does not substitute unlinked place nodes for explicit source connection stops", () => {
+    const data = shafts();
+    data.connections = apiShafts().connections.map((connection) => ({
+      ...connection,
+      nodeIds: ["unresolved-source-stop"],
+    }));
+    // Existing place metadata cannot manufacture an approach when the source
+    // explicitly points elsewhere. Legacy models without nodeIds still work.
+    expect(wallGeometry(data, 0).polygons).toEqual([]);
   });
 
   it("does not infer a closed enclosure for unknown approaches or combined stair/elevator cores", () => {

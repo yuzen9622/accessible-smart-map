@@ -29,14 +29,24 @@ export function sampleRoutePresentation(
       ? (route.steps[route.steps.length - 1]?.toLevel ?? null)
       : (route.steps[0]?.fromLevel ?? null);
   };
+  const contextAt = (index: number) => ({
+    currentBuildingId: route.context?.buildingIds[index] ?? null,
+    currentLevelRef: route.context?.levelRefs[index] ?? null,
+  });
   const complete = direction === 1 ? fraction === 1 : fraction === 0;
-  if (complete)
+  if (complete) {
+    const currentLevelRef = endpointLevel(direction === 1);
     return {
       position,
-      currentLevelRef: endpointLevel(direction === 1),
+      currentLevelRef,
+      currentBuildingId: currentLevelRef === null ? null : model.building.id,
+      ...(route.context
+        ? contextAt(direction === 1 ? route.points.length - 1 : 0)
+        : {}),
       activeConnectionId: null,
       transition: null,
     };
+  }
 
   const distances = [0];
   for (let i = 1; i < route.points.length; i += 1)
@@ -88,19 +98,60 @@ export function sampleRoutePresentation(
           connectionId: activeConnectionId,
         }
       : null;
-  return { position, currentLevelRef, activeConnectionId, transition };
+  let context = {
+    currentLevelRef,
+    currentBuildingId: currentLevelRef === null ? null : model.building.id,
+  };
+  if (route.context) {
+    // Use the source point context. An API instruction can announce entry
+    // before the path actually crosses the building boundary.
+    let index = direction === 1 ? 0 : route.points.length - 1;
+    for (let i = 0; i < distances.length - 1; i += 1) {
+      const start = distances[i],
+        end = distances[i + 1];
+      const active =
+        direction === 1
+          ? distance >= start - epsilon && distance < end - epsilon
+          : distance > start + epsilon && distance <= end + epsilon;
+      if (active) {
+        index = direction === 1 ? i : i + 1;
+        break;
+      }
+    }
+    context = contextAt(index);
+    if (
+      context.currentBuildingId !== null &&
+      context.currentLevelRef === null &&
+      step &&
+      ["steps", "elevator", "escalator"].includes(step.kind)
+    )
+      context.currentLevelRef = departureLevel;
+  }
+  return { position, ...context, activeConnectionId, transition };
 }
 
 function endpointFeatureId(
   model: LocalIndoorModel,
   place: IndoorPlace | undefined,
 ): string | null {
-  if (!place || place.levelRef === null) return null;
+  if (
+    !place ||
+    place.levelRef === null ||
+    (place.buildingId !== undefined && place.buildingId !== model.building.id)
+  )
+    return null;
   const sameFloor = model.features.filter(
-    (feature) => feature.levelRef === place.levelRef,
+    (feature) =>
+      feature.levelRef === place.levelRef &&
+      (feature.buildingId === undefined ||
+        feature.buildingId === model.building.id),
   );
   const uniqueId = (features: IndoorFeature[]) =>
     features.length === 1 ? features[0].id : null;
+  if (place.featureId)
+    return uniqueId(
+      sameFloor.filter((feature) => feature.id === place.featureId),
+    );
   const identity = sameFloor.filter(
     (feature) =>
       feature.id === place.id || feature.tags["a11ymap:id"] === place.id,

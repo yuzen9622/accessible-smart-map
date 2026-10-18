@@ -30,6 +30,7 @@ import {
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { indoorFeatureName } from "@/lib/indoor/facilityAreas";
 import { planIndoorRoute } from "@/lib/indoor/route";
 import { sampleRoutePresentation } from "@/lib/indoor/routePresentation";
 import type {
@@ -71,10 +72,11 @@ function featureKind(feature: IndoorFeature) {
 }
 
 function featureName(feature: IndoorFeature) {
+  const name = indoorFeatureName(feature);
   return (
-    (feature.ref && feature.name && !feature.name.includes(feature.ref)
-      ? `${feature.ref} ${feature.name}`
-      : feature.name) ||
+    (feature.ref && name && !name.includes(feature.ref)
+      ? `${feature.ref} ${name}`
+      : name) ||
     feature.ref ||
     (featureKind(feature) === "elevator"
       ? "電梯"

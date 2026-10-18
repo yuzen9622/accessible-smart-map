@@ -424,50 +424,52 @@ describe("unified venue journey", () => {
       selectRoute: null,
     });
   });
-  it("keeps preview/reversal independent of manual confirmations and does not infer intermediate elevator stops", () => {
+  it("plays a tour without confirming physical arrival or changing its source route", () => {
     const { data, journey } = setup();
     useIndoorCatalog.getState().setModels([data]);
     useMapStore.getState().setVenueJourney(journey);
     useMapStore
       .getState()
       .setVenueJourneyPreview({ progress: 0.6, playing: true, direction: -1 });
-    const preview = useMapStore.getState().venueJourney;
-    expect(preview?.guidance).toEqual({ status: "idle", stepIndex: 0 });
+    const source = JSON.stringify(journey.route);
     startNavigation();
     const started = useMapStore.getState().venueJourney as VenueJourney;
-    expect(started.guidance).toEqual({ status: "guiding", stepIndex: 0 });
+    expect(started.guidance).toEqual({ status: "touring", stepIndex: 0 });
     expect(started.preview).toMatchObject({
-      progress: 0.6,
-      playing: false,
-      direction: -1,
-    });
-    expect(venueJourneyPresentation(started)).toEqual({
       progress: 0,
+      playing: true,
       direction: 1,
+      following: false,
     });
-    useIndoorCatalog.getState().setActiveLevel(2);
-    expect(useMapStore.getState().venueJourney?.guidance.stepIndex).toBe(0);
-    useMapStore.getState().advanceVenueGuidance();
-    const lift = useMapStore.getState().venueJourney as VenueJourney;
-    expect(venueJourneyConfirmLabel(lift)).toBe("已到 3F");
-    expect(
-      samplePath(lift.route.points, venueJourneyPresentation(lift).progress),
-    ).toEqual([3, 0, 0]);
     useMapStore
       .getState()
-      .setVenueJourneyPreview({ progress: 1, playing: true });
-    expect(useMapStore.getState().venueJourney?.preview).toEqual(
-      started.preview,
-    );
-    useMapStore.getState().advanceVenueGuidance();
-    const upper = useMapStore.getState().venueJourney as VenueJourney;
+      .setVenueJourneyPreview({ progress: 0.5, direction: -1, playing: false });
+    const reversed = useMapStore.getState().venueJourney as VenueJourney;
+    expect(venueJourneyPresentation(reversed)).toMatchObject({
+      progress: 0.5,
+      direction: -1,
+    });
     expect(
-      samplePath(upper.route.points, venueJourneyPresentation(upper).progress),
-    ).toEqual([3, 0, 8]);
-    expect(venueJourneyConfirmLabel(upper)).toBe("已到教室前走道");
+      samplePath(
+        reversed.route.points,
+        venueJourneyPresentation(reversed).progress,
+      ),
+    ).toEqual([3, 0, 4.5]);
+    useIndoorCatalog.getState().setActiveLevel(2);
     useMapStore.getState().advanceVenueGuidance();
+    expect(useMapStore.getState().venueJourney?.guidance).toEqual({
+      status: "touring",
+      stepIndex: 0,
+    });
+    useMapStore
+      .getState()
+      .setVenueJourneyPreview({ progress: 1, direction: 1, playing: false });
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe(
-      "arrived",
+      "touring",
+    );
+    expect(useNavStore.getState().arrived).toBe(false);
+    expect(JSON.stringify(useMapStore.getState().venueJourney?.route)).toBe(
+      source,
     );
     stopNavigation();
     expect(useMapStore.getState()).toMatchObject({
@@ -475,27 +477,67 @@ describe("unified venue journey", () => {
       sheetMode: "route",
     });
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe("idle");
+    expect(useMapStore.getState().venueJourney?.preview.playing).toBe(false);
   });
-  it("keeps uncertain geometry out of animation but permits source-based manual guidance, and rejects stale data", () => {
+  it("allows a schematic tour without declaring uncertain source geometry physically safe, and rejects stale data", () => {
     const { data, journey } = setup();
     useIndoorCatalog.getState().setModels([data]);
-    useMapStore.getState().setVenueJourney({
-      ...journey,
-      route: { ...journey.route, animationSafe: false },
-    });
+    journey.route.animationSafe = false;
+    journey.route.steps[0].heightPending = true;
+    useMapStore.getState().setVenueJourney(journey);
     useMapStore.getState().setVenueJourneyPreview({ playing: true });
+    expect(useMapStore.getState().venueJourney?.preview.playing).toBe(false);
     startNavigation();
     expect(useMapStore.getState().isNavigating).toBe(true);
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe(
-      "guiding",
+      "touring",
     );
-    expect(useMapStore.getState().venueJourney?.preview.playing).toBe(false);
+    expect(useMapStore.getState().venueJourney?.preview.playing).toBe(true);
+    expect(useMapStore.getState().venueJourney?.route.animationSafe).toBe(
+      false,
+    );
+    expect(
+      useMapStore.getState().venueJourney?.route.steps[0].heightPending,
+    ).toBe(true);
     useMapStore
       .getState()
       .setVenueJourney({ ...journey, sourceVersion: "stale" });
     startNavigation();
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe("idle");
     expect(useMapStore.getState().activeNavigationRoute).toBeNull();
+  });
+  it("starts reduced-motion tours paused, permits a static seek, and pauses camera following on a 2D request", () => {
+    const { data, journey } = setup();
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
+    try {
+      useIndoorCatalog.getState().setModels([data]);
+      useMapStore.getState().setVenueJourney(journey);
+      startNavigation();
+      expect(useMapStore.getState().venueJourney?.preview.playing).toBe(false);
+      useMapStore.getState().setVenueJourneyPreview({ progress: 0.6 });
+      expect(useMapStore.getState().venueJourney?.preview.progress).toBe(0.6);
+      useMapStore.getState().setIs3D(false);
+      expect(useMapStore.getState().venueJourney?.preview).toMatchObject({
+        playing: false,
+        following: false,
+        progress: 0.6,
+      });
+      expect(useMapStore.getState().venueJourney?.guidance.status).toBe(
+        "touring",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("does not activate a tour with incomplete source context", () => {
+    const { data, journey } = setup();
+    journey.route.context = { buildingIds: [], levelRefs: [] };
+    useIndoorCatalog.getState().setModels([data]);
+    useMapStore.getState().setVenueJourney(journey);
+    startNavigation();
+    expect(useMapStore.getState().isNavigating).toBe(false);
+    expect(useMapStore.getState().venueJourney?.guidance.status).toBe("idle");
+    expect(useNavStore.getState().arrived).toBe(false);
   });
   it("replaces the venue session when outdoor or AI planning publishes a different route", () => {
     const { journey } = setup();
@@ -563,7 +605,7 @@ describe("unified venue journey", () => {
     );
     confirmVenueArrival();
     expect(useMapStore.getState().venueJourney?.guidance).toEqual({
-      status: "guiding",
+      status: "touring",
       stepIndex: 0,
     });
     expect(useMapStore.getState().activeNavigationRoute).toBeNull();

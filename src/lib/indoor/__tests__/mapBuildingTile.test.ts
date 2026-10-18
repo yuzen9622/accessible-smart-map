@@ -2,7 +2,10 @@ import { classifyRings, VectorTile } from "@mapbox/vector-tile";
 import Pbf from "pbf";
 import { describe, expect, it } from "vitest";
 import { lngLatToLocal } from "../coordinates";
-import { transformIndoorBuildingTile } from "../mapBuildingTile";
+import {
+  transformIndoorBuildingTile,
+  transformIndoorBuildingTiles,
+} from "../mapBuildingTile";
 import type { LocalIndoorModel, XY } from "../types";
 
 const tile = { z: 14, x: 10000, y: 6500 };
@@ -170,6 +173,138 @@ const coordinates = (data: ArrayBuffer, index = 0) =>
     .map((r) => r.map((p) => [p.x, p.y]));
 
 describe("component-level indoor MVT building transform", () => {
+  it("removes four exact buildings while retaining the fifth roof and other layers unchanged", () => {
+    const roofs = Array.from({ length: 5 }, (_, i) =>
+      rectangle(400 + i * 400, 1700, 140, 100),
+    );
+    const input = encode({
+      building: [
+        {
+          id: BigInt("9007199254740993"),
+          rings: roofs,
+          properties: { name: "synthetic 𩵚" },
+        },
+      ],
+      road: [
+        {
+          type: 2,
+          rings: [
+            [
+              [0, 0],
+              [100, 100],
+            ],
+          ],
+          properties: { name: "untouched" },
+        },
+      ],
+    });
+    const sources = roofs.slice(0, 4).map((roof) => model([roof]));
+    const snapshot = JSON.stringify(sources);
+    const result = transformIndoorBuildingTiles(input, tile, sources);
+    expect(result.removedComponents).toBe(4);
+    expect(coordinates(result.data)).toEqual([roofs[4]]);
+    expect(layerBytes(result.data, "road")).toEqual(layerBytes(input, "road"));
+    const sourceFeature = rawFields(layerBytes(input, "building")).find(
+      (f) => f.tag === 2,
+    );
+    const resultFeature = rawFields(layerBytes(result.data, "building")).find(
+      (f) => f.tag === 2,
+    );
+    if (!sourceFeature || !resultFeature)
+      throw new Error("Synthetic building feature missing");
+    expect(
+      rawFields(fieldPayload(resultFeature)).filter((f) => f.tag !== 4),
+    ).toEqual(
+      rawFields(fieldPayload(sourceFeature)).filter((f) => f.tag !== 4),
+    );
+    expect(JSON.stringify(sources)).toBe(snapshot);
+    expect(transformIndoorBuildingTiles(input, tile, []).data).toBe(input);
+  });
+
+  it("retains an ambiguous building even when another campus building can be safely opened", () => {
+    const other = rectangle(1500, 1700, 140, 100);
+    const input = encode({
+      building: [
+        { id: 1, rings: [target] },
+        { id: 2, rings: [target] },
+        { id: 3, rings: [other] },
+      ],
+    });
+    const result = transformIndoorBuildingTiles(input, tile, [
+      model(),
+      model([other]),
+    ]);
+    expect(result.removedComponents).toBe(1);
+    const before = rawFields(layerBytes(input, "building")).filter(
+      (f) => f.tag === 2,
+    );
+    const after = rawFields(layerBytes(result.data, "building")).filter(
+      (f) => f.tag === 2,
+    );
+    expect(after).toEqual(before.slice(0, 2));
+  });
+
+  it("removes a building partitioned into disjoint components without removing neighbouring components", () => {
+    const west = rectangle(1100, 1700, 50, 100);
+    const east = rectangle(1150, 1700, 90, 100);
+    const neighbour = rectangle(1400, 1700, 120, 100);
+    const input = encode({
+      building: [
+        { id: 7, rings: [west, neighbour, east], properties: { name: "𩵚" } },
+      ],
+    });
+    const result = transformIndoorBuildingTile(input, tile, model());
+    expect(result.reason).toBe("removed");
+    expect(result.removedComponents).toBe(2);
+    expect(coordinates(result.data)).toEqual([neighbour]);
+    const before = rawFields(layerBytes(input, "building"));
+    const after = rawFields(layerBytes(result.data, "building"));
+    expect(after.filter((field) => field.tag !== 2)).toEqual(
+      before.filter((field) => field.tag !== 2),
+    );
+    expect(
+      rawFields(
+        fieldPayload(after.filter((field) => field.tag === 2)[0]),
+      ).filter((field) => field.tag !== 4),
+    ).toEqual(
+      rawFields(
+        fieldPayload(before.filter((field) => field.tag === 2)[0]),
+      ).filter((field) => field.tag !== 4),
+    );
+  });
+
+  it("matches split roofs across features while preserving all unrelated features byte for byte", () => {
+    const neighbour = rectangle(1400, 1700, 120, 100);
+    const input = encode({
+      building: [
+        { id: 1, rings: [rectangle(1100, 1700, 50, 100)] },
+        { id: 2, rings: [neighbour], properties: { name: "unrelated 𩵚" } },
+        { id: 3, rings: [rectangle(1150, 1700, 90, 100)] },
+      ],
+    });
+    const result = transformIndoorBuildingTile(input, tile, model());
+    expect(result.removedComponents).toBe(2);
+    expect(coordinates(result.data)).toEqual([neighbour]);
+    const before = rawFields(layerBytes(input, "building"));
+    const after = rawFields(layerBytes(result.data, "building"));
+    expect(after.filter((field) => field.tag === 2)).toEqual([
+      before.filter((field) => field.tag === 2)[1],
+    ]);
+    expect(after.filter((field) => field.tag !== 2)).toEqual(
+      before.filter((field) => field.tag !== 2),
+    );
+  });
+
+  it("does not remove a partition that covers too little of the active building", () => {
+    const input = encode({
+      building: [
+        { rings: [rectangle(1100, 1700, 20, 100)] },
+        { rings: [rectangle(1220, 1700, 20, 100)] },
+      ],
+    });
+    expect(transformIndoorBuildingTile(input, tile, model()).data).toBe(input);
+  });
+
   it("removes one component and its hole while preserving neighbours, their holes and large IDs", () => {
     const neighbour = rectangle(1400, 1700, 120, 100);
     const neighbourHole = rectangle(1430, 1730, 20, 20).reverse();

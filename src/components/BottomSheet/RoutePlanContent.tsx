@@ -427,6 +427,8 @@ export default function RoutePlanContent() {
           signal: controller.signal,
         });
         if (!isCurrent()) return;
+        if (result.refreshedModels)
+          useIndoorCatalog.getState().setModels(result.refreshedModels);
         if (!result.ok) {
           setRouteError(result.message);
           return;

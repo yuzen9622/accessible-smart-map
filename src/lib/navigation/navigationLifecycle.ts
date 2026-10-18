@@ -7,8 +7,9 @@ import {
   type VenueArrivalCandidate,
   type VenueArrivalEvaluation,
 } from "@/lib/indoor/arrivalTransition";
-import { findVenueModel } from "@/lib/indoor/catalog";
+import { findVenueModel, indoorModelVersion } from "@/lib/indoor/catalog";
 import type { VenueJourney } from "@/lib/indoor/journey";
+import { isVenueTourAllowed } from "@/lib/indoor/tour";
 import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -50,6 +51,13 @@ function selectedApproach(journey: VenueJourney) {
     : undefined;
 }
 
+function autoplayVenueTour(): boolean {
+  return (
+    typeof window === "undefined" ||
+    !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
  * Explicit domain command to start navigation.
  * Synchronously starts a fresh coordinator session before activating the UI.
@@ -62,14 +70,18 @@ export function startNavigation(): void {
       useIndoorCatalog.getState().models,
       journey.from,
     );
-    if (!model || model.source.sha256 !== journey.sourceVersion) {
+    if (!model || indoorModelVersion(model) !== journey.sourceVersion) {
       toast.error("場域資料已更新或尚未載入，請重新規劃。");
       return;
     }
     if (!journey.outdoor) {
+      if (!isVenueTourAllowed(journey.route)) {
+        toast.error("路線資料不完整，請重新規劃。");
+        return;
+      }
       localRerouteCoordinator.stopSession();
       useNavStore.getState().reset();
-      map.startVenueGuidance();
+      map.startVenueTour(autoplayVenueTour());
       map.setIsNavigating(true);
       useIndoorCatalog.getState().showPlace(journey.from);
       return;
@@ -135,13 +147,17 @@ export function confirmVenueArrival(): void {
     useIndoorCatalog.getState().models,
     journey.from,
   );
-  if (!model || model.source.sha256 !== journey.sourceVersion) {
+  if (!model || indoorModelVersion(model) !== journey.sourceVersion) {
     toast.error("室內路線資料已失效，請重新規劃。");
+    return;
+  }
+  if (!isVenueTourAllowed(journey.route)) {
+    toast.error("路線資料不完整，請重新規劃。");
     return;
   }
   localRerouteCoordinator.stopSession();
   useNavStore.getState().reset();
-  map.startVenueGuidance();
+  map.startVenueTour(autoplayVenueTour());
   map.setIsNavigating(true);
   useIndoorCatalog.getState().showPlace(journey.from);
 }
@@ -181,7 +197,7 @@ function activateVenueApproach(verifiedWalkingArrival: boolean): void {
     useIndoorCatalog.getState().models,
     journey.from,
   );
-  if (!model || model.source.sha256 !== journey.sourceVersion) {
+  if (!model || indoorModelVersion(model) !== journey.sourceVersion) {
     toast.error("場域資料已更新或尚未載入，請重新規劃。");
     return;
   }
@@ -223,8 +239,8 @@ export function tryAutoConfirmVenueArrival(
     model &&
       journey &&
       outdoor &&
-      model.source.sha256 === journey.sourceVersion &&
-      outdoor.arrival.sourceVersion === model.source.sha256 &&
+      indoorModelVersion(model) === journey.sourceVersion &&
+      outdoor.arrival.sourceVersion === indoorModelVersion(model) &&
       outdoor.arrival.venueId === model.venueId &&
       outdoor.arrival.placeId === journey.from.placeId &&
       model.preview?.gatePlaceIds?.includes(outdoor.arrival.placeId),
@@ -334,7 +350,7 @@ export function tryAutoConfirmVenueArrival(
       current?.id === journey?.id &&
       (walkingApproach
         ? current?.outdoor?.phase === "approach"
-        : current?.guidance.status === "guiding"),
+        : current?.guidance.status === "touring"),
   };
 }
 

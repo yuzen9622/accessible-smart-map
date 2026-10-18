@@ -1,11 +1,14 @@
 "use client";
 
-import type { CustomLayerInterface } from "maplibre-gl";
+import { type CustomLayerInterface, LngLat } from "maplibre-gl";
+import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMap } from "react-map-gl/maplibre";
 import * as THREE from "three";
-import { localToLngLat } from "@/lib/indoor/coordinates";
+import { venueBuildingKey } from "@/lib/indoor/catalog";
+import { lngLatToLocal, localToLngLat } from "@/lib/indoor/coordinates";
+import { getIndoorPalette, type IndoorTheme } from "@/lib/indoor/indoorTheme";
 import { mountIndoorBuildingMask } from "@/lib/indoor/mapBuildingShell";
 import {
   getIndoorExitZoom,
@@ -18,28 +21,217 @@ import {
   updateIndoorMapCamera,
 } from "@/lib/indoor/mapProjection";
 import {
+  buildingSceneProps,
+  indoorBuildingViews,
+  indoorSceneModelsKey,
+} from "@/lib/indoor/mapSceneViews";
+import {
+  fitIndoorOverviewZoom,
+  projectIndoorOverviewAtZoom,
+} from "@/lib/indoor/overviewFit";
+import {
   createIndoorContent,
   disposeTree,
   type IndoorContentState,
   indoorActiveSpanKey,
   indoorDisplayLevel,
-  indoorPalette,
   rebuildIndoorContent,
   rebuildIndoorRoute,
+  rebuildIndoorRouteSegments,
+  updateCampusTourMarker,
   updateIndoorLabels,
   updateIndoorMarker,
+  updateIndoorOverlayScale,
+  updateIndoorRouteFlow,
+  updateIndoorTheme,
   v3,
 } from "@/lib/indoor/sceneContent";
 import type { IndoorSceneProps } from "@/lib/indoor/sceneTypes";
+import type { XYZ } from "@/lib/indoor/types";
 import useMapStore from "@/stores/useMapStore";
 
 const LAYER_ID = "local-indoor-cutaway";
-interface MapSceneState extends IndoorContentState {
+interface BuildingSceneState extends IndoorContentState {
+  key: string;
+  props: IndoorSceneProps;
+  host: HTMLDivElement;
   scene: THREE.Scene;
   camera: THREE.Camera;
-  renderer: THREE.WebGLRenderer;
   inverseMapProjection: THREE.Matrix4;
+  ambient: THREE.HemisphereLight;
+  sun: THREE.DirectionalLight;
+  geometryKey: string;
+  shadowDirty: boolean;
+}
+interface MapSceneState {
+  buildings: Map<string, BuildingSceneState>;
+  renderer: THREE.WebGLRenderer;
   shadowTarget: THREE.WebGLRenderTarget;
+  campus: IndoorContentState;
+  campusScene: THREE.Scene;
+  campusCamera: THREE.Camera;
+  campusSegmentsKey: string;
+  campusTour: boolean | undefined;
+  campusOrigin: string;
+  flowSeconds: number;
+  frameAt: number;
+}
+
+function updateBuildingTheme(s: BuildingSceneState, p: IndoorSceneProps) {
+  updateIndoorTheme(s, p);
+  const lighting = getIndoorPalette(p.theme).lighting;
+  s.ambient.color.setHex(lighting.hemisphereSky);
+  s.ambient.groundColor.setHex(lighting.hemisphereGround);
+  s.ambient.intensity = lighting.hemisphereIntensity;
+  s.sun.color.setHex(lighting.directionalColor);
+  s.sun.intensity = lighting.directionalIntensity;
+}
+function createBuildingScene(
+  key: string,
+  p: IndoorSceneProps,
+  container: HTMLDivElement,
+): BuildingSceneState {
+  const scene = new THREE.Scene();
+  const ambient = new THREE.HemisphereLight();
+  const sun = new THREE.DirectionalLight();
+  const bounds = new THREE.Box3().setFromPoints(
+    p.model.building.footprint
+      .flat()
+      .map((point) => v3([point[0], point[1], 0])),
+  );
+  const center = bounds.getCenter(new THREE.Vector3());
+  sun.position.copy(center).add(new THREE.Vector3(-35, 65, 20));
+  sun.target.position.copy(center);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, {
+    left: -80,
+    right: 80,
+    top: 80,
+    bottom: -80,
+    near: 0.1,
+    far: 180,
+  });
+  sun.shadow.normalBias = 0.04;
+  sun.shadow.bias = -0.00025;
+  const content = createIndoorContent();
+  scene.add(
+    ambient,
+    sun,
+    sun.target,
+    content.content,
+    content.routeGroup,
+    content.marker,
+  );
+  const host = document.createElement("div");
+  host.dataset.buildingKey = key;
+  host.style.cssText = "position:absolute;inset:0;pointer-events:none";
+  container.appendChild(host);
+  const s: BuildingSceneState = {
+    ...content,
+    key,
+    props: p,
+    host,
+    scene,
+    ambient,
+    sun,
+    camera: new THREE.PerspectiveCamera(),
+    inverseMapProjection: new THREE.Matrix4(),
+    geometryKey: "",
+    shadowDirty: true,
+  };
+  s.camera.matrixAutoUpdate = false;
+  s.camera.matrixWorldAutoUpdate = false;
+  updateBuildingTheme(s, p);
+  return s;
+}
+function disposeBuilding(s: BuildingSceneState) {
+  disposeTree(s.scene);
+  s.host.remove();
+}
+function synchronizeBuildings(
+  state: MapSceneState,
+  container: HTMLDivElement,
+  p: IndoorSceneProps,
+  onSelect: (key: string, id: string) => void,
+) {
+  const views = indoorBuildingViews(p);
+  const keys = new Set(views.map((view) => view.key));
+  for (const [key, building] of state.buildings)
+    if (!keys.has(key)) {
+      disposeBuilding(building);
+      state.buildings.delete(key);
+    }
+  for (const view of views) {
+    const local = buildingSceneProps(p, view);
+    let building = state.buildings.get(view.key);
+    if (!building) {
+      building = createBuildingScene(view.key, local, container);
+      state.buildings.set(view.key, building);
+    }
+    const geometryKey = JSON.stringify([
+      local.visibleLevels,
+      indoorActiveSpanKey(local),
+      local.stairPreview,
+    ]);
+    const rebuild =
+      building.geometryKey !== geometryKey ||
+      building.props.model !== local.model;
+    const previous = building.props;
+    const routeChanged =
+      building.props.route !== local.route ||
+      building.props.routeTour !== local.routeTour;
+    building.props = local;
+    if (rebuild) {
+      rebuildIndoorContent(building, building.host, local, (id) =>
+        onSelect(view.key, id),
+      );
+      building.geometryKey = geometryKey;
+      building.shadowDirty = true;
+    }
+    if (rebuild || routeChanged) rebuildIndoorRoute(building, local);
+    if (routeChanged) updateIndoorLabels(building, local);
+    updateIndoorMarker(building, building.host, local);
+    if (
+      rebuild ||
+      routeChanged ||
+      previous.selectedId !== local.selectedId ||
+      previous.theme !== local.theme
+    )
+      updateBuildingTheme(building, local);
+  }
+  const origin = JSON.stringify(p.model.origin);
+  const campusSegmentsKey = JSON.stringify(p.campusRouteSegments ?? []);
+  if (
+    state.campusSegmentsKey !== campusSegmentsKey ||
+    state.campusTour !== p.routeTour ||
+    state.campusOrigin !== origin
+  ) {
+    // Campus segments have their own main-model frame and are presented at map
+    // ground. Source XYZ and individual segment boundaries remain untouched.
+    rebuildIndoorRouteSegments(
+      state.campus,
+      { ...p, grounded: true },
+      (p.campusRouteSegments ?? []).map((segment) => {
+        const [a, b] = Array.isArray(segment) ? segment : segment.coordinates;
+        const coordinates: [XYZ, XYZ] = [
+          [a[0], a[1], 0],
+          [b[0], b[1], 0],
+        ];
+        return Array.isArray(segment)
+          ? coordinates
+          : { ...segment, coordinates };
+      }),
+    );
+    state.campusSegmentsKey = campusSegmentsKey;
+    state.campusTour = p.routeTour;
+    state.campusOrigin = origin;
+  }
+  updateIndoorTheme(state.campus, p);
+  updateCampusTourMarker(state.campus, container, p);
+  state.renderer.toneMappingExposure = getIndoorPalette(
+    p.theme,
+  ).lighting.exposure;
 }
 function duration(ms: number) {
   return document.hidden ||
@@ -74,15 +266,23 @@ function indoorMapPadding(canvas: HTMLCanvasElement) {
 export default function IndoorMapScene(props: IndoorSceneProps) {
   const { current: mapRef } = useMap();
   const map = mapRef?.getMap();
-  const latest = useRef<IndoorSceneProps>({ ...props, grounded: true });
-  latest.current = { ...props, grounded: true };
+  const { resolvedTheme } = useTheme();
+  const theme: IndoorTheme = resolvedTheme === "dark" ? "dark" : "light";
+  const palette = getIndoorPalette(theme);
+  const latest = useRef<IndoorSceneProps>({ ...props, grounded: true, theme });
+  latest.current = { ...props, grounded: true, theme };
   const host = useRef<HTMLDivElement>(null);
   const state = useRef<MapSceneState | null>(null);
   const [error, setError] = useState("");
   const { model } = props;
-  const levelsKey = String(props.visibleLevels[0] ?? "");
-  const activeSpanKey = indoorActiveSpanKey(props);
-  const stairKey = JSON.stringify(props.stairPreview ?? null);
+  const modelsKey = indoorSceneModelsKey(props);
+  const views = indoorBuildingViews(props);
+  const levelsKey = JSON.stringify(
+    views.map((view) => [view.key, view.levelOrdinal]),
+  );
+  const maskKey = JSON.stringify(
+    views.filter((view) => view.levelOrdinal !== null).map((view) => view.key),
+  );
   const lastView = useRef(props.view);
   const overview = useRef({
     entryZoom: null as number | null,
@@ -97,10 +297,8 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
     const padding = map.getPadding();
     overview.current.leaving = false;
     map.setCenterClampedToGround(false);
-    const restoreShell = mountIndoorBuildingMask(map, model);
     return () => {
       overview.current.leaving = true;
-      restoreShell();
       map.setCenterClampedToGround(clamped);
       // Keep the user's current centre, zoom and bearing after zooming out.
       // A manual 2D toggle must finish flat even if its animation is interrupted
@@ -111,13 +309,35 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
         ...(!useMapStore.getState().is3D ? { pitch: 0 } : {}),
       });
     };
-  }, [map, model]);
+  }, [map]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Mask only changes with displayed model identities, not animation or focus.
+  useEffect(() => {
+    if (!map) return;
+    const visible = indoorBuildingViews(latest.current).filter(
+      (view) =>
+        view.levelOrdinal !== null &&
+        view.model.building.levels.some(
+          (level) => level.ordinal === view.levelOrdinal,
+        ),
+    );
+    return mountIndoorBuildingMask(
+      map,
+      visible.map((view) => view.model),
+    );
+  }, [map, modelsKey, maskKey]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: One layer survives active-building, floor, theme and route progress changes.
   useEffect(() => {
     if (!map || !host.current) return;
     const container = host.current;
     const labelLeaders = new WeakMap<HTMLButtonElement, HTMLSpanElement>();
     let disposed = false;
+    const select = (buildingKey: string, featureId: string) => {
+      if (latest.current.onSelectBuildingFeature)
+        latest.current.onSelectBuildingFeature({ buildingKey, featureId });
+      else latest.current.onSelect(featureId);
+    };
     const createLayer = (): CustomLayerInterface => {
       let layerState: MapSceneState | null = null;
       return {
@@ -133,96 +353,139 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
           renderer.localClippingEnabled = true;
           renderer.shadowMap.enabled = true;
           renderer.shadowMap.autoUpdate = false;
-          renderer.shadowMap.needsUpdate = true;
           renderer.shadowMap.type = THREE.PCFShadowMap;
           renderer.outputColorSpace = THREE.SRGBColorSpace;
           renderer.toneMapping = THREE.ACESFilmicToneMapping;
-          renderer.toneMappingExposure = 0.9;
-          const scene = new THREE.Scene();
-          scene.add(new THREE.HemisphereLight(0xffffff, 0xa6a6a6, 1.7));
-          const light = new THREE.DirectionalLight(0xffffff, 2.2);
-          const bounds = new THREE.Box3().setFromPoints(
-            model.building.footprint.flat().map((p) => v3([p[0], p[1], 0])),
+          const campus = createIndoorContent();
+          const campusScene = new THREE.Scene();
+          campusScene.add(
+            campus.routeGroup,
+            campus.marker,
+            new THREE.HemisphereLight(0xffffff, 0xffffff, 2),
           );
-          const center = bounds.getCenter(new THREE.Vector3());
-          light.position.copy(center).add(new THREE.Vector3(-35, 65, 20));
-          light.target.position.copy(center);
-          light.castShadow = true;
-          light.shadow.mapSize.set(2048, 2048);
-          Object.assign(light.shadow.camera, {
-            left: -80,
-            right: 80,
-            top: 80,
-            bottom: -80,
-            near: 0.1,
-            far: 180,
-          });
-          light.shadow.normalBias = 0.04;
-          light.shadow.bias = -0.00025;
-          scene.add(light, light.target);
-          const content = createIndoorContent();
-          scene.add(content.content, content.routeGroup, content.marker);
           const s: MapSceneState = {
-            ...content,
-            scene,
-            camera: new THREE.PerspectiveCamera(),
-            inverseMapProjection: new THREE.Matrix4(),
-            shadowTarget: new THREE.WebGLRenderTarget(1, 1),
+            buildings: new Map(),
             renderer,
+            shadowTarget: new THREE.WebGLRenderTarget(1, 1),
+            campus,
+            campusScene,
+            campusCamera: new THREE.PerspectiveCamera(),
+            campusSegmentsKey: "",
+            campusTour: undefined,
+            campusOrigin: "",
+            flowSeconds: 0,
+            frameAt: 0,
           };
-          s.camera.matrixAutoUpdate = false;
-          s.camera.matrixWorldAutoUpdate = false;
           layerState = s;
           state.current = s;
-          rebuildIndoorContent(s, container, latest.current, (id) =>
-            latest.current.onSelect(id),
-          );
-          rebuildIndoorRoute(s, latest.current);
-          updateIndoorMarker(s, container, latest.current);
+          synchronizeBuildings(s, container, latest.current, select);
           setError("");
         },
         render(_gl, args) {
           const s = layerState;
           if (!s || disposed) return;
-
-          // getMatrixForModel consumes metres in the existing (E, Up, -N) basis.
-          // No per-room scale, geographic mirroring, or independent indoor camera.
-          const sourceFloorElevation =
-            indoorDisplayLevel(latest.current)?.elevationM ?? 0;
-          const modelMatrix = groundFloorModelMatrix(
-            new THREE.Matrix4().fromArray(
-              map.transform.getMatrixForModel(model.origin, 0),
-            ),
-            sourceFloorElevation,
-          );
-          const combined = new THREE.Matrix4()
-            .fromArray(args.defaultProjectionData.mainMatrix)
-            .multiply(modelMatrix);
-          s.inverseMapProjection = updateIndoorMapCamera(
-            s.camera,
-            args.projectionMatrix,
-            combined,
-          );
+          const p = latest.current;
+          const currentPalette = getIndoorPalette(p.theme);
+          const now = performance.now();
+          const reduced = window.matchMedia(
+            "(prefers-reduced-motion: reduce)",
+          ).matches;
+          if (p.routePlaying && !reduced && s.frameAt)
+            s.flowSeconds += Math.min(
+              0.1,
+              Math.max(0, (now - s.frameAt) / 1000),
+            );
+          s.frameAt = now;
           const depthRange = _gl.getParameter(_gl.DEPTH_RANGE) as Float32Array;
-          s.renderer.resetState();
-          if (s.renderer.shadowMap.needsUpdate) {
-            // MapLibre reserves a reduced depth range for its 3D layers. Three's
-            // native shadow depth texture must be generated at 0..1 or every
-            // surface falsely shadows itself. The colour pass stays offscreen.
-            _gl.depthRange(0, 1);
-            s.renderer.setRenderTarget(s.shadowTarget);
-            s.renderer.render(s.scene, s.camera);
-            s.renderer.setRenderTarget(null);
-          }
-          _gl.depthRange(depthRange[0], depthRange[1]);
-          s.renderer.setViewport(
-            0,
-            0,
-            _gl.drawingBufferWidth,
-            _gl.drawingBufferHeight,
+          const rendered = [...s.buildings.values()].filter((building) =>
+            indoorDisplayLevel(building.props),
           );
-          s.renderer.render(s.scene, s.camera);
+          let triangles = 0;
+          // All architectural geometry is rendered first, in each source ENU
+          // frame, through the same geographic MapLibre camera and GL context.
+          for (const building of rendered) {
+            const floor = indoorDisplayLevel(building.props);
+            if (!floor) continue;
+            const matrix = groundFloorModelMatrix(
+              new THREE.Matrix4().fromArray(
+                map.transform.getMatrixForModel(building.props.model.origin, 0),
+              ),
+              floor.elevationM,
+            );
+            const combined = new THREE.Matrix4()
+              .fromArray(args.defaultProjectionData.mainMatrix)
+              .multiply(matrix);
+            building.inverseMapProjection = updateIndoorMapCamera(
+              building.camera,
+              args.projectionMatrix,
+              combined,
+            );
+            const markerVisible = building.marker.visible;
+            building.content.visible = true;
+            building.routeGroup.visible = false;
+            building.marker.visible = false;
+            s.renderer.resetState();
+            s.renderer.shadowMap.needsUpdate = building.shadowDirty;
+            if (building.shadowDirty) {
+              _gl.depthRange(0, 1);
+              s.renderer.setRenderTarget(s.shadowTarget);
+              s.renderer.render(building.scene, building.camera);
+              s.renderer.setRenderTarget(null);
+              building.shadowDirty = false;
+            }
+            _gl.depthRange(depthRange[0], depthRange[1]);
+            s.renderer.setViewport(
+              0,
+              0,
+              _gl.drawingBufferWidth,
+              _gl.drawingBufferHeight,
+            );
+            s.renderer.render(building.scene, building.camera);
+            triangles += s.renderer.info.render.triangles;
+            building.marker.visible = markerVisible;
+          }
+          // Navigation is a final non-depth-writing overlay. Neither the basemap
+          // shells nor a later building's floor can cut its visible segments.
+          for (const building of rendered) {
+            building.content.visible = false;
+            building.routeGroup.visible = true;
+            updateIndoorOverlayScale(
+              building,
+              building.camera,
+              map.getCanvas().clientWidth,
+              map.getCanvas().clientHeight,
+            );
+            updateIndoorRouteFlow(
+              building,
+              building.props,
+              reduced ? 0 : s.flowSeconds,
+            );
+            s.renderer.render(building.scene, building.camera);
+            triangles += s.renderer.info.render.triangles;
+            building.content.visible = true;
+          }
+          updateIndoorMapCamera(
+            s.campusCamera,
+            args.projectionMatrix,
+            new THREE.Matrix4()
+              .fromArray(args.defaultProjectionData.mainMatrix)
+              .multiply(
+                new THREE.Matrix4().fromArray(
+                  map.transform.getMatrixForModel(p.model.origin, 0),
+                ),
+              ),
+          );
+          updateIndoorOverlayScale(
+            s.campus,
+            s.campusCamera,
+            map.getCanvas().clientWidth,
+            map.getCanvas().clientHeight,
+          );
+          updateIndoorRouteFlow(s.campus, p, reduced ? 0 : s.flowSeconds);
+          s.renderer.render(s.campusScene, s.campusCamera);
+          triangles += s.renderer.info.render.triangles;
           s.renderer.resetState();
+          if (p.routePlaying && !reduced) map.triggerRepaint();
           const width = map.getCanvas().clientWidth;
           const height = map.getCanvas().clientHeight;
           const used: {
@@ -234,23 +497,24 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
           }[] = [];
           // Small facility symbols remain discoverable beside dense room
           // names. Route endpoints and the selected space retain priority.
-          const labelPriority = (
-            label: IndoorContentState["labels"][number],
-          ) =>
-            label.endpoint || latest.current.selectedId === label.id
+          const labels = rendered.flatMap((building) =>
+            building.labels.map((label) => ({ building, label })),
+          );
+          const priority = ({ building, label }: (typeof labels)[number]) =>
+            label.endpoint || building.props.selectedId === label.id
               ? 2
               : label.textElement
                 ? 1
                 : 0;
-          for (const label of [...s.labels].sort(
-            (a, b) => labelPriority(b) - labelPriority(a),
+          for (const { building, label } of labels.sort(
+            (a, b) => priority(b) - priority(a),
           )) {
-            const projected = label.point.clone().project(s.camera);
+            const projected = label.point.clone().project(building.camera);
             const anchorX = ((projected.x + 1) * width) / 2,
               anchorY = ((1 - projected.y) * height) / 2;
             let x = anchorX,
               y = anchorY;
-            const selected = latest.current.selectedId === label.id;
+            const selected = building.props.selectedId === label.id;
             const facility = Boolean(label.textElement);
             label.width = label.element.offsetWidth || label.width;
             const labelHeight =
@@ -315,24 +579,19 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
             label.element.style.display = visible ? "block" : "none";
             label.element.style.pointerEvents = "auto";
             label.element.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
-            label.element.style.background = selected
-              ? indoorPalette.primaryCss
-              : indoorPalette.labelBackground;
-            label.element.style.color = selected
-              ? "white"
-              : indoorPalette.labelInk;
             let leader = labelLeaders.get(label.element);
             if (facility && !leader) {
               leader = document.createElement("span");
               leader.setAttribute("aria-hidden", "true");
               leader.dataset.indoorLabelLeader = "true";
               leader.style.cssText =
-                "position:absolute;left:50%;top:50%;height:1px;background:#64748b;transform-origin:0 50%;pointer-events:none;z-index:-1";
+                "position:absolute;left:50%;top:50%;height:1px;transform-origin:0 50%;pointer-events:none;z-index:-1";
               label.element.style.overflow = "visible";
               label.element.appendChild(leader);
               labelLeaders.set(label.element, leader);
             }
             if (leader) {
+              leader.style.background = currentPalette.labelLeader;
               const dx = anchorX - x,
                 dy = anchorY - y,
                 length = Math.hypot(dx, dy);
@@ -359,9 +618,20 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
           }
           container.dataset.rendered = "true";
           container.dataset.renderer = "maplibre-shared-context";
-          container.dataset.triangles = String(
-            s.renderer.info.render.triangles,
+          container.dataset.triangles = String(triangles);
+          container.dataset.displayedBuildings = JSON.stringify(
+            rendered.map((building) => ({
+              key: building.key,
+              level: indoorDisplayLevel(building.props)?.ref,
+            })),
           );
+          const active = s.buildings.get(
+            p.activeBuildingKey ?? venueBuildingKey(p.model),
+          );
+          if (active) Object.assign(container.dataset, active.host.dataset);
+          const sourceFloorElevation = active
+            ? (indoorDisplayLevel(active.props)?.elevationM ?? 0)
+            : 0;
           container.dataset.zoom = String(map.getZoom());
           container.dataset.pitch = String(map.getPitch());
           container.dataset.entryZoom = String(
@@ -379,8 +649,11 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
         onRemove() {
           const s = layerState;
           if (!s) return;
-          for (const label of s.labels) label.element.remove();
-          disposeTree(s.scene);
+          for (const building of s.buildings.values())
+            disposeBuilding(building);
+          s.buildings.clear();
+          disposeTree(s.campusScene);
+          disposeTree(s.campus.content);
           // Never lose or resize the WebGL context owned by MapLibre.
           s.shadowTarget.dispose();
           s.renderer.dispose();
@@ -398,52 +671,70 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
         setError("室內圖層尚未就緒，正在等待底圖載入。");
       }
     };
+    const keepAboveBuildings = () => {
+      const layers = map.getStyle()?.layers ?? [];
+      const index = layers.findIndex((layer) => layer.id === LAYER_ID);
+      if (
+        index >= 0 &&
+        layers.slice(index + 1).some((layer) => layer.type === "fill-extrusion")
+      )
+        map.moveLayer(LAYER_ID);
+    };
+    map.on("styledata", keepAboveBuildings);
     map.on("style.load", add);
     if (map.getStyle()?.layers) add();
     const unregister = registerIndoorPicker(map, (point) => {
       const s = state.current;
       if (!s || container.dataset.rendered !== "true") return false;
-      const ray = mapPixelRay(
-        point,
-        map.getCanvas().clientWidth,
-        map.getCanvas().clientHeight,
-        s.inverseMapProjection,
-      );
-      const hit = ray
-        .intersectObjects(s.pickable, false)
-        .find(({ object, point: hitPoint }) => {
-          const mat = (object as THREE.Mesh).material;
-          return (Array.isArray(mat) ? mat : [mat]).every((m) =>
-            (m.clippingPlanes ?? []).every(
-              (plane) => plane.distanceToPoint(hitPoint) >= 0,
-            ),
-          );
-        });
-      if (!hit?.object.userData.id) {
-        // A click in the building's empty cutaway is still an indoor action;
-        // do not accidentally reverse-geocode an unknown doorway or void.
-        const p = latest.current;
-        const elevation = indoorDisplayLevel(p)?.elevationM ?? 0;
-        const point = ray.ray.intersectPlane(
-          new THREE.Plane(new THREE.Vector3(0, 1, 0), -elevation),
+      let nearest: { key: string; id: string; depth: number } | null = null;
+      let insideBuilding = false;
+      for (const building of s.buildings.values()) {
+        const floor = indoorDisplayLevel(building.props);
+        if (!floor) continue;
+        const ray = mapPixelRay(
+          point,
+          map.getCanvas().clientWidth,
+          map.getCanvas().clientHeight,
+          building.inverseMapProjection,
+        );
+        for (const hit of ray.intersectObjects(building.pickable, false)) {
+          const material = (hit.object as THREE.Mesh).material;
+          if (
+            !(Array.isArray(material) ? material : [material]).every((m) =>
+              (m.clippingPlanes ?? []).every(
+                (plane) => plane.distanceToPoint(hit.point) >= 0,
+              ),
+            )
+          )
+            continue;
+          const id = hit.object.userData.id;
+          if (!id) continue;
+          const depth = hit.point.clone().project(building.camera).z;
+          if (!nearest || depth < nearest.depth)
+            nearest = { key: building.key, id, depth };
+          break;
+        }
+        const ground = ray.ray.intersectPlane(
+          new THREE.Plane(new THREE.Vector3(0, 1, 0), -floor.elevationM),
           new THREE.Vector3(),
         );
-        if (!point) return false;
-        const ring = model.building.footprint[0];
+        if (!ground) continue;
+        const ring = building.props.model.building.footprint[0];
         let inside = false;
         for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
           const a = ring[i],
             b = ring[j];
           if (
-            a[1] > -point.z !== b[1] > -point.z &&
-            point.x < ((b[0] - a[0]) * (-point.z - a[1])) / (b[1] - a[1]) + a[0]
+            a[1] > -ground.z !== b[1] > -ground.z &&
+            ground.x <
+              ((b[0] - a[0]) * (-ground.z - a[1])) / (b[1] - a[1]) + a[0]
           )
             inside = !inside;
         }
-        return inside;
+        insideBuilding ||= inside;
       }
-      latest.current.onSelect(hit.object.userData.id);
-      return true;
+      if (nearest) select(nearest.key, nearest.id);
+      return Boolean(nearest) || insideBuilding;
     });
     const lost = () => setError("地圖 3D 顯示連線中斷，請重新整理。");
     map.getCanvas().addEventListener("webglcontextlost", lost);
@@ -451,69 +742,29 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
       disposed = true;
       unregister();
       map.off("style.load", add);
+      map.off("styledata", keepAboveBuildings);
       map.getCanvas().removeEventListener("webglcontextlost", lost);
       if (map.getStyle() && map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
     };
-  }, [map, model]);
+  }, [map, modelsKey]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Geometry keys intentionally exclude animation and selection.
+  // Synchronize per-building data without rebuilding unchanged floors. The one
+  // shared layer and geographic camera survive theme, focus and progress changes.
   useEffect(() => {
     const s = state.current;
     if (!s || !host.current) return;
-    rebuildIndoorContent(s, host.current, latest.current, (id) =>
-      latest.current.onSelect(id),
+    synchronizeBuildings(
+      s,
+      host.current,
+      latest.current,
+      (buildingKey, featureId) => {
+        if (latest.current.onSelectBuildingFeature)
+          latest.current.onSelectBuildingFeature({ buildingKey, featureId });
+        else latest.current.onSelect(featureId);
+      },
     );
-    s.renderer.shadowMap.needsUpdate = true;
-    rebuildIndoorRoute(s, latest.current);
-    updateIndoorMarker(s, host.current, latest.current);
     map?.triggerRepaint();
-  }, [map, model, levelsKey, activeSpanKey, stairKey]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Meshes are rebuilt on floor changes.
-  useEffect(() => {
-    const s = state.current;
-    if (!s) return;
-    for (const [id, meshes] of s.featureMeshes)
-      for (const mesh of meshes)
-        (mesh.material as THREE.MeshStandardMaterial).color.setHex(
-          id === props.selectedId
-            ? indoorPalette.selection
-            : mesh.userData.originalColor,
-        );
-    map?.triggerRepaint();
-  }, [
-    map,
-    props.selectedId,
-    props.showLabels,
-    levelsKey,
-    activeSpanKey,
-    stairKey,
-  ]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Route-only rebuild; progress updates the marker below.
-  useEffect(() => {
-    if (state.current) {
-      rebuildIndoorRoute(state.current, latest.current);
-      updateIndoorLabels(state.current, latest.current);
-    }
-    map?.triggerRepaint();
-  }, [map, props.route, levelsKey, activeSpanKey]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Progress must not rebuild static geometry.
-  useEffect(() => {
-    if (state.current && host.current) {
-      updateIndoorMarker(state.current, host.current, latest.current);
-      state.current.renderer.shadowMap.needsUpdate = true;
-    }
-    map?.triggerRepaint();
-  }, [
-    map,
-    props.route,
-    props.progress,
-    props.routeDirection,
-    levelsKey,
-    activeSpanKey,
-    stairKey,
-  ]);
+  });
 
   // Fly through the existing map, leaving its surroundings and overlays intact.
   useEffect(() => {
@@ -530,11 +781,16 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
         map.triggerRepaint();
       }
     };
-    const endZoom = (event: { type: string; indoorOverview?: boolean }) => {
+    const endZoom = (event: {
+      type: string;
+      indoorOverview?: boolean;
+      indoorTour?: boolean;
+    }) => {
       const state = overview.current;
       if (
         state.leaving ||
         event.indoorOverview ||
+        event.indoorTour ||
         map.getZoom() >= zoomStartedAt
       )
         return;
@@ -577,9 +833,11 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
       map.easeTo({ bearing: map.getBearing() + 45, duration: duration(450) });
       return;
     }
-    const points = model.building.footprint
-      .flat()
-      .map((xy) => localToLngLat(xy, model.origin));
+    const points = indoorBuildingViews(p).flatMap((view) =>
+      view.model.building.footprint
+        .flat()
+        .map((xy) => localToLngLat(xy, view.model.origin)),
+    );
     const min: [number, number] = [
       Math.min(...points.map((p) => p[0])),
       Math.min(...points.map((p) => p[1])),
@@ -591,8 +849,8 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
     const bearing = (-(model.building.photoOrientation ?? 0) * 180) / Math.PI;
     const padding = indoorMapPadding(map.getCanvas());
     const angle = (bearing * Math.PI) / 180;
-    const rotated = model.building.footprint
-      .flat()
+    const rotated = points
+      .map((point) => lngLatToLocal(point, model.origin))
       .map(([e, n]) => [
         e * Math.cos(angle) - n * Math.sin(angle),
         e * Math.sin(angle) + n * Math.cos(angle),
@@ -620,17 +878,54 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
     const metresPerPixelAtZoomZero =
       (Math.cos((model.origin[1] * Math.PI) / 180) * 2 * Math.PI * 6371000) /
       512;
-    const zoom = Math.min(
+    const initialZoom = Math.min(
       20.5,
       Math.log2(metresPerPixelAtZoomZero * pixelsPerM),
     );
+    const center: [number, number] = [
+      (min[0] + max[0]) / 2,
+      (min[1] + max[1]) / 2,
+    ];
+    // Use MapLibre's exact perspective on a detached transform. This accounts
+    // for near-side magnification without moving the live map while measuring.
+    const projection = map.transform.clone();
+    projection.setElevation(0);
+    projection.setCenter(new LngLat(...center));
+    projection.setPadding(padding);
+    projection.setBearing(bearing);
+    projection.setPitch(pitch);
+    const fittedInitialZoom = Math.max(
+      map.getMinZoom(),
+      Math.min(map.getMaxZoom(), initialZoom),
+    );
+    const projectionCenter = new LngLat(...center);
+    const projectionPoints = points.map((point) => new LngLat(...point));
+    const zoom =
+      fitIndoorOverviewZoom(
+        {
+          width: map.getCanvas().clientWidth,
+          height: map.getCanvas().clientHeight,
+          padding,
+        },
+        // Perspective correction must stay near the metre-based estimate;
+        // a failed projection must never send the campus to a world view.
+        Math.max(map.getMinZoom(), fittedInitialZoom - 1),
+        fittedInitialZoom,
+        (candidate) =>
+          projectIndoorOverviewAtZoom(
+            projection,
+            candidate,
+            projectionCenter,
+            projectionPoints,
+          ),
+      ) ?? fittedInitialZoom;
     overview.current.entryZoom = zoom;
     overview.current.entering = true;
     map.setCenterElevation(0);
     map.flyTo(
       {
         padding,
-        center: [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2],
+        center,
         zoom,
         pitch,
         bearing,
@@ -639,7 +934,7 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
       },
       { indoorOverview: true },
     );
-  }, [map, model, props.cameraAction]);
+  }, [map, modelsKey, props.cameraAction]);
 
   useEffect(() => {
     if (!map || lastView.current === props.view) return;
@@ -652,7 +947,11 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: Changing floors rebuilds focus targets.
   useEffect(() => {
     if (!map || !props.focusId) return;
-    const target = state.current?.targets.get(props.focusId);
+    const activeKey =
+      latest.current.activeBuildingKey ?? venueBuildingKey(model);
+    const target = state.current?.buildings
+      .get(activeKey)
+      ?.targets.get(props.focusId);
     if (!target) return;
     map.setCenterElevation(0);
     map.flyTo({
@@ -674,6 +973,7 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
           <div
             ref={host}
             data-testid="indoor-scene"
+            data-theme={theme}
             style={{
               position: "absolute",
               inset: 0,
@@ -690,7 +990,8 @@ export default function IndoorMapScene(props: IndoorSceneProps) {
                 left: "clamp(16px, 29vw, 420px)",
                 right: 16,
                 maxWidth: 380,
-                background: "white",
+                background: palette.labelBackground,
+                color: palette.labelInk,
                 padding: 12,
               }}
             >
