@@ -1,6 +1,10 @@
 import type { BusLanguage, RouteDetailDirection } from "@/lib/api/transit";
 import { getBusRouteDetail } from "@/lib/api/transit";
-import type { BusLeg, BusPlanContext } from "@/types/route";
+import type {
+  BusCandidateMetadata,
+  BusLeg,
+  BusPlanContext,
+} from "@/types/route";
 
 /**
  * Process-wide cache for `/transit/bus/route-detail`.
@@ -22,7 +26,7 @@ import type { BusLeg, BusPlanContext } from "@/types/route";
 const TTL_MS = 15_000;
 
 /** What a consumer needs to render ETAs and to know when to stop. */
-export interface RouteDetailSnapshot {
+export interface RouteDetailSnapshot extends BusCandidateMetadata {
   directions: RouteDetailDirection[];
   receivedAt: number;
   expiresAt: number;
@@ -36,6 +40,25 @@ interface Entry {
 }
 
 const cache = new Map<string, Entry>();
+const listeners = new Map<string, Set<() => void>>();
+
+/** Keep summaries and expanded details on the same per-plan refresh. */
+export function subscribeRouteDetail(
+  key: string,
+  listener: () => void,
+): () => void {
+  const group = listeners.get(key) ?? new Set<() => void>();
+  group.add(listener);
+  listeners.set(key, group);
+  return () => {
+    group.delete(listener);
+    if (group.size === 0) listeners.delete(key);
+  };
+}
+
+function notify(key: string) {
+  for (const listener of listeners.get(key) ?? []) listener();
+}
 
 export function routeDetailKey(
   routeName: string,
@@ -160,7 +183,10 @@ export function fetchRouteDetailSnapshot(
   };
 
   const drop = () => {
-    if (cache.get(key) === entry) cache.delete(key);
+    if (cache.get(key) === entry) {
+      cache.delete(key);
+      notify(key);
+    }
   };
 
   entry.promise = (async () => {
@@ -181,10 +207,18 @@ export function fetchRouteDetailSnapshot(
       const receivedAt = Date.now();
       entry.snapshot = {
         directions,
+        ...(res.data?.departureCandidates === undefined
+          ? {}
+          : { departureCandidates: res.data.departureCandidates }),
+        ...(res.data?.candidateSearchComplete === undefined
+          ? {}
+          : { candidateSearchComplete: res.data.candidateSearchComplete }),
         receivedAt,
         expiresAt: receivedAt + TTL_MS,
       };
       entry.settled = true;
+      // A superseded request must not publish into a newer plan snapshot.
+      if (cache.get(key) === entry) notify(key);
       return entry.snapshot;
     } catch {
       drop();

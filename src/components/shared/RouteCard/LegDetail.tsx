@@ -13,7 +13,7 @@ import { legSourceName } from "@/lib/route/sourceNames";
 import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
-import { BusLegStops } from "./BusLegStops";
+import { BusLegDetails } from "./BusLegDetails";
 import { DriveIncidentNotice } from "./DriveIncidentNotice";
 import { DriveStepsList } from "./DriveStepsList";
 import { TransitStops } from "./TransitStops";
@@ -138,22 +138,23 @@ export function LegDetail({
     case "BUS":
       return (
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div
-              className="px-2 py-0.5 rounded text-xs font-bold text-white"
-              style={{ backgroundColor: getLegColor(leg) }}
-            >
-              {legSourceName(leg, "route", leg.routeName, getAppLanguage())}
-            </div>
-            <WaitBadge waitInfo={leg.waitInfo} />
-          </div>
-          <BusLegStops
+          <BusLegDetails
             leg={leg}
             routeToken={routeToken}
             routeIndex={routeIndex}
             legIndex={legIndex}
             isSelected={isSelected}
-          />
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="px-2 py-0.5 rounded text-xs font-bold text-white"
+                style={{ backgroundColor: getLegColor(leg) }}
+              >
+                {legSourceName(leg, "route", leg.routeName, getAppLanguage())}
+              </div>
+              <WaitBadge waitInfo={leg.waitInfo} />
+            </div>
+          </BusLegDetails>
           {leg.nearestBus && (
             <p className="text-xs text-green-600 dark:text-green-400">
               <span aria-hidden>🚌</span>{" "}

@@ -33,6 +33,22 @@ const directions: RouteDetailDirection[] = [
 
 const ok = () => ({ ok: true, data: { directions } });
 
+it("preserves a known empty candidate refresh and false completeness in the snapshot", async () => {
+  getBusRouteDetail.mockResolvedValue({
+    ok: true,
+    data: {
+      directions,
+      departureCandidates: [],
+      candidateSearchComplete: false,
+    },
+  });
+  expect(
+    await fetchRouteDetailSnapshot("82", "Taichung", {
+      planContext: { routeToken: "plan", legIndex: 2 },
+    }),
+  ).toMatchObject({ departureCandidates: [], candidateSearchComplete: false });
+});
+
 beforeEach(() => {
   __clearRouteDetailCache();
   getBusRouteDetail.mockReset();

@@ -26,7 +26,9 @@ import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import RouteReasonSummary from "../RouteReasonSummary";
+import { BusRouteBadges } from "./BusRouteBadges";
 import { LegDetail, LegIcon } from "./LegDetail";
+import { RouteJourneyTime } from "./RouteJourneyTime";
 import { pairRouteMessages } from "./routeMessages";
 import { StarRating } from "./StarRating";
 import type { PointLabelContext } from "./utils";
@@ -111,28 +113,34 @@ export const RouteCard = memo(function RouteCard({
   );
 
   const routeSummary = useMemo(() => {
-    const types = route.legs
-      .filter((l) => l.type !== "WALK")
-      .map((l) => {
+    return route.legs
+      .map((leg, legIndex) => ({ leg, legIndex }))
+      .filter(({ leg }) => leg.type !== "WALK")
+      .map(({ leg: l, legIndex }) => {
+        let label: string;
         switch (l.type) {
           case "BUS":
-            return legSourceName(l, "route", l.routeName, language);
+            label = legSourceName(l, "route", l.routeName, language);
+            break;
           case "METRO":
-            return legSourceName(l, "route", l.lineName, language);
+            label = legSourceName(l, "route", l.lineName, language);
+            break;
           case "THSR":
-            return `${t("thsr")} ${l.trainNo}`;
+            label = `${t("thsr")} ${l.trainNo}`;
+            break;
           case "TRA":
-            return `${legSourceName(l, "route", l.trainTypeName, language)}${l.trainNo}`;
+            label = `${legSourceName(l, "route", l.trainTypeName, language)}${l.trainNo}`;
+            break;
           case "DRIVE":
           case "MOTORCYCLE":
-            return (
-              l.label ?? (l.type === "DRIVE" ? t("drive") : t("motorcycle"))
-            );
+            label =
+              l.label ?? (l.type === "DRIVE" ? t("drive") : t("motorcycle"));
+            break;
           default:
-            return "";
+            label = "";
         }
+        return { leg: l, legIndex, label };
       });
-    return types.join(" → ");
   }, [route.legs, t, language]);
 
   const handleSelect = () => {
@@ -193,12 +201,33 @@ export const RouteCard = memo(function RouteCard({
           </div>
         </CardTitle>
 
-        {routeSummary && (
+        <RouteJourneyTime
+          departureTime={route.departureTime}
+          arrivalTime={route.arrivalTime}
+        />
+        {routeSummary.length > 0 && (
           <p
-            className="text-xs text-muted-foreground truncate min-w-0"
-            title={routeSummary}
+            className="text-xs text-muted-foreground truncate min-w-0 [&:has([data-bus-candidates])]:whitespace-normal [&:has([data-bus-candidates])]:overflow-visible"
+            title={routeSummary.map(({ label }) => label).join(" → ")}
           >
-            {routeSummary}
+            {routeSummary.map(({ leg, legIndex, label }, index) => (
+              <span
+                key={legIndex}
+                className="inline-flex max-w-full flex-wrap items-center gap-1.5 mr-1.5 align-middle"
+              >
+                {index > 0 && <span aria-hidden>→</span>}
+                {leg.type === "BUS" ? (
+                  <BusRouteBadges
+                    leg={leg}
+                    routeToken={route.routeToken}
+                    legIndex={legIndex}
+                    enabled={isSelected}
+                  />
+                ) : (
+                  label
+                )}
+              </span>
+            ))}
           </p>
         )}
 
