@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import { useBusLegStopEtas } from "@/hook/useBusLegStopEtas";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
+import type { RouteDetailStop } from "@/lib/api/transit";
 import { legSourceName, nonemptyName } from "@/lib/route/sourceNames";
 import {
   buildStopRows,
   busLegKey,
   fallbackStopRows,
+  parseStatusLabel,
   resolveCurrentStopSeq,
   resolveLegRide,
   withPlannedStopNames,
@@ -16,6 +18,12 @@ import type { BusLeg } from "@/types/route";
 import { getLegColor } from "@/types/route";
 import { TransitStops } from "./TransitStops";
 
+/** A stop's own timetable time, when the feed carries one instead of an ETA. */
+function stopClock(stop?: RouteDetailStop) {
+  const label = stop && parseStatusLabel(stop.statusLabel);
+  return label?.kind === "scheduled" ? String(label.params?.time) : undefined;
+}
+
 export function BusLegStops({
   leg: rawLeg,
   routeToken,
@@ -23,13 +31,26 @@ export function BusLegStops({
   legIndex,
   isSelected,
   hidePlannedTimes = false,
+  boardTime = hidePlannedTimes ? undefined : rawLeg.departureTime,
+  alightTime = hidePlannedTimes ? undefined : rawLeg.arrivalTime,
+  publicFeed = false,
+  boardEtaMinutes = null,
+  alightEtaMinutes = null,
 }: {
   leg: BusLeg;
   routeToken?: string;
   routeIndex: number;
   legIndex: number;
   isSelected: boolean;
+  /** The timetable belongs to another service than the one being viewed. */
   hidePlannedTimes?: boolean;
+  boardTime?: string;
+  alightTime?: string;
+  /** Another service than the plan's: it has no token, so read the public feed. */
+  publicFeed?: boolean;
+  /** The viewed service's own live estimate, used when the stop feed has none. */
+  boardEtaMinutes?: number | null;
+  alightEtaMinutes?: number | null;
 }) {
   const { t } = useAppTranslation();
   const language = getAppLanguage();
@@ -59,11 +80,15 @@ export function BusLegStops({
     leg,
     isSelected || isOpen,
     isOpen,
+    false,
+    publicFeed,
   );
   const ride = useMemo(
     () => resolveLegRide(directions ?? undefined, leg),
     [directions, leg],
   );
+  const boardStop = ride?.stops[0];
+  const alightStop = ride?.stops.at(-1);
 
   // The tracked vehicle is shared store state: only show it on the open leg,
   // and only when it runs the same direction/branch this leg resolved to.
@@ -90,15 +115,20 @@ export function BusLegStops({
         buildStopRows(ride.stops, currentSeq),
         leg,
         language,
+        !hidePlannedTimes,
       );
     }
 
-    // A failed or unavailable lookup keeps the original planned stop times.
-    return fallbackStopRows(leg, {
+    // A failed or unavailable lookup keeps the original planned stop times,
+    // unless those times belong to another service than the one shown.
+    const fallback = fallbackStopRows(leg, {
       pending: status === "idle" || status === "loading",
       language,
     });
-  }, [isOpen, ride, leg, targetBus, status, language]);
+    return hidePlannedTimes
+      ? fallback.map((row) => ({ ...row, statusLabel: "" }))
+      : fallback;
+  }, [isOpen, ride, leg, targetBus, status, language, hidePlannedTimes]);
 
   const currentStop = rows?.find((r) => r.state === "current");
   const currentStopName =
@@ -133,8 +163,8 @@ export function BusLegStops({
         )}
         alightName={legSourceName(leg, "to", leg.arrivalStop, getAppLanguage())}
         displayLanguage={leg.displayLanguage}
-        boardTime={hidePlannedTimes ? undefined : leg.departureTime}
-        alightTime={hidePlannedTimes ? undefined : leg.arrivalTime}
+        boardTime={stopClock(boardStop) ?? boardTime}
+        alightTime={stopClock(alightStop) ?? alightTime}
         intermediateStops={leg.intermediateStops}
         color={getLegColor(leg)}
         departureA11y={leg.departureStopA11y}
@@ -145,10 +175,8 @@ export function BusLegStops({
         isStopsOpen={isOpen}
         onStopsOpenChange={handleOpenChange}
         targetPlate={targetBus?.plateNumb}
-        liveEtaMinutes={isOpen ? ride?.stops[0]?.estimateMinutes : null}
-        alightLiveEtaMinutes={
-          isOpen ? ride?.stops.at(-1)?.estimateMinutes : null
-        }
+        liveEtaMinutes={boardStop?.estimateMinutes ?? boardEtaMinutes}
+        alightLiveEtaMinutes={alightStop?.estimateMinutes ?? alightEtaMinutes}
       />
     </div>
   );

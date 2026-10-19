@@ -47,10 +47,11 @@ const probe = (
   enabled = true,
   poll = false,
   cacheOnly = false,
+  publicFeed = false,
 ) => {
   let out: ReturnType<typeof useBusLegStopEtas> | undefined;
   const C = () => {
-    out = useBusLegStopEtas(leg, enabled, poll, cacheOnly);
+    out = useBusLegStopEtas(leg, enabled, poll, cacheOnly, publicFeed);
     return null;
   };
   renderToStaticMarkup(<C />);
@@ -122,5 +123,23 @@ describe("useBusLegStopEtas render guard", () => {
     expect(probe(legOf("B"))).not.toHaveProperty("departureCandidates");
     vi.advanceTimersByTime(15_001);
     expect(probe(legOf("A"))).not.toHaveProperty("departureCandidates");
+  });
+
+  it("reads a tokenless leg only when asked to use the public feed", async () => {
+    await fetchRouteDetailCached("500延", "Taichung", {
+      lang: "zh-TW",
+      subRouteUid: "A",
+    });
+    const viewed = {
+      type: "BUS",
+      routeName: "500延",
+      tdxCity: "Taichung",
+      subRouteUid: "A",
+    } as unknown as BusLeg;
+    expect(probe(viewed).status).toBe("idle");
+    expect(probe(viewed, true, false, false, true)).toMatchObject({
+      directions,
+      status: "ready",
+    });
   });
 });

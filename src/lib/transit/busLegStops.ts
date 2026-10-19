@@ -5,11 +5,13 @@ import type { BusLeg } from "@/types/route";
 import type { BusDirection } from "@/types/transit";
 
 /** The token-scoped ETA endpoint has no language query. Pair its same-leg
- * rows with planned sources only when the complete original sequence matches. */
+ * rows with planned sources only when the complete original sequence matches.
+ * A stop the live feed says nothing about keeps its timetable time. */
 export function withPlannedStopNames(
   rows: BusLegStopRow[],
   leg: BusLeg,
   language: "en" | "zh-TW",
+  plannedTimes = true,
 ): BusLegStopRow[] {
   const planned = fallbackStopRows(leg, { language });
   if (
@@ -20,6 +22,12 @@ export function withPlannedStopNames(
   return rows.map((row, index) => ({
     ...row,
     displayName: nonemptyName(row.displayName) || planned[index].displayName,
+    statusLabel:
+      plannedTimes &&
+      row.estimateMinutes === null &&
+      !parseStatusLabel(row.statusLabel)
+        ? planned[index].statusLabel || row.statusLabel
+        : row.statusLabel,
   }));
 }
 

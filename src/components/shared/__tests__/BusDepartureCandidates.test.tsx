@@ -23,11 +23,10 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh-TW");
 });
 const visible = (html: string) => html.replace(/<[^>]+>/g, "");
-const render = (viewedCandidateId?: string, complete?: boolean) =>
+const render = (viewedCandidateId?: string) =>
   renderToStaticMarkup(
     <BusDepartureCandidates
       candidates={departureCandidates}
-      searchComplete={complete}
       viewedCandidateId={viewedCandidateId}
       onViewCandidate={() => {}}
     />,
@@ -37,36 +36,48 @@ const render = (viewedCandidateId?: string, complete?: boolean) =>
 // user's explicit request. Candidate identity / unknown / legacy rules remain.
 describe("compact shadcn candidate view", () => {
   it("shows the non-first adopted service and a shadcn service selector", () => {
-    const html = render(undefined, false);
+    const html = render();
     expect(html).toContain('data-candidate-id="chosen-82"');
-    expect(visible(html)).toContain("規劃採用");
+    expect(visible(html)).not.toContain("建議");
     expect(visible(html)).toContain("00:00");
     expect(visible(html)).not.toContain("23:58");
     expect(html).toContain('data-slot="select-trigger"');
     expect(html).toContain('role="combobox"');
-    expect(visible(html)).toContain("班次未完整");
     expect(visible(html)).not.toContain("不會變更路線或導航");
     expect(visible(html)).not.toContain("2026/");
     expect(html).not.toContain("<details");
   });
   it("shows another service without presenting it as adopted or inventing accessibility evidence", () => {
-    const html = render("early-12", true);
+    const html = render("early-12");
     expect(html).toContain('data-candidate-id="early-12"');
-    expect(visible(html)).toContain("23:58");
-    expect(visible(html)).not.toContain("規劃採用");
+    expect(visible(html)).toContain("等候約 2 分");
+    expect(visible(html)).not.toContain("建議");
     expect(visible(html)).not.toContain("低地板公車");
     expect(visible(html)).not.toContain("BUS-82");
-    expect(visible(html)).not.toContain("班次未完整");
-    expect(html).toContain('data-slot="popover-trigger"');
   });
-  it("keeps unknown times unknown and puts nonessential vehicle detail behind disclosure", () => {
+  it("keeps unknown times unknown without extra hint popovers", () => {
     const html = render("later-82");
-    expect(html).toContain("時間未知");
-    expect(visible(html)).not.toContain("0 分鐘");
+    expect(visible(html)).not.toContain("發車");
+    expect(visible(html)).not.toContain("0 分");
     expect(visible(html)).not.toContain("低地板公車");
     expect(visible(html)).not.toContain("無障礙車輛資訊未知");
-    expect(html).toContain('aria-label="班次資訊"');
-    expect(html).toContain('data-slot="popover-trigger"');
+    expect(html).not.toContain('data-slot="popover-trigger"');
+  });
+  it("rounds fractional wait minutes", () => {
+    const html = renderToStaticMarkup(
+      <BusDepartureCandidates
+        candidates={[
+          {
+            ...departureCandidates[1],
+            boardingTimeSource: "realtime",
+            estimatedWaitMinutes: 3.2889,
+          },
+        ]}
+        onViewCandidate={() => {}}
+      />,
+    );
+    expect(visible(html)).toContain("等候約 3 分");
+    expect(visible(html)).not.toContain("3.2889");
   });
   it("does not offer other services when only the adopted service exists", () => {
     const html = renderToStaticMarkup(
@@ -75,7 +86,7 @@ describe("compact shadcn candidate view", () => {
         onViewCandidate={() => {}}
       />,
     );
-    expect(html).toContain("規劃採用");
+    expect(html).toContain('data-candidate-id="chosen-82"');
     expect(html).not.toContain('data-slot="select-trigger"');
   });
   it("asks which service to view when the backend marks none adopted", () => {
@@ -92,7 +103,7 @@ describe("compact shadcn candidate view", () => {
     expect(visible(html)).toContain("查看班次");
     expect(visible(html)).not.toContain("23:58");
   });
-  it("does not repeat timetable times below the adopted service header", () => {
+  it("keeps boarding and alighting times on the stop rows", () => {
     const leg: BusLeg = {
       type: "BUS",
       routeName: "82",
@@ -116,9 +127,48 @@ describe("compact shadcn candidate view", () => {
     );
     expect(visible(html)).toContain("00:00");
     expect(visible(html)).toContain("00:20");
-    expect(visible(html)).not.toContain("預定 00:00");
-    expect(visible(html)).not.toContain("預定 00:20");
+    expect(visible(html)).toContain("預定 00:00");
+    expect(visible(html)).toContain("預定 00:20");
     expect(visible(html)).not.toContain("原規劃站序");
+  });
+  it("times the stop rows by the adopted service, not an older plan, and shows its live estimate", () => {
+    const leg = {
+      type: "BUS",
+      routeName: "82",
+      subRouteUid: "route-82",
+      departureStop: "A",
+      arrivalStop: "B",
+      departureTime: "23:50",
+      arrivalTime: "00:10",
+      direction: 0,
+      estimatedWaitMinutes: 4,
+      waitInfo: { source: "unavailable", time: null },
+      polyline: [],
+      departureStopA11y: [],
+      arrivalStopA11y: [],
+      departureCandidates: departureCandidates.map((candidate) =>
+        candidate.selected
+          ? {
+              ...candidate,
+              boardingTimeSource: "realtime" as const,
+              estimatedWaitMinutes: 4.4,
+            }
+          : candidate,
+      ),
+    } satisfies BusLeg;
+    const text = visible(
+      renderToStaticMarkup(
+        <BusLegDetails leg={leg} routeIndex={0} legIndex={0} isSelected>
+          {"legacy"}
+        </BusLegDetails>,
+      ),
+    );
+    expect(text).toContain("即時・4 分鐘後");
+    expect(text).toContain("預定 00:20");
+    expect(text).not.toContain("23:50");
+    expect(text).not.toContain("00:10");
+    expect(text).not.toContain("原規劃");
+    expect(text).not.toContain("建議");
   });
   it("does not claim completeness for absent flags and handles an empty refreshed list", () => {
     const html = renderToStaticMarkup(

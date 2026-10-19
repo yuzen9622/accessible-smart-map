@@ -34,7 +34,6 @@ import { pairRouteMessages } from "./routeMessages";
 import { StarRating } from "./StarRating";
 import type { PointLabelContext } from "./utils";
 import {
-  getConfidenceLabelKey,
   getLegKey,
   getRouteAlertsCount,
   LABEL_TO_SCORE,
@@ -107,11 +106,6 @@ export const RouteCard = memo(function RouteCard({
       : undefined);
   const stars = effectiveScore != null ? scoreToStars(effectiveScore) : null;
   const starColor = stars ? (STAR_COLOR[stars] ?? STAR_COLOR[1]) : null;
-
-  const confidenceLabelKey = getConfidenceLabelKey(route.dataConfidence);
-  const confidenceLabelText = confidenceLabelKey
-    ? (t(confidenceLabelKey) ?? route.dataConfidence)
-    : route.dataConfidence;
 
   const alertsCount = useMemo(() => getRouteAlertsCount(route), [route]);
   const warnings = pairRouteMessages(route.warnings, route.warningDetails);
@@ -291,15 +285,7 @@ export const RouteCard = memo(function RouteCard({
                 {formatDistance(route.totalWalkDistanceM)}
               </Badge>
             )}
-            {route.dataConfidence && (
-              <Badge variant="outline" className="text-xs">
-                {t("dataConfidence") ?? "資料可信度"}
-                {t("labelColon")}
-                {confidenceLabelText}
-              </Badge>
-            )}
             <RouteReasonSummary route={route} />
-            <Badge>{t("selectedRoute")}</Badge>
           </div>
 
           {/* The only channel telling the user this route carries no

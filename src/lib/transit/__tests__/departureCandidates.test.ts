@@ -8,6 +8,7 @@ import {
 } from "@/lib/transit/busRouteDetailCache";
 import {
   busRouteNames,
+  followCandidate,
   formatRouteClock,
   formatRouteInstant,
   resolveViewedCandidate,
@@ -119,6 +120,41 @@ describe("display-only candidate identity", () => {
     );
     expect(formatRouteInstant("08:00", "zh-TW")).toBeNull();
     expect(formatRouteInstant(null, "zh-TW")).toBeNull();
+  });
+});
+
+describe("following a viewed live service across refreshes", () => {
+  const live = (plate: string, at: string, selected = false) => ({
+    ...candidates[0],
+    candidateId: `route-500|0|${plate}|${at}`,
+    plateNumb: plate,
+    boardingTime: at,
+    selected,
+  });
+
+  it("keeps the same vehicle when its boarding time (and so its id) moves", () => {
+    const viewed = live("KKA-1", "2026-10-19T19:28:00+08:00");
+    const refreshed = [
+      live("KKA-0", "2026-10-19T19:20:00+08:00", true),
+      live("KKA-1", "2026-10-19T19:29:00+08:00"),
+    ];
+    expect(followCandidate(refreshed, viewed)).toBe(refreshed[1]);
+  });
+
+  it("picks the nearest departure among vehicles with unknown plates", () => {
+    const viewed = live("unknown", "2026-10-19T19:28:00+08:00");
+    const refreshed = [
+      live("unknown", "2026-10-19T19:45:00+08:00"),
+      live("unknown", "2026-10-19T19:30:00+08:00"),
+    ];
+    expect(followCandidate(refreshed, viewed)).toBe(refreshed[1]);
+  });
+
+  it("lets a departed vehicle go", () => {
+    const viewed = live("KKA-1", "2026-10-19T19:28:00+08:00");
+    expect(
+      followCandidate([live("KKA-2", "2026-10-19T19:40:00+08:00")], viewed),
+    ).toBeUndefined();
   });
 });
 

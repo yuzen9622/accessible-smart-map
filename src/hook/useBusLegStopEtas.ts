@@ -78,6 +78,8 @@ export function useBusLegStopEtas(
   poll: boolean,
   /** Passive summaries observe fresh snapshots without starting requests. */
   cacheOnly = false,
+  /** A leg outside the plan (another service being viewed) reads the public feed. */
+  publicFeed = false,
 ): BusCandidateMetadata & {
   directions: RouteDetailDirection[] | null;
   status: BusLegEtaStatus;
@@ -92,6 +94,7 @@ export function useBusLegStopEtas(
   const planContext = leg?.planContext;
   const routeToken = planContext?.routeToken;
   const legIndex = planContext?.legIndex;
+  const hasFeed = publicFeed || (!!routeToken && legIndex !== undefined);
   const key = routeDetailKey(routeName, city, subRouteUid, planContext, lang);
 
   // Seed from an already-warm cache entry so the first render after expanding
@@ -104,13 +107,7 @@ export function useBusLegStopEtas(
   pollRef.current = poll;
 
   useEffect(() => {
-    if (
-      (!enabled && !cacheOnly) ||
-      !routeName ||
-      !city ||
-      !routeToken ||
-      legIndex === undefined
-    ) {
+    if ((!enabled && !cacheOnly) || !routeName || !city || !hasFeed) {
       setState(emptyState(key, "idle"));
       return;
     }
@@ -119,6 +116,10 @@ export function useBusLegStopEtas(
     let version = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
+    const feed =
+      routeToken && legIndex !== undefined
+        ? { routeToken, legIndex }
+        : undefined;
 
     const fetchEtas = async (force: boolean) => {
       const mine = ++version;
@@ -126,7 +127,7 @@ export function useBusLegStopEtas(
         lang,
         force,
         subRouteUid,
-        planContext: { routeToken, legIndex },
+        planContext: feed,
         signal: controller.signal,
       });
       // Superseded or cancelled: a late response must not overwrite newer state.
@@ -166,10 +167,7 @@ export function useBusLegStopEtas(
       routeName,
       city,
       subRouteUid,
-      {
-        routeToken,
-        legIndex,
-      },
+      feed,
       lang,
     );
     setState(
@@ -188,7 +186,7 @@ export function useBusLegStopEtas(
         routeName,
         city,
         subRouteUid,
-        { routeToken, legIndex },
+        feed,
         lang,
       );
       setState(
@@ -216,6 +214,7 @@ export function useBusLegStopEtas(
   }, [
     enabled,
     cacheOnly,
+    hasFeed,
     poll,
     routeName,
     city,
@@ -242,7 +241,7 @@ export function useBusLegStopEtas(
     return () => clearTimeout(timer);
   }, [stateKey, expiresAt]);
 
-  if ((!enabled && !cacheOnly) || !routeToken || legIndex === undefined)
+  if ((!enabled && !cacheOnly) || !hasFeed)
     return { directions: null, status: "idle" };
 
   // Render guard: nothing from another branch, nothing past its deadline.

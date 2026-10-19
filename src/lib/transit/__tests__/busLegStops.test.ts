@@ -73,6 +73,41 @@ describe("planned ETA source names", () => {
   });
 });
 
+describe("planned stop times", () => {
+  it("keeps the timetable time where the live feed has nothing for a stop", () => {
+    const at = (hhmm: string) => Date.parse(`2026-10-19T${hhmm}:00+08:00`);
+    const leg = {
+      departureStop: "起點",
+      arrivalStop: "終點",
+      intermediateStops: [{ name: "A站" }],
+      scheduledTrip: {
+        tripId: "t",
+        boardingReadyAt: at("16:57"),
+        stops: [
+          { name: "起點", departureAt: at("16:57") },
+          { name: "A站", arrivalAt: at("17:01") },
+          { name: "終點", arrivalAt: at("17:06") },
+        ],
+      },
+    } as BusLeg;
+    const rows = buildStopRows(
+      [
+        stop(1, "起點", { estimateMinutes: 3 }),
+        stop(2, "A站", { statusLabel: "正常" }),
+        stop(3, "終點", { statusLabel: "末班車已過" }),
+      ],
+      null,
+    );
+    const merged = withPlannedStopNames(rows, leg, "zh-TW");
+    expect(merged.map((r) => [r.estimateMinutes, r.statusLabel])).toEqual([
+      [3, ""],
+      [null, "17:01"],
+      [null, "末班車已過"],
+    ]);
+    expect(resolveEtaLabel(merged[1])).toMatchObject({ kind: "scheduled" });
+  });
+});
+
 describe("pickDirection", () => {
   it("returns the stops of the matching direction", () => {
     const stops = pickDirection(
