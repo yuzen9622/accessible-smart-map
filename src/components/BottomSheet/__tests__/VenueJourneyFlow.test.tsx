@@ -381,23 +381,11 @@ describe("one ordinary route form for campus destinations", () => {
 });
 
 describe("outdoor-first journey presentation", () => {
-  it("shows the real origin and final classroom summary without premature indoor controls or details", () => {
-    useMapStore.setState({ venueJourney: journey() });
-    const markup = renderToStaticMarkup(<VenueJourneyContent />);
-    expect(markup).toContain("Distant origin");
-    expect(markup).toContain("Classroom Three");
-    expect(markup).toContain("Outdoor route");
-    expect(markup).toContain("開始導航");
-    expect(markup).not.toContain("校內路線預覽");
-    expect(markup).not.toContain("INTERNAL_HALL_DETAIL");
-    expect(markup).not.toContain("開始前往入口");
-  });
-
   it("shows real indoor steps after the common journey enters its guiding phase", () => {
     const value = journey();
     value.guidance.status = "guiding";
     useMapStore.setState({ venueJourney: value });
-    const markup = renderToStaticMarkup(<VenueJourneyContent navigating />);
+    const markup = renderToStaticMarkup(<VenueJourneyContent />);
     expect(markup).toContain("INTERNAL_HALL_DETAIL");
     expect(markup).toContain("校內路線步驟");
   });
@@ -413,38 +401,6 @@ describe("outdoor-first journey presentation", () => {
     expect(renderToStaticMarkup(<VenueArrivalConfirmation />)).toContain(
       "接續校內引導",
     );
-  });
-});
-
-describe("ordinary journey presentation without additional notices", () => {
-  it("keeps the planned origin and route intact without origin-access or pending-condition banners", () => {
-    const value = journey();
-    if (!value.outdoor) throw new Error("Expected outdoor fixture");
-    value.outdoor.routes[0] = {
-      ...value.outdoor.routes[0],
-      legs: [
-        {
-          type: "WALK",
-          polyline: [
-            [0.000125, 0],
-            [0.001, 0],
-          ],
-        },
-      ] as AccessibleRoute["legs"],
-    };
-    value.route.animationSafe = false;
-    value.route.steps[0].heightPending = true;
-    const before = JSON.stringify(value);
-    useMapStore.setState({ venueJourney: value });
-    const markup = renderToStaticMarkup(<VenueJourneyContent />);
-    expect(markup).not.toContain("路線從附近道路開始");
-    expect(markup).not.toContain("查看路線起點");
-    expect(markup).not.toContain("校內部分路段的高差或通行條件待確認");
-    expect(markup).toContain("Distant origin");
-    expect(markup).toContain("Classroom Three");
-    expect(markup).toContain("開始導航");
-    expect(JSON.stringify(value)).toBe(before);
-    expect(useMapStore.getState().origin).toEqual(origin);
   });
 });
 
@@ -480,16 +436,6 @@ describe("real final walk after parking is a separate navigation stage", () => {
     return value;
   }
 
-  it("includes the real walking tail in the outdoor summary without exposing indoor detail", () => {
-    useMapStore.setState({ venueJourney: drivingJourney() });
-    const markup = renderToStaticMarkup(<VenueJourneyContent />);
-    expect(markup).toContain("抵達下車點後，步行");
-    expect(markup).toContain("19");
-    expect(markup).toContain("公尺至校門");
-    expect(markup).toContain("校外約 6 分鐘");
-    expect(markup).not.toContain("INTERNAL_HALL_DETAIL");
-  });
-
   it("offers the real walk stage after parking instead of claiming gate arrival", () => {
     const value = drivingJourney();
     value.guidance.status = "outdoor";
@@ -517,95 +463,12 @@ describe("real final walk after parking is a separate navigation stage", () => {
     expect(h.confirmArrival).toHaveBeenCalledOnce();
     expect(h.startApproach).not.toHaveBeenCalled();
   });
-
-  it("uses the selected primary route token to find its own walking tail", () => {
-    const value = drivingJourney();
-    if (!value.outdoor) throw new Error("Expected outdoor fixture");
-    value.outdoor.routes = [
-      {
-        ...value.outdoor.routes[0],
-        routeId: "another-route",
-        routeToken: "another-primary-token",
-      },
-    ];
-    useMapStore.setState({ venueJourney: value });
-    const markup = renderToStaticMarkup(<VenueJourneyContent />);
-    expect(markup).not.toContain("抵達下車點後，步行");
-    expect(markup).not.toContain("校外約 6 分鐘");
-  });
-
-  it("shows the actual drive leg even when the backend candidate has only a generic name", () => {
-    const value = drivingJourney();
-    if (!value.outdoor) throw new Error("Expected outdoor fixture");
-    value.outdoor.routes[0] = {
-      ...value.outdoor.routes[0],
-      routeName: "Route A",
-      legs: [{ type: "DRIVE" }] as AccessibleRoute["legs"],
-    };
-    useMapStore.setState({ venueJourney: value });
-    const markup = renderToStaticMarkup(<VenueJourneyContent />);
-    expect(markup).toContain("開車 · Route A");
-  });
-
-  it("does not duplicate a candidate name that already equals its transport label", () => {
-    const value = drivingJourney();
-    if (!value.outdoor) throw new Error("Expected outdoor fixture");
-    value.outdoor.routes[0] = {
-      ...value.outdoor.routes[0],
-      routeName: "開車",
-      legs: [{ type: "DRIVE" }] as AccessibleRoute["legs"],
-    };
-    useMapStore.setState({ venueJourney: value });
-    const markup = renderToStaticMarkup(<VenueJourneyContent />);
-    expect(markup).toContain(">開車</span>");
-    expect(markup).not.toContain("開車 · 開車");
-  });
-
-  it.each(["walk", "transit"] as const)(
-    "describes a %s final walking connector without asking the user to get out of a vehicle",
-    (travelMode) => {
-      const value = drivingJourney();
-      if (!value.outdoor) throw new Error("Expected outdoor fixture");
-      value.outdoor.travelMode = travelMode;
-      value.outdoor.routes[0] = {
-        ...value.outdoor.routes[0],
-        legs: [
-          ...(travelMode === "transit"
-            ? [
-                {
-                  type: "BUS",
-                  polyline: [
-                    [9, 10],
-                    [10, 10],
-                  ],
-                },
-              ]
-            : []),
-          {
-            type: "WALK",
-            polyline: [
-              [10, 10],
-              [10.001, 10],
-            ],
-          },
-        ] as AccessibleRoute["legs"],
-      };
-      useMapStore.setState({ venueJourney: value });
-      const markup = renderToStaticMarkup(<VenueJourneyContent />);
-      expect(markup).toContain("接續步行");
-      expect(markup).toContain("19");
-      expect(markup).toContain("公尺至校門");
-      expect(markup).toContain("校外約 6 分鐘");
-      expect(markup).not.toContain("下車");
-      expect(markup).not.toContain("INTERNAL_HALL_DETAIL");
-    },
-  );
 });
 
 describe("route animation in the original navigation panel", () => {
   const renderTour = () => {
     h.buttons.length = 0;
-    return renderToStaticMarkup(<VenueJourneyContent navigating />);
+    return renderToStaticMarkup(<VenueJourneyContent />);
   };
   const begin = () => {
     const value = journey();
@@ -620,12 +483,9 @@ describe("route animation in the original navigation panel", () => {
     const value = begin();
     const source = JSON.stringify(value.route);
     const markup = renderTour();
-    expect(markup).toContain(value.from.name);
     expect(markup).toContain(value.to.name);
     expect(markup).toContain("結束導航");
-    expect(markup).toContain("切換樓層查看路線");
     expect(markup).toContain('data-slot="accordion"');
-    expect(markup).toContain('data-slot="card"');
     expect(markup).not.toContain("在地圖強調");
     expect(markup.match(/INTERNAL_HALL_DETAIL/g)).toHaveLength(1);
     expect(markup).not.toContain("播放路線動畫");
@@ -684,7 +544,6 @@ describe("route animation in the original navigation panel", () => {
     expect(markup).toContain("Campus route steps");
     expect(markup).not.toContain("Highlight step");
     expect(markup).toContain("End Navigation");
-    expect(markup).toContain("switch floors");
     expect(markup).toContain("INTERNAL_HALL_DETAIL");
     expect(markup).not.toContain("venueRouteAnimation");
     expect(markup).not.toContain("Play route animation");

@@ -39,7 +39,6 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
             destinationName: journey.to.name,
             sheetMode: "route" as const,
             routeSubPanel: "none" as const,
-            indoorPanelOpen: false,
             sidebarCollapsed: false,
             chatOpen: false,
           }

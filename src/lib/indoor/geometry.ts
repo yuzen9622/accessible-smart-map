@@ -91,6 +91,72 @@ export function centroid(ring: XY[]): XY {
   return [x / (6 * a), y / (6 * a)];
 }
 
+function insideRing(point: XY, ring: XY[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [x, y] = ring[i],
+      [xx, yy] = ring[j];
+    if (
+      y > point[1] !== yy > point[1] &&
+      point[0] < ((xx - x) * (point[1] - y)) / (yy - y) + x
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+export function inside(point: XY, polygon: XY[][]) {
+  return (
+    insideRing(point, polygon[0]) &&
+    !polygon.slice(1).some((ring) => insideRing(point, ring))
+  );
+}
+/** A label point inside the polygon: its centroid when that lies inside,
+ * otherwise the sampled point farthest from every edge. */
+export function labelAnchor(polygon: XY[][]): XY {
+  const center = centroid(polygon[0]);
+  if (inside(center, polygon)) return center;
+  const xs = polygon[0].map((p) => p[0]),
+    ys = polygon[0].map((p) => p[1]);
+  const minX = Math.min(...xs),
+    minY = Math.min(...ys);
+  const width = Math.max(...xs) - minX,
+    height = Math.max(...ys) - minY;
+  let best: XY = polygon[0][0],
+    clearance = -1;
+  for (let x = 1; x < 16; x++)
+    for (let y = 1; y < 16; y++) {
+      const point: XY = [minX + (width * x) / 16, minY + (height * y) / 16];
+      if (!inside(point, polygon)) continue;
+      let distance = Infinity;
+      for (const ring of polygon)
+        for (let i = 1; i < ring.length; i++) {
+          const a = ring[i - 1],
+            b = ring[i],
+            dx = b[0] - a[0],
+            dy = b[1] - a[1];
+          const length2 = dx * dx + dy * dy;
+          const t = length2
+            ? Math.max(
+                0,
+                Math.min(
+                  1,
+                  ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2,
+                ),
+              )
+            : 0;
+          distance = Math.min(
+            distance,
+            Math.hypot(point[0] - a[0] - t * dx, point[1] - a[1] - t * dy),
+          );
+        }
+      if (distance > clearance) {
+        best = point;
+        clearance = distance;
+      }
+    }
+  return best;
+}
+
 export function isOpening(feature: IndoorFeature) {
   return (
     /stair|elevator|lift|void|vertical-core/.test(

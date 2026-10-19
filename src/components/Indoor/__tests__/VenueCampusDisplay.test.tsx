@@ -80,6 +80,18 @@ vi.mock("@/stores/useIndoorCatalog", async (original) => {
     ),
   };
 });
+vi.mock("@/stores/useNavStore", async (original) => {
+  const actual = await original<typeof import("@/stores/useNavStore")>();
+  return {
+    ...actual,
+    default: Object.assign(
+      (
+        select: (state: ReturnType<typeof actual.default.getState>) => unknown,
+      ) => select(actual.default.getState()),
+      actual.default,
+    ),
+  };
+});
 
 import type { VenueJourney } from "@/lib/indoor/journey";
 import type { IndoorSceneProps } from "@/lib/indoor/sceneTypes";

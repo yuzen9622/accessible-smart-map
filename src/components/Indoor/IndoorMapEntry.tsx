@@ -3,8 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef } from "react";
 import { Layer, Source, useMap } from "react-map-gl/maplibre";
-import { toast } from "sonner";
-import { useAppTranslation } from "@/i18n/client";
 import { END_POINT } from "@/lib/config";
 import {
   indoorModelVersion,
@@ -35,7 +33,6 @@ export default function IndoorMapEntry({
   is3D: boolean;
 }) {
   const { current: map } = useMap();
-  const { t } = useAppTranslation();
   const models = useIndoorCatalog((s) => s.models);
   const activeKey = useIndoorCatalog((s) => s.activeBuildingKey);
   const located = useRef(false);
@@ -62,22 +59,14 @@ export default function IndoorMapEntry({
           if (!controller.signal.aborted)
             useIndoorCatalog.getState().setModels(data);
         }
-      } catch {
+      } catch (error) {
         if (!controller.signal.aborted)
-          toast.error(t("venueCatalogUnavailable"), {
-            id: "venue-catalog-load",
-            action: {
-              label: t("retry"),
-              onClick: () => {
-                void load();
-              },
-            },
-          });
+          console.warn("Indoor venue catalog unavailable", error);
       }
     };
     void load();
     return () => controller.abort();
-  }, [t]);
+  }, []);
   useEffect(() => {
     if (open && !is3D) onOpenChange(false);
   }, [open, is3D, onOpenChange]);

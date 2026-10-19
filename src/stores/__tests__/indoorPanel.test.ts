@@ -25,11 +25,6 @@ describe("indoor content in the original map sheet", () => {
     useMapStore.getState().setIndoorExploring(false);
     expect(useMapStore.getState().is3D).toBe(false);
   });
-  it("cannot open an indoor panel without an active indoor model", () => {
-    useMapStore.getState().setIndoorPanelOpen(true);
-    expect(useMapStore.getState().indoorPanelOpen).toBe(false);
-  });
-
   it("preserves the outdoor session and keeps the current navigation UI visible on exit", () => {
     const routes = useMapStore.getState().computeRoutes ?? [];
     const waypoints = [{ lat: 10, lng: 20 }];
@@ -49,7 +44,6 @@ describe("indoor content in the original map sheet", () => {
     useMapStore.getState().setIndoorExploring(true);
     expect(useMapStore.getState()).toMatchObject({
       indoorExploring: true,
-      indoorPanelOpen: false,
       sidebarCollapsed: false,
       mobileSheetSnap: "half",
       sheetMode: "navigation",
@@ -60,7 +54,6 @@ describe("indoor content in the original map sheet", () => {
     const state = useMapStore.getState();
     expect(state).toMatchObject({
       indoorExploring: false,
-      indoorPanelOpen: false,
       sidebarCollapsed: false,
       mobileSheetSnap: "half",
       sheetMode: "navigation",
@@ -92,7 +85,6 @@ describe("indoor content in the original map sheet", () => {
     useMapStore.getState().setActiveRailPanel("search");
     expect(useMapStore.getState()).toMatchObject({
       indoorExploring: true,
-      indoorPanelOpen: false,
       activeRailPanel: "search",
       planId: "retained-plan",
     });
@@ -108,7 +100,6 @@ describe("indoor content in the original map sheet", () => {
     useMapStore.getState().setSheetMode("route");
     expect(useMapStore.getState()).toMatchObject({
       indoorExploring: true,
-      indoorPanelOpen: false,
       sheetMode: "route",
       planId: "retained-plan",
     });
@@ -121,23 +112,6 @@ describe("indoor content in the original map sheet", () => {
       sidebarCollapsed: false,
       mobileSheetSnap: "half",
       planId: "retained-plan",
-    });
-  });
-
-  it("reopens the shared panel while keeping the underlying assistant and snap", () => {
-    useMapStore.getState().setIndoorExploring(true);
-    useMapStore.getState().setIndoorPanelOpen(false);
-    useMapStore.setState({
-      sidebarCollapsed: true,
-      chatOpen: true,
-      mobileSheetSnap: "peek",
-    });
-    useMapStore.getState().setIndoorPanelOpen(true);
-    expect(useMapStore.getState()).toMatchObject({
-      indoorPanelOpen: true,
-      sidebarCollapsed: false,
-      chatOpen: true,
-      mobileSheetSnap: "peek",
     });
   });
 });

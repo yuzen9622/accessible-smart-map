@@ -7,6 +7,7 @@ import { useAppTranslation } from "@/i18n/client";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import VenueArrivalTransition from "./Indoor/VenueArrivalTransition";
+import VenueTourHUD from "./Indoor/VenueTourHUD";
 import NavigationHUD from "./Navigation/NavigationHUD";
 
 /**
@@ -15,8 +16,9 @@ import NavigationHUD from "./Navigation/NavigationHUD";
  * while navigation is active, so mount = nav start and unmount = nav end.
  */
 export default function NavigationController() {
-  const venueJourney = useMapStore((s) => s.venueJourney);
-  if (venueJourney && venueJourney.guidance.status !== "outdoor") return null;
+  const venueStatus = useMapStore((s) => s.venueJourney?.guidance.status);
+  if (venueStatus === "touring") return <VenueTourHUD />;
+  if (venueStatus && venueStatus !== "outdoor") return null;
   return <OutdoorNavigationController />;
 }
 

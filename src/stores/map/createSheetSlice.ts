@@ -18,7 +18,6 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
   } | null = null;
   return {
     indoorExploring: false,
-    indoorPanelOpen: false,
     setIndoorExploring: (active) => {
       if (active === get().indoorExploring) return;
       if (active) {
@@ -28,7 +27,6 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
         };
         set({
           indoorExploring: true,
-          indoorPanelOpen: false,
           // Entering a building is a single map-mode transition. The indoor
           // camera owns the fly-in; do not launch a competing toggle animation.
           is3D: true,
@@ -38,7 +36,6 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
       } else {
         set({
           indoorExploring: false,
-          indoorPanelOpen: false,
           ...(get().sheetMode === "home" && !get().isNavigating
             ? previousPresentation
             : {}),
@@ -46,18 +43,10 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
         previousPresentation = null;
       }
     },
-    setIndoorPanelOpen: (open) => {
-      if (open && !get().indoorExploring) return;
-      set({
-        indoorPanelOpen: open,
-        ...(open ? { sidebarCollapsed: false } : {}),
-      });
-    },
     sheetMode: "home",
     setSheetMode: (mode) => {
       const update: Partial<MapStore> = {
         sheetMode: mode,
-        indoorPanelOpen: false,
       };
       if (mode !== "home" && mode !== "navigation") {
         update.sidebarCollapsed = false;
@@ -77,7 +66,6 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
           isNavigating: true,
           sheetMode: "navigation",
           is3D: true,
-          indoorPanelOpen: false,
           chatOpen: false,
         });
       } else {
@@ -172,7 +160,6 @@ export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
     setActiveRailPanel: (panel, reportContext) => {
       const update: Partial<MapStore> = {
         activeRailPanel: panel,
-        indoorPanelOpen: false,
       };
       if (panel === "hazard") {
         update.pendingReportContext = reportContext ?? null;

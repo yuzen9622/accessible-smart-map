@@ -3,9 +3,12 @@ import { ExtrudeGeometry, Path, Shape, Vector2 } from "three";
 import { describe, expect, it } from "vitest";
 import {
   area,
+  centroid,
   clipSegmentHeight,
   floorGeometry,
   guardSegments,
+  inside,
+  labelAnchor,
   roomWalls,
   segmentRectangle,
   unionWalls,
@@ -649,5 +652,33 @@ describe("authored walls and public corridors", () => {
         ]),
       ),
     ).toBeCloseTo(0.18);
+  });
+});
+
+describe("labelAnchor", () => {
+  it("keeps a label inside an L-shaped room whose centroid falls outside", () => {
+    const room: XY[] = [
+      [0, 0],
+      [10, 0],
+      [10, 1],
+      [1, 1],
+      [1, 10],
+      [0, 10],
+      [0, 0],
+    ];
+    const [x, y] = labelAnchor([room]);
+    expect(inside(centroid(room), [room])).toBe(false);
+    expect(inside([x, y], [room])).toBe(true);
+  });
+
+  it("uses the centroid of a plain rectangle", () => {
+    const room: XY[] = [
+      [0, 0],
+      [4, 0],
+      [4, 2],
+      [0, 2],
+      [0, 0],
+    ];
+    expect(labelAnchor([room])).toEqual([2, 1]);
   });
 });

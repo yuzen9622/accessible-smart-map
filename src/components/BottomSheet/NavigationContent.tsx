@@ -29,7 +29,7 @@ export default function NavigationContent() {
   const journey = useMapStore((s) => s.venueJourney);
   const arrived = useNavStore((s) => s.arrived);
   if (journey && journey.guidance.status !== "outdoor")
-    return <VenueJourneyContent navigating />;
+    return <VenueJourneyContent />;
   return (
     <div className="space-y-4">
       <VenueArrivalConfirmation />

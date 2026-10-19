@@ -244,6 +244,95 @@ export function venueJourneySteps(journey: VenueJourney): IndoorRouteStep[] {
   return result;
 }
 
+/** A stretch of the route on one floor of one building, or outdoors. */
+export interface VenueRouteSection {
+  key: string;
+  buildingId: string | null;
+  buildingName?: string;
+  levelRef: string | null;
+  /** Walked on this floor; a floor change's own length is not counted. */
+  distanceM: number;
+  steps: IndoorRouteStep[];
+}
+
+function stepBuildingName(journey: VenueJourney, buildingId: string | null) {
+  return [journey.from, journey.to, journey.outdoor?.arrival].find(
+    (place) => place?.buildingId === buildingId,
+  )?.buildingName;
+}
+
+/** Graph edges split a straight corridor wherever a door branches off. */
+function isPlainWalk(step: IndoorRouteStep) {
+  return (
+    !step.instruction &&
+    !step.maneuver &&
+    !step.action &&
+    step.fromLevel === step.toLevel &&
+    !["steps", "escalator", "elevator", "ramp"].includes(step.kind)
+  );
+}
+
+/** Riding an elevator or climbing stairs is not distance walked on the floor. */
+function walkedDistance(step: IndoorRouteStep) {
+  return step.fromLevel !== null &&
+    step.toLevel !== null &&
+    step.fromLevel !== step.toLevel
+    ? 0
+    : step.distanceM;
+}
+
+/** Group the user-facing steps by where they start. A floor change stays with
+ * the floor it leaves; zero-length depart/arrive markers add nothing a header
+ * and the destination row do not already say. */
+export function venueRouteSections(journey: VenueJourney): VenueRouteSection[] {
+  const sections: VenueRouteSection[] = [];
+  for (const step of venueJourneySteps(journey)) {
+    if (
+      (step.action === "depart" || step.action === "arrive") &&
+      step.distanceM < 1
+    )
+      continue;
+    const levelRef = step.fromLevel;
+    const buildingId =
+      levelRef === null
+        ? null
+        : (step.fromBuildingId ?? step.buildingId ?? journey.buildingId);
+    const current = sections.at(-1);
+    if (
+      current &&
+      current.buildingId === buildingId &&
+      current.levelRef === levelRef
+    ) {
+      const previous = current.steps.at(-1) as IndoorRouteStep;
+      current.distanceM += walkedDistance(step);
+      if (
+        isPlainWalk(previous) &&
+        isPlainWalk(step) &&
+        previous.name === step.name
+      )
+        current.steps[current.steps.length - 1] = {
+          ...previous,
+          endIndex: step.endIndex,
+          distanceM: previous.distanceM + step.distanceM,
+        };
+      else current.steps.push(step);
+      continue;
+    }
+    sections.push({
+      key: `${buildingId ?? "outdoor"}/${levelRef ?? ""}/${step.startIndex}`,
+      buildingId,
+      buildingName:
+        buildingId === null
+          ? undefined
+          : (step.buildingName ?? stepBuildingName(journey, buildingId)),
+      levelRef,
+      distanceM: walkedDistance(step),
+      steps: [step],
+    });
+  }
+  return sections;
+}
+
 /** Manual confirmations never depend on selected floors or preview animation. */
 export function advanceVenueJourney(journey: VenueJourney): VenueJourney {
   if (journey.guidance.status !== "guiding") return journey;
@@ -335,6 +424,21 @@ export function venueJourneyStepLabel(
   return step.fromLevel
     ? journeyText("venueStepOnFloor", t, { floor: step.fromLevel, name })
     : name;
+}
+
+/** A step inside a floor section: the header already names the floor. */
+export function venueSectionStepLabel(
+  step: IndoorRouteStep,
+  t?: TFunction,
+): string {
+  if (
+    step.instruction ||
+    step.fromLevel !== step.toLevel ||
+    step.kind === "ramp"
+  )
+    return venueJourneyStepLabel(step, t);
+  const genericName = genericStepNames.get(step.name);
+  return genericName ? journeyText(genericName, t) : step.name;
 }
 
 export function venueJourneyConfirmLabel(

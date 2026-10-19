@@ -1456,6 +1456,7 @@
   "venueCatalogUnavailable": "Campus indoor places could not be loaded. Please retry.",
   "venueFloorGeometryUnavailable": "Indoor layout is not yet available for this floor",
   "venueIndoorMap": "Indoor map",
+  "venueRouteFloors": "Floors on this route",
   "venueChooseFloor": "Choose floor",
   "venueShowFloor": "Show {{floor}}",
   "venueRouteAnimationPlay": "Play route animation",

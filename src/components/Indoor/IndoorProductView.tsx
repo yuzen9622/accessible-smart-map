@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Layers } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Select,
@@ -24,13 +24,27 @@ import {
 import { localToLngLat } from "@/lib/indoor/coordinates";
 import { indoorFeatureName } from "@/lib/indoor/facilityAreas";
 import { centroid } from "@/lib/indoor/geometry";
-import { venueJourneyPresentation } from "@/lib/indoor/journey";
+import {
+  venueJourneyPresentation,
+  venueRouteSections,
+} from "@/lib/indoor/journey";
 import type { LocalIndoorModel, XY } from "@/lib/indoor/types";
+import { cn } from "@/lib/utils";
 import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore from "@/stores/useMapStore";
+import useNavStore from "@/stores/useNavStore";
 import IndoorMapScene from "./IndoorMapScene";
-import styles from "./product-map.module.css";
 import { campusRouteDisplaySegments } from "./VenueCampusRoute";
+
+/** Keep the shown floor inside the scrolling rail without moving the page. */
+function revealFloor(node: HTMLButtonElement | null) {
+  const list = node?.parentElement;
+  if (!node || !list) return;
+  const top = node.offsetTop - list.offsetTop;
+  if (top < list.scrollTop) list.scrollTop = top;
+  else if (top + node.offsetHeight > list.scrollTop + list.clientHeight)
+    list.scrollTop = top + node.offsetHeight - list.clientHeight;
+}
 
 export default function IndoorProductView({
   model,
@@ -46,6 +60,7 @@ export default function IndoorProductView({
   const focusVersion = useIndoorCatalog((s) => s.focusVersion);
   const collapsed = useMapStore((s) => s.sidebarCollapsed);
   const journey = useMapStore((s) => s.venueJourney);
+  const stepListOpen = useNavStore((s) => s.stepListOpen);
   const [view, setView] = useState<"top" | "perspective">("perspective");
   const [cameraAction, setCameraAction] = useState({
     type: "reset" as const,
@@ -63,6 +78,17 @@ export default function IndoorProductView({
     : { progress: 0, direction: 1 as const };
   const route = activeJourney?.route;
   const touring = activeJourney?.guidance.status === "touring";
+  const routeLevels = useMemo(
+    () =>
+      new Set(
+        activeJourney
+          ? venueRouteSections(activeJourney)
+              .filter((section) => section.buildingId === model.building.id)
+              .map((section) => section.levelRef)
+          : [],
+      ),
+    [activeJourney, model.building.id],
+  );
   const venueModels = useMemo(
     () => campusModels(models, model),
     [models, model],
@@ -194,9 +220,11 @@ export default function IndoorProductView({
   const close = () => {
     onClose();
   };
+  const control =
+    "pointer-events-auto bg-background/90 backdrop-blur-sm border border-border/50 shadow-lg text-foreground";
   return (
     <div
-      className={styles.host}
+      className="absolute inset-0 z-30 pointer-events-none"
       data-collapsed={collapsed}
       data-testid="indoor-product-view"
     >
@@ -228,16 +256,23 @@ export default function IndoorProductView({
         showLabels
         onOverviewExit={close}
       />
-      <div className={styles.buildingBar}>
-        <button
-          type="button"
-          className={styles.barAction}
-          aria-label={t("venueReturnCampus")}
-          onClick={close}
+      {!touring && (
+        <div
+          className={cn(
+            control,
+            "absolute top-3 left-3 max-w-[calc(100%-84px)] flex items-center gap-1 rounded-full p-1",
+            "lg:left-[474px]",
+            collapsed && "lg:left-[88px]",
+          )}
         >
-          <ArrowLeft size={18} />
-        </button>
-        <div className={styles.buildingDetails}>
+          <button
+            type="button"
+            className="h-10 w-10 shrink-0 rounded-full flex items-center justify-center hover:bg-muted transition-colors active:scale-[0.96]"
+            aria-label={t("venueReturnCampus")}
+            onClick={close}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
           <Select
             value={venueBuildingKey(model)}
             onValueChange={(value) => {
@@ -250,12 +285,17 @@ export default function IndoorProductView({
             }}
           >
             <SelectTrigger
-              className={styles.buildingSelect}
+              className="h-10 min-w-0 gap-1.5 border-0 bg-transparent px-2 shadow-none text-sm font-semibold hover:bg-muted rounded-full dark:bg-transparent"
               aria-label={t("venueChooseBuilding")}
             >
-              <SelectValue>{model.building.name}</SelectValue>
+              <SelectValue>
+                <span className="truncate">{model.building.name}</span>
+                <span className="text-muted-foreground font-medium">
+                  {currentLevel.ref}
+                </span>
+              </SelectValue>
             </SelectTrigger>
-            <SelectContent className={styles.buildingOptions}>
+            <SelectContent className="z-80 max-w-[calc(100vw-24px)]">
               {venueModels.map((item) => (
                 <SelectItem
                   key={venueBuildingKey(item)}
@@ -266,18 +306,27 @@ export default function IndoorProductView({
               ))}
             </SelectContent>
           </Select>
-          <span className={styles.buildingSubtitle}>
-            {currentLevel.ref} ·{" "}
-            {t(
-              currentBuildingView?.levelOrdinal == null
-                ? "venueFloorGeometryUnavailable"
-                : "venueCampusIndoorMap",
-            )}
-          </span>
         </div>
+      )}
+      <div
+        className={cn(
+          control,
+          // The right edge belongs to the map buttons, so the floor rail
+          // sits on the left under whatever owns the top strip.
+          "absolute left-3",
+          touring
+            ? cn(
+                "top-[calc(var(--nav-hud-h,190px)+12px)]",
+                // The desktop step list opens in the same left column.
+                stepListOpen && "lg:left-[404px]",
+              )
+            : cn("top-[72px] lg:left-[474px]", collapsed && "lg:left-[88px]"),
+          "flex flex-col items-center gap-0.5 rounded-full p-1",
+        )}
+      >
         <button
           type="button"
-          className={styles.barAction}
+          className="h-10 w-10 shrink-0 rounded-full text-[11px] font-semibold text-primary hover:bg-muted transition-colors active:scale-[0.96]"
           aria-label={view === "top" ? "切換斜視" : "切換俯視"}
           onClick={() => {
             setView(view === "top" ? "perspective" : "top");
@@ -285,23 +334,50 @@ export default function IndoorProductView({
         >
           {t(view === "top" ? "venuePerspectiveView" : "venueTopView")}
         </button>
+        <div aria-hidden className="h-px w-6 shrink-0 bg-border my-0.5" />
+        <nav
+          aria-label={t("venueChooseFloor")}
+          className={cn(
+            "flex flex-col items-center gap-0.5 overflow-y-auto [scrollbar-width:none] lg:max-h-[60dvh]",
+            touring
+              ? "max-h-[calc(100dvh-var(--nav-hud-h,190px)-var(--bottom-sheet-h,0px)-150px)]"
+              : "max-h-[calc(100dvh-var(--bottom-sheet-h,12dvh)-150px)]",
+          )}
+        >
+          {[...levels].reverse().map((level) => {
+            const active = level.ref === currentLevel.ref;
+            return (
+              <button
+                type="button"
+                key={level.ref}
+                aria-label={t("venueShowFloor", { floor: level.ref })}
+                aria-pressed={active}
+                ref={active ? revealFloor : undefined}
+                onClick={() => {
+                  useIndoorCatalog.getState().setActiveLevel(level.ordinal);
+                }}
+                className={cn(
+                  "relative h-10 w-10 shrink-0 rounded-full text-xs font-bold tabular-nums transition-colors active:scale-[0.96]",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-muted",
+                )}
+              >
+                {level.ref}
+                {routeLevels.has(level.ref) && (
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full",
+                      active ? "bg-primary-foreground" : "bg-primary",
+                    )}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </nav>
       </div>
-      <nav className={styles.floors} aria-label={t("venueChooseFloor")}>
-        <Layers size={16} aria-hidden="true" />
-        {[...levels].reverse().map((level) => (
-          <button
-            type="button"
-            key={level.ref}
-            aria-label={t("venueShowFloor", { floor: level.ref })}
-            aria-pressed={level.ref === currentLevel.ref}
-            onClick={() => {
-              useIndoorCatalog.getState().setActiveLevel(level.ordinal);
-            }}
-          >
-            {level.ref}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }

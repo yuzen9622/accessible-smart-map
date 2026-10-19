@@ -257,9 +257,6 @@ export interface A11ySlice {
 export interface SheetSlice {
   indoorExploring: boolean;
   setIndoorExploring: (active: boolean) => void;
-  /** Indoor content occupies the existing sheet without replacing its mode. */
-  indoorPanelOpen: boolean;
-  setIndoorPanelOpen: (open: boolean) => void;
   sheetMode: SheetMode;
   /**
    * The panel slot only ever shows one thing at a time (see

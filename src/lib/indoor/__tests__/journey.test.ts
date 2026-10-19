@@ -400,7 +400,6 @@ describe("unified venue journey", () => {
     useMapStore.getState().setVenueJourney(journey);
     const generation = useMapStore.getState().routeGeneration;
     useMapStore.getState().setIndoorExploring(true);
-    expect(useMapStore.getState().indoorPanelOpen).toBe(false);
     useMapStore.getState().setIndoorExploring(false);
     useMapStore.getState().setSheetMode("home");
     expect(useMapStore.getState().venueJourney).toBe(journey);

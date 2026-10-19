@@ -549,7 +549,7 @@ describe("venue journeys retain the existing route-results interface", () => {
     expect(markup).toContain("environment");
     expect(markup).toContain("reportHazard");
     expect(markup).not.toContain("aiExplanation");
-    expect(h.cards).toHaveLength(2);
+    expect(markup).toContain("venueArriveAt");
     await h.buttons.find((button) => !button.disabled)?.onClick?.();
     expect(h.start).toHaveBeenCalledOnce();
     expect(useMapStore.getState().venueJourney?.guidance.status).toBe(

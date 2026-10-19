@@ -22,6 +22,7 @@ import {
   isEnclosed,
   isFloorBase,
   isOpening,
+  labelAnchor,
   segmentRectangle,
   wallGeometry,
 } from "./geometry";
@@ -35,7 +36,7 @@ import { buildStairCandidate } from "./stairMesh";
 import type { XY, XYZ } from "./types";
 
 /** Light defaults retained for the standalone diagnostic renderer. */
-export const indoorPalette = getIndoorPalette();
+const indoorPalette = getIndoorPalette();
 
 function themedMaterial<T extends THREE.Material & { color: THREE.Color }>(
   material: T,
@@ -341,7 +342,7 @@ export function rebuildIndoorContent(
     button.title = caption;
     button.setAttribute("aria-label", `查看 ${caption}`);
     button.style.cssText =
-      "position:absolute;left:0;top:0;z-index:2;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid;border-radius:5px;padding:3px 6px;font:600 11px system-ui;cursor:pointer";
+      "position:absolute;left:0;top:0;z-index:2;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid;border-radius:999px;padding:3px 8px;font:600 11px/1.3 inherit;cursor:pointer";
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       onSelect(id);
@@ -461,17 +462,15 @@ export function rebuildIndoorContent(
           label(
             f.id,
             indoorFeatureName(f)?.replace(/^.*樓梯 /, "梯 ") || "梯間",
-            [center[0], center[1], base + 0.35],
+            [...labelAnchor(rings), base + 0.35],
             ordinal,
             true,
           );
-      } else if (isEnclosed(f)) {
-        label(
-          f.id,
-          f.ref || f.name || "空間",
-          [center[0], center[1], base + 0.16],
-          ordinal,
-        );
+      } else if (isEnclosed(f) && (f.ref || f.name)) {
+        // An unnamed room stays selectable; a generic caption only crowds
+        // the floor with labels that say nothing.
+        const [x, y] = labelAnchor(rings);
+        label(f.id, f.ref || f.name || "", [x, y, base + 0.16], ordinal);
       } else if (f.kind === "area") {
         s.content.add(
           spaceBoundary(

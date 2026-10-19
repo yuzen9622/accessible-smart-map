@@ -1420,6 +1420,7 @@
   "venueCatalogUnavailable": "暫時無法載入校園室內地點，請重試。",
   "venueFloorGeometryUnavailable": "此樓層尚無室內格局資料",
   "venueIndoorMap": "室內地圖",
+  "venueRouteFloors": "路線經過的樓層",
   "venueChooseFloor": "選擇顯示樓層",
   "venueShowFloor": "顯示 {{floor}}",
   "venueRouteAnimationPlay": "播放路線動畫",
