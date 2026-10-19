@@ -36,6 +36,32 @@ interface SessionStartMessage extends Partial<RouteConversationInput> {
   userLocation?: { latitude: number; longitude: number };
 }
 
+// The gateway's 8 KiB control-frame limit includes the entire session.start JSON.
+const CONTROL_FRAME_MAX_BYTES = 8 * 1024;
+
+function encodeSessionStart(message: SessionStartMessage): string | null {
+  const encoder = new TextEncoder();
+  const original = JSON.stringify(message);
+  if (encoder.encode(original).byteLength <= CONTROL_FRAME_MAX_BYTES)
+    return original;
+
+  const { history = [], ...required } = message;
+  let payload = JSON.stringify(required);
+  if (encoder.encode(payload).byteLength > CONTROL_FRAME_MAX_BYTES) return null;
+
+  const retained: NonNullable<SessionStartMessage["history"]> = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const candidate = JSON.stringify({
+      ...required,
+      history: [history[i], ...retained],
+    });
+    if (encoder.encode(candidate).byteLength > CONTROL_FRAME_MAX_BYTES) break;
+    retained.unshift(history[i]);
+    payload = candidate;
+  }
+  return payload;
+}
+
 /** Client -> server: graceful end, server acks with close(1000, "client-end"). */
 interface SessionEndMessage {
   type: "session.end";
@@ -991,7 +1017,12 @@ export class VoiceSessionController {
         ...(this.deps.getHistory ? { history: this.deps.getHistory() } : {}),
       };
       if (location) message.userLocation = location;
-      socket.send(JSON.stringify(message));
+      const payload = encodeSessionStart(message);
+      if (payload === null) {
+        this.terminate({ status: "error", code: "SESSION_START_TOO_LARGE" });
+        return;
+      }
+      socket.send(payload);
     };
     socket.onmessage = (event) => this.handleMessage(gen, event.data);
     socket.onclose = (event) => this.handleClose(gen, event.code, event.reason);
