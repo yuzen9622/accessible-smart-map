@@ -187,7 +187,33 @@ export interface BusPlanContext {
   legIndex: number;
 }
 
-export interface BusLeg extends RouteSourceNames {
+export interface BusDepartureCandidate {
+  candidateId: string;
+  routeName: string;
+  subRouteUid: string;
+  subRouteName?: string;
+  direction: 0 | 1;
+  departureStopId: string;
+  arrivalStopId: string;
+  tripId?: string;
+  plateNumb?: string;
+  estimatedWaitMinutes: number | null;
+  boardingTime: string | null;
+  alightingTime: string | null;
+  boardingTimeSource: "realtime" | "schedule" | "unknown";
+  alightingTimeSource: "realtime" | "schedule" | "unknown";
+  vehicleAccessibility: "low_floor" | "high_floor" | "unknown";
+  hasLiftOrRamp: boolean | null;
+  selected: boolean;
+}
+
+export interface BusCandidateMetadata {
+  departureCandidates?: BusDepartureCandidate[];
+  candidateSearchComplete?: boolean;
+}
+
+export interface BusLeg extends RouteSourceNames, BusCandidateMetadata {
+  geometrySource?: "route_stops";
   /** Client-side request context, supplied by the containing planned route. */
   planContext?: BusPlanContext;
   scheduledTrip?: {
@@ -380,6 +406,9 @@ export interface RouteMessageDetail {
 
 // --- Single route ---
 export interface AccessibleRoute {
+  /** Full journey instants (ISO dates with timezone), not leg clock times. */
+  departureTime?: string;
+  arrivalTime?: string;
   routeId: string;
   /** Stable navigation identity returned for reroute-capable routes. */
   navigationId?: string;

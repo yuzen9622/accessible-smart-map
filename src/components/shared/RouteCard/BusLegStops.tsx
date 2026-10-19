@@ -22,12 +22,14 @@ export function BusLegStops({
   routeIndex,
   legIndex,
   isSelected,
+  hidePlannedTimes = false,
 }: {
   leg: BusLeg;
   routeToken?: string;
   routeIndex: number;
   legIndex: number;
   isSelected: boolean;
+  hidePlannedTimes?: boolean;
 }) {
   const { t } = useAppTranslation();
   const language = getAppLanguage();
@@ -131,8 +133,8 @@ export function BusLegStops({
         )}
         alightName={legSourceName(leg, "to", leg.arrivalStop, getAppLanguage())}
         displayLanguage={leg.displayLanguage}
-        boardTime={leg.departureTime}
-        alightTime={leg.arrivalTime}
+        boardTime={hidePlannedTimes ? undefined : leg.departureTime}
+        alightTime={hidePlannedTimes ? undefined : leg.arrivalTime}
         intermediateStops={leg.intermediateStops}
         color={getLegColor(leg)}
         departureA11y={leg.departureStopA11y}

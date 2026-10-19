@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RouteDetailDirection } from "@/lib/api/transit";
+import { departureCandidates } from "@/lib/transit/__tests__/fixtures/departureCandidates";
 import {
   __clearRouteDetailCache,
   fetchRouteDetailCached,
@@ -41,10 +42,15 @@ const legOf = (subRouteUid: string) =>
     subRouteUid,
   }) as unknown as BusLeg;
 
-const probe = (leg: BusLeg | null, enabled = true, poll = false) => {
+const probe = (
+  leg: BusLeg | null,
+  enabled = true,
+  poll = false,
+  cacheOnly = false,
+) => {
   let out: ReturnType<typeof useBusLegStopEtas> | undefined;
   const C = () => {
-    out = useBusLegStopEtas(leg, enabled, poll);
+    out = useBusLegStopEtas(leg, enabled, poll, cacheOnly);
     return null;
   };
   renderToStaticMarkup(<C />);
@@ -80,5 +86,41 @@ describe("useBusLegStopEtas render guard", () => {
 
   it("returns nothing for no leg", () => {
     expect(probe(null)).toEqual({ directions: null, status: "idle" });
+  });
+
+  it("lets an unselected summary read a warm snapshot only until its receipt expires", () => {
+    expect(probe(legOf("A"), false, false, true)).toEqual({
+      directions,
+      status: "ready",
+    });
+    expect(probe(legOf("A"), false)).toEqual({
+      directions: null,
+      status: "idle",
+    });
+    vi.advanceTimersByTime(15_001);
+    expect(probe(legOf("A"), false, false, true)).toEqual({
+      directions: null,
+      status: "idle",
+    });
+  });
+
+  it("exposes refreshed metadata with the same plan/leg guard and receipt expiry", async () => {
+    getBusRouteDetail.mockResolvedValue({
+      ok: true,
+      data: { directions, departureCandidates, candidateSearchComplete: false },
+    });
+    await fetchRouteDetailCached("99", "Taichung", {
+      lang: "zh-TW",
+      subRouteUid: "A",
+      planContext: { routeToken: "plan", legIndex: 1 },
+      force: true,
+    });
+    expect(probe(legOf("A"))).toMatchObject({
+      departureCandidates,
+      candidateSearchComplete: false,
+    });
+    expect(probe(legOf("B"))).not.toHaveProperty("departureCandidates");
+    vi.advanceTimersByTime(15_001);
+    expect(probe(legOf("A"))).not.toHaveProperty("departureCandidates");
   });
 });

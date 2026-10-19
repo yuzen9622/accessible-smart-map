@@ -1,4 +1,9 @@
-import type { LiveBus, LiveBusPositionsData } from "@/types/route";
+import type {
+  BusCandidateMetadata,
+  BusDepartureCandidate,
+  LiveBus,
+  LiveBusPositionsData,
+} from "@/types/route";
 import type {
   BusFrequency,
   BusScheduleByDirection,
@@ -69,6 +74,91 @@ function list(data: unknown, key: string): unknown[] {
   if (!record(data) || !Array.isArray(data[key]))
     throw new TypeError(`Invalid bus ${key} payload`);
   return data[key];
+}
+
+function candidateTimeSource(
+  value: unknown,
+): value is BusDepartureCandidate["boardingTimeSource"] {
+  return value === "realtime" || value === "schedule" || value === "unknown";
+}
+
+function candidateInstant(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === "string" &&
+      /^\d{4}-\d{2}-\d{2}T.+(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+      Number.isFinite(Date.parse(value)))
+  );
+}
+
+function parseDepartureCandidate(row: unknown): BusDepartureCandidate {
+  if (
+    !record(row) ||
+    ![
+      "candidateId",
+      "routeName",
+      "subRouteUid",
+      "departureStopId",
+      "arrivalStopId",
+    ].every((key) => typeof row[key] === "string") ||
+    !["subRouteName", "tripId", "plateNumb"].every(
+      (key) => row[key] === undefined || typeof row[key] === "string",
+    ) ||
+    (row.direction !== 0 && row.direction !== 1) ||
+    !eta(row.estimatedWaitMinutes) ||
+    !candidateInstant(row.boardingTime) ||
+    !candidateInstant(row.alightingTime) ||
+    !candidateTimeSource(row.boardingTimeSource) ||
+    !candidateTimeSource(row.alightingTimeSource) ||
+    (row.boardingTime === null) !== (row.boardingTimeSource === "unknown") ||
+    (row.alightingTime === null) !== (row.alightingTimeSource === "unknown") ||
+    (row.vehicleAccessibility !== "low_floor" &&
+      row.vehicleAccessibility !== "high_floor" &&
+      row.vehicleAccessibility !== "unknown") ||
+    (row.hasLiftOrRamp !== null && typeof row.hasLiftOrRamp !== "boolean") ||
+    typeof row.selected !== "boolean" ||
+    (row.selected && (row.boardingTime === null || row.alightingTime === null))
+  )
+    throw new TypeError("Invalid bus departure candidate");
+  return {
+    candidateId: row.candidateId as string,
+    routeName: row.routeName as string,
+    subRouteUid: row.subRouteUid as string,
+    departureStopId: row.departureStopId as string,
+    arrivalStopId: row.arrivalStopId as string,
+    ...displayFields(row, ["subRouteName", "tripId", "plateNumb"]),
+    direction: row.direction,
+    estimatedWaitMinutes: row.estimatedWaitMinutes,
+    boardingTime: row.boardingTime,
+    alightingTime: row.alightingTime,
+    boardingTimeSource: row.boardingTimeSource,
+    alightingTimeSource: row.alightingTimeSource,
+    vehicleAccessibility: row.vehicleAccessibility,
+    hasLiftOrRamp: row.hasLiftOrRamp,
+    selected: row.selected,
+  };
+}
+
+/** Absent legacy metadata is not an empty or complete search result. */
+export function parseBusCandidateMetadata(data: unknown): BusCandidateMetadata {
+  if (!record(data)) throw new TypeError("Invalid bus candidate metadata");
+  const result: BusCandidateMetadata = {};
+  if (data.departureCandidates !== undefined) {
+    if (
+      !Array.isArray(data.departureCandidates) ||
+      data.departureCandidates.length > 5
+    )
+      throw new TypeError("Invalid bus departure candidates");
+    result.departureCandidates = data.departureCandidates.map(
+      parseDepartureCandidate,
+    );
+  }
+  if (data.candidateSearchComplete !== undefined) {
+    if (typeof data.candidateSearchComplete !== "boolean")
+      throw new TypeError("Invalid bus candidate completeness");
+    result.candidateSearchComplete = data.candidateSearchComplete;
+  }
+  return result;
 }
 
 export function parseBusArrivals(data: unknown): BusArrivalItem[] {
