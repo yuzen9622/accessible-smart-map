@@ -12,7 +12,9 @@ import { refreshAccessToken } from "@/lib/authRefresh";
 import { END_POINT } from "@/lib/config";
 import { createCapture } from "@/lib/voice/audioCapture";
 import { createPlayback } from "@/lib/voice/audioPlayback";
+import { createVoiceChatPersistence } from "@/lib/voice/voiceChatPersistence";
 import {
+  filterApplicableNavigationEvents,
   type VoiceNavigationEvent,
   type VoiceNavigationPosition,
   type VoiceNavigationResumeState,
@@ -23,7 +25,6 @@ import {
 } from "@/lib/voice/voiceSession";
 import { createVoiceBindings } from "@/lib/voice/voiceSessionBindings";
 import useAuthStore from "@/stores/useAuthStore";
-import useChatStore from "@/stores/useChatStore";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import useVoiceStore, {
@@ -190,21 +191,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
         useVoiceStore
           .getState()
           .setMicLevel(contextInputPausedRef.current ? 0 : level),
-      persistTurn: (entries, summaries) => {
-        const history = entries
-          .filter((entry) => entry.text)
-          .map((entry) => ({
-            role:
-              entry.role === "model"
-                ? ("assistant" as const)
-                : ("user" as const),
-            content: entry.text,
-            ...(entry.role === "model" ? { tool_summaries: summaries } : {}),
-          }));
-        useChatStore
-          .getState()
-          .setChatHistory((previous) => [...previous, ...history]);
-      },
+      ...createVoiceChatPersistence(),
     });
   }
   const bindings = bindingsRef.current;
@@ -254,8 +241,14 @@ export default function useVoiceSession(): UseVoiceSessionResult {
       onTurnComplete: bindings.onTurnComplete,
       onInterrupted: bindings.onInterrupted,
       onToolEvent: bindings.onToolEvent,
-      onNavigationEvent: (event) =>
-        setNavigationEvents((pending) => [...pending, event]),
+      onNavigationEvent: (event) => {
+        if (
+          filterApplicableNavigationEvents([event], statusRef.current.status)
+            .length
+        ) {
+          setNavigationEvents((pending) => [...pending, event]);
+        }
+      },
       getNavigationResumeState,
     });
   }
@@ -301,7 +294,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
       const token = state.session?.accessToken;
       const identity = state.user?._id ?? null;
       if (!token || identity !== identityAtStartRef.current) {
-        controllerRef.current?.end();
+        controllerRef.current?.handleAuthChange();
       }
     });
     return unsubscribe;
@@ -318,6 +311,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
   }, [bindings]);
 
   const startSession = useCallback(() => {
+    if (controllerRef.current?.isActive()) return;
     identityAtStartRef.current = useAuthStore.getState().user?._id ?? null;
     bindings.reset();
     setActiveTool(null);

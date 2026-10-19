@@ -317,6 +317,8 @@
       "statusReady": "Connected",
       "statusListening": "Listening…",
       "statusModelSpeaking": "Responding…",
+      "statusAssistantEnding": "Playing farewell…",
+      "statusDrainingPlayback": "Finishing farewell…",
       "statusReconnecting": "Connection lost, reconnecting",
       "statusPlaybackBlocked": "Playback paused",
       "statusNeedsLogin": "Please log in again",

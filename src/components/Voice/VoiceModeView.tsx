@@ -47,6 +47,9 @@ export default function VoiceModeView() {
   const label = getVoiceStatusLabel(status, t);
   const active = isVoiceSessionActive(status.status);
   const listening = status.status === "listening" || status.status === "ready";
+  const ending =
+    status.status === "assistant-ending" ||
+    status.status === "draining-playback";
   const dot = recordingDotPresentation(micLevel, status.status, reducedMotion);
 
   return (
@@ -83,13 +86,17 @@ export default function VoiceModeView() {
               aria-label={
                 listening
                   ? t("chatbot.voice.listeningHint", "請開始說話")
-                  : t("chatbot.voice.connectingHint", "連線中，請稍候…")
+                  : ending
+                    ? label
+                    : t("chatbot.voice.connectingHint", "連線中，請稍候…")
               }
             />
             <p className="text-xs text-muted-foreground text-center">
               {listening
                 ? t("chatbot.voice.listeningHint", "請開始說話")
-                : t("chatbot.voice.connectingHint", "連線中，請稍候…")}
+                : ending
+                  ? label
+                  : t("chatbot.voice.connectingHint", "連線中，請稍候…")}
             </p>
           </div>
         )}
@@ -147,7 +154,8 @@ export default function VoiceModeView() {
         <div ref={bottomRef} />
       </div>
 
-      {status.status === "playback-blocked" && (
+      {(status.status === "playback-blocked" ||
+        (ending && status.code === "PLAYBACK_BLOCKED")) && (
         <div className="px-4 py-2 border-t bg-card shrink-0">
           <Button
             type="button"
@@ -175,6 +183,7 @@ export default function VoiceModeView() {
         <Button
           type="button"
           onClick={endSession}
+          disabled={ending}
           size="sm"
           variant="destructive"
           className="flex-1"

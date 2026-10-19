@@ -1,3 +1,4 @@
+import { atomicStoreUpdates } from "@/stores/atomicNotifications";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type {
@@ -96,41 +97,43 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
     0,
   );
 
-  useMapStore.setState({
-    activeNavigationRoute: map.activeNavigationRoute ? route : null,
-    ...(viewingReplaced
-      ? {
-          selectRoute: { index: Math.max(0, selectedIndex), route },
-          selectedRouteId: route.routeId,
-          routeGeneration: map.routeGeneration + 1,
-        }
-      : {}),
-    computeRoutes,
+  atomicStoreUpdates(() => {
+    useMapStore.setState({
+      activeNavigationRoute: map.activeNavigationRoute ? route : null,
+      ...(viewingReplaced
+        ? {
+            selectRoute: { index: Math.max(0, selectedIndex), route },
+            selectedRouteId: route.routeId,
+            routeGeneration: map.routeGeneration + 1,
+          }
+        : {}),
+      computeRoutes,
+    });
+    useNavStore.setState({
+      navigationId: replacement.navigationId,
+      routeVersion: replacement.routeVersion,
+      instructions: replacement.instructions,
+      warnings: replacement.warnings,
+      currentStepIndex: 0,
+      transitRide: null,
+      transitGuide: null,
+      lastManualTs: 0,
+      distanceToNextM: replacement.instructions[0]?.distanceM ?? null,
+      remainingM: totalM || null,
+      remainingDurationSec: null,
+      estimatedArrivalAt: null,
+      etaSource: null,
+      etaUpdatedAt: null,
+      routeTotalM: totalM || null,
+      isOffRoute: false,
+      arrived: false,
+      rerouteStatus: "idle",
+      rerouteError: null,
+      rerouteRetryable: false,
+      lastRerouteReason: replacement.reason ?? null,
+      advisories: [],
+    });
   });
-  useNavStore.setState({
-    navigationId: replacement.navigationId,
-    routeVersion: replacement.routeVersion,
-    instructions: replacement.instructions,
-    warnings: replacement.warnings,
-    currentStepIndex: 0,
-    transitRide: null,
-    transitGuide: null,
-    lastManualTs: 0,
-    distanceToNextM: replacement.instructions[0]?.distanceM ?? null,
-    remainingM: totalM || null,
-    remainingDurationSec: null,
-    estimatedArrivalAt: null,
-    etaSource: null,
-    etaUpdatedAt: null,
-    routeTotalM: totalM || null,
-    isOffRoute: false,
-    arrived: false,
-    rerouteStatus: "idle",
-    rerouteError: null,
-    rerouteRetryable: false,
-  });
-  nav.setLastRerouteReason(replacement.reason ?? null);
-  nav.clearAdvisories();
   return true;
 }
 

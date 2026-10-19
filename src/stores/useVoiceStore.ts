@@ -119,10 +119,14 @@ const useVoiceStore = create<VoiceStore>((set, get) => ({
   setViewMode: (viewMode) => set({ viewMode }),
   setMicLevel: (micLevel) => set({ micLevel }),
   setMuted: (isMuted) => {
+    if (["assistant-ending", "draining-playback"].includes(get().status.status))
+      return;
     set({ isMuted });
     boundSetMuted?.(isMuted);
   },
   toggleMute: () => {
+    if (["assistant-ending", "draining-playback"].includes(get().status.status))
+      return;
     const next = !get().isMuted;
     set({ isMuted: next });
     boundSetMuted?.(next);
@@ -131,10 +135,22 @@ const useVoiceStore = create<VoiceStore>((set, get) => ({
     boundSetMuted = actions.setMuted ?? null;
     set({
       startSession: () => {
+        if (
+          ["assistant-ending", "draining-playback"].includes(
+            get().status.status,
+          )
+        )
+          return;
         set({ isMuted: false });
         actions.start();
       },
       endSession: () => {
+        if (
+          ["assistant-ending", "draining-playback"].includes(
+            get().status.status,
+          )
+        )
+          return;
         set({ isMuted: false });
         actions.end();
       },

@@ -14,7 +14,6 @@ import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
 import { toNavProgressUpdate } from "@/lib/voice/navProgress";
 import { handleNavigationExit } from "@/lib/voice/voiceNavigationExit";
 import {
-  filterApplicableNavigationEvents,
   shouldAcceptAdvisoryEvent,
   type VoiceNavigationEvent,
 } from "@/lib/voice/voiceSession";
@@ -98,6 +97,7 @@ export default function VoiceSessionHost() {
     // "reconnecting" is deliberately NOT terminal (WP4): the controller sends
     // nav.resume once the rebuilt session is ready, so the HUD must survive
     // the gap instead of being torn down and losing the navigation.
+    if (navigationEvents.length > 0) return; // consume accepted FIFO events before terminal takeover
     if (
       status.status === "ended" ||
       status.status === "needs-login" ||
@@ -112,10 +112,11 @@ export default function VoiceSessionHost() {
         nav.setNavigationSource("local");
         lastSentPositionRef.current = null;
         serverStoppedNavigationRef.current = false;
-        toast.info(t("voiceAssistantLostNavContinues"));
+        if (status.code !== "assistant-end")
+          toast.info(t("voiceAssistantLostNavContinues"));
       }
     }
-  }, [status, t]);
+  }, [status, navigationEvents.length, t]);
 
   useEffect(() => {
     useVoiceStore.getState().setTranscripts(transcripts);
@@ -214,19 +215,28 @@ export default function VoiceSessionHost() {
 
   useEffect(() => {
     if (navigationEvents.length === 0) return;
-    // Navigation alerts are transport-independent: a degraded voice session
-    // must never swallow them (removing this filter silently drops alerts).
-    const applicableEvents = filterApplicableNavigationEvents(
-      navigationEvents,
-      status.status,
-    );
-
-    for (const navigationEvent of applicableEvents) {
+    // Already gated at receipt using the controller's synchronous status.
+    // A subsequent close in the same React batch must not discard accepted replay.
+    for (const navigationEvent of navigationEvents) {
       const map = useMapStore.getState();
       const nav = useNavStore.getState();
 
       switch (navigationEvent.type) {
         case "nav.start": {
+          const candidate = map.computeRoutes?.[0] ?? map.selectRoute?.route;
+          if (
+            !candidate?.routeToken ||
+            map.invalidRouteTokens.includes(candidate.routeToken)
+          )
+            break;
+          // Preserve backend order, independently of any manual preview selection.
+          useMapStore.setState({
+            selectRoute: { index: 0, route: candidate },
+            selectedRouteId: candidate.routeId,
+            ...(map.selectRoute?.route !== candidate
+              ? { routeGeneration: map.routeGeneration + 1 }
+              : {}),
+          });
           const instructions = navigationEvent.steps.map(toNavInstruction);
           const totalM = navigationEvent.steps.reduce(
             (sum, step) => sum + (step.distanceM ?? 0),
@@ -234,12 +244,10 @@ export default function VoiceSessionHost() {
           );
           nav.setNavigationSource("voice");
           nav.setNavigationIdentity(
-            (map.activeNavigationRoute ?? map.selectRoute?.route)
-              ?.navigationId ?? null,
-            (map.activeNavigationRoute ?? map.selectRoute?.route)
-              ?.routeVersion ?? 0,
+            candidate.navigationId ?? null,
+            candidate.routeVersion ?? 0,
           );
-          nav.setInstructions(instructions);
+          nav.setInstructions(instructions, candidate.warnings ?? []);
           nav.setCurrentStepIndex(navigationEvent.currentStepIndex);
           nav.setDistanceToNextM(
             navigationEvent.steps[navigationEvent.currentStepIndex]
@@ -250,7 +258,7 @@ export default function VoiceSessionHost() {
           nav.setVoiceEnabled(false);
           lastSentPositionRef.current = null;
           serverStoppedNavigationRef.current = false;
-          if (!map.isNavigating) startNavigation();
+          startNavigation();
           if (map.userLocation) {
             const heading = nav.userHeading ?? nav.gpsHeading;
             lastSentPositionRef.current = map.userLocation;
@@ -344,17 +352,21 @@ export default function VoiceSessionHost() {
             nav.arrived ||
             !nav.navigationId ||
             navigationEvent.navigationId !== nav.navigationId ||
-            navigationEvent.routeVersion !== nav.routeVersion
+            navigationEvent.routeVersion !== nav.routeVersion ||
+            navigationEvent.routeToken !== map.activeNavigationRoute?.routeToken
           ) {
             break;
           }
           // The backend still owns this navigation: hand step advancement
           // back to it and adopt its authoritative progress snapshot.
           nav.setNavigationSource("voice");
-          if (navigationEvent.steps && navigationEvent.steps.length > 0) {
-            nav.setInstructions(navigationEvent.steps.map(toNavInstruction));
-          }
-          nav.setCurrentStepIndex(navigationEvent.currentStepIndex);
+          // resume acknowledges this route, it does not replace its warnings/reason/advisories.
+          useNavStore.setState({
+            ...(navigationEvent.steps.length > 0
+              ? { instructions: navigationEvent.steps.map(toNavInstruction) }
+              : {}),
+            currentStepIndex: navigationEvent.currentStepIndex,
+          });
           serverStoppedNavigationRef.current = false;
           // Nothing was forwarded while the socket was down; let the next fix
           // through regardless of how far the user moved.
@@ -362,7 +374,12 @@ export default function VoiceSessionHost() {
           break;
         }
         case "nav.resume_failed": {
-          if (!map.isNavigating || nav.arrived) break;
+          if (
+            !map.isNavigating ||
+            nav.arrived ||
+            navigationEvent.navigationId !== nav.navigationId
+          )
+            break;
           // Keep the HUD on screen: the local engine takes over turn-by-turn
           // immediately, and a reroute from the current position rebuilds a
           // route the backend no longer holds.
@@ -415,13 +432,7 @@ export default function VoiceSessionHost() {
       }
     }
     consumeNavigationEvents(navigationEvents.length);
-  }, [
-    navigationEvents,
-    status.status,
-    consumeNavigationEvents,
-    sendNavigationPosition,
-    t,
-  ]);
+  }, [navigationEvents, consumeNavigationEvents, sendNavigationPosition, t]);
 
   // Leaving the map page (this host unmounting) is a terminal path too.
   useEffect(() => {
