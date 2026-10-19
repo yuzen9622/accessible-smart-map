@@ -1,4 +1,4 @@
-import i18n from "i18next";
+import i18n, { type ReactOptions } from "i18next";
 import { redirect, usePathname } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import {
@@ -16,6 +16,24 @@ const resources = {
   en: { translation: en },
   "zh-TW": { translation: zhTW },
 };
+const reactOptions: ReactOptions = {
+  useSuspense: false,
+  bindI18nStore: "added removed",
+};
+
+function containsTranslations(current: unknown, bundled: unknown): boolean {
+  if (current === bundled) return true;
+  if (
+    !current ||
+    typeof current !== "object" ||
+    !bundled ||
+    typeof bundled !== "object"
+  )
+    return false;
+  return Object.entries(bundled).every(([key, value]) =>
+    containsTranslations((current as Record<string, unknown>)[key], value),
+  );
+}
 
 // init 只要執行一次
 if (!i18n.isInitialized) {
@@ -25,8 +43,17 @@ if (!i18n.isInitialized) {
     fallbackLng: fallbackLng,
     supportedLngs: languages,
     interpolation: { escapeValue: false },
-    react: { useSuspense: false },
+    react: reactOptions,
   });
+} else {
+  // Fast Refresh preserves the i18next instance while reloading JSON modules.
+  // Update its dictionaries without resetting the user's language or session.
+  for (const [language, { translation }] of Object.entries(resources)) {
+    const current = i18n.getResourceBundle(language, "translation");
+    if (!containsTranslations(current, translation)) {
+      i18n.addResourceBundle(language, "translation", translation, true, true);
+    }
+  }
 }
 
 export function changeAppLanguage(lng: "en" | "zh-TW") {
@@ -36,7 +63,7 @@ export function changeAppLanguage(lng: "en" | "zh-TW") {
 // client-safe useTranslation wrapper
 // 用法： const { t, i18n } = useAppTranslation(); 或 useAppTranslation("en", "translation");
 export function useAppTranslation(ns?: string | string[]) {
-  const ret = useReactTranslation(ns as string, { useSuspense: false });
+  const ret = useReactTranslation(ns as string, reactOptions);
   const path = usePathname();
 
   const lang = useMemo(() => path.split("/")[1], [path]);

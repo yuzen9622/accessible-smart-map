@@ -11,130 +11,190 @@ import type {
   SheetSlice,
 } from "./types";
 
-export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => ({
-  sheetMode: "home",
-  setSheetMode: (mode) => {
-    const update: Partial<MapStore> = { sheetMode: mode };
-    if (mode !== "home" && mode !== "navigation") {
-      update.sidebarCollapsed = false;
-    }
-    if (get().chatOpen) {
-      update.chatOpen = false;
-    }
-    set(update);
-  },
-  mobileSheetSnap: "peek" as MobileSheetSnap,
-  setMobileSheetSnap: (snap) => set({ mobileSheetSnap: snap }),
-  isNavigating: false,
-  setIsNavigating: (v) => {
-    const { map } = get();
-    if (v) {
-      set({ isNavigating: true, sheetMode: "navigation", is3D: true });
-    } else {
-      // routeSubPanel is its own field now, so returning from navigation lands
-      // on the route list without having to overwrite whatever the rail was
-      // showing. (It used to reset activeRailPanel to "route" for exactly this
-      // reason, back when the two shared one field.)
+export const createSheetSlice: MapSliceCreator<SheetSlice> = (set, get) => {
+  let previousPresentation: {
+    sidebarCollapsed: boolean;
+    mobileSheetSnap: MobileSheetSnap;
+  } | null = null;
+  return {
+    indoorExploring: false,
+    indoorPanelOpen: false,
+    setIndoorExploring: (active) => {
+      if (active === get().indoorExploring) return;
+      if (active) {
+        previousPresentation = {
+          sidebarCollapsed: get().sidebarCollapsed,
+          mobileSheetSnap: get().mobileSheetSnap,
+        };
+        set({
+          indoorExploring: true,
+          indoorPanelOpen: false,
+          // Entering a building is a single map-mode transition. The indoor
+          // camera owns the fly-in; do not launch a competing toggle animation.
+          is3D: true,
+          sidebarCollapsed: false,
+          mobileSheetSnap: "half",
+        });
+      } else {
+        set({
+          indoorExploring: false,
+          indoorPanelOpen: false,
+          ...(get().sheetMode === "home" && !get().isNavigating
+            ? previousPresentation
+            : {}),
+        });
+        previousPresentation = null;
+      }
+    },
+    setIndoorPanelOpen: (open) => {
+      if (open && !get().indoorExploring) return;
+      set({
+        indoorPanelOpen: open,
+        ...(open ? { sidebarCollapsed: false } : {}),
+      });
+    },
+    sheetMode: "home",
+    setSheetMode: (mode) => {
+      const update: Partial<MapStore> = {
+        sheetMode: mode,
+        indoorPanelOpen: false,
+      };
+      if (mode !== "home" && mode !== "navigation") {
+        update.sidebarCollapsed = false;
+      }
+      if (get().chatOpen) {
+        update.chatOpen = false;
+      }
+      set(update);
+    },
+    mobileSheetSnap: "peek" as MobileSheetSnap,
+    setMobileSheetSnap: (snap) => set({ mobileSheetSnap: snap }),
+    isNavigating: false,
+    setIsNavigating: (v) => {
+      const { map } = get();
+      if (v) {
+        set({
+          isNavigating: true,
+          sheetMode: "navigation",
+          is3D: true,
+          indoorPanelOpen: false,
+          chatOpen: false,
+        });
+      } else {
+        // routeSubPanel is its own field now, so returning from navigation lands
+        // on the route list without having to overwrite whatever the rail was
+        // showing. (It used to reset activeRailPanel to "route" for exactly this
+        // reason, back when the two shared one field.)
+        set({
+          isNavigating: false,
+          activeNavigationRoute: null,
+          sheetMode: "route",
+          routeSubPanel: "none",
+          is3D: get().venueJourney ? get().is3D : false,
+        });
+        if (map && !get().venueJourney) {
+          const legs = get().selectRoute?.route.legs ?? [];
+          const bounds = new LngLatBounds();
+          for (const leg of legs) {
+            for (const [lng, lat] of leg.polyline ?? [])
+              bounds.extend([lng, lat]);
+          }
+          if (bounds.isEmpty()) {
+            map.easeTo({ pitch: 0, bearing: 0, duration: 1000 });
+          } else {
+            map.fitBounds(bounds, {
+              pitch: 0,
+              bearing: 0,
+              duration: 1000,
+              padding: computeMapPadding(get().sidebarCollapsed),
+            });
+          }
+        }
+      }
+    },
+    pendingNavExit: null,
+    requestNavExit: (target) => {
+      if (!get().isNavigating) {
+        return;
+      }
+      set({ pendingNavExit: { target } });
+    },
+    confirmNavExit: () => {
+      const intent = get().pendingNavExit;
+      set({ pendingNavExit: null });
+      if (!intent) return;
+      // End navigation first — setIsNavigating(false) sets sheetMode to "route",
+      // but the intent callback below will override it to the desired target.
+      get().stopVenueGuidance();
       set({
         isNavigating: false,
         activeNavigationRoute: null,
-        sheetMode: "route",
-        routeSubPanel: "none",
-        is3D: false,
+        is3D: get().venueJourney ? get().is3D : false,
       });
-      if (map) {
+      const { map } = get();
+      if (map && !get().venueJourney) {
         const legs = get().selectRoute?.route.legs ?? [];
         const bounds = new LngLatBounds();
         for (const leg of legs) {
           for (const [lng, lat] of leg.polyline ?? [])
             bounds.extend([lng, lat]);
         }
-        if (bounds.isEmpty()) {
-          map.easeTo({ pitch: 0, bearing: 0, duration: 1000 });
-        } else {
+        if (!bounds.isEmpty()) {
           map.fitBounds(bounds, {
             pitch: 0,
             bearing: 0,
             duration: 1000,
             padding: computeMapPadding(get().sidebarCollapsed),
           });
+        } else {
+          map.easeTo({ pitch: 0, bearing: 0, duration: 1000 });
         }
       }
-    }
-  },
-  pendingNavExit: null,
-  requestNavExit: (target) => {
-    if (!get().isNavigating) {
-      return;
-    }
-    set({ pendingNavExit: { target } });
-  },
-  confirmNavExit: () => {
-    const intent = get().pendingNavExit;
-    set({ pendingNavExit: null });
-    if (!intent) return;
-    // End navigation first — setIsNavigating(false) sets sheetMode to "route",
-    // but the intent callback below will override it to the desired target.
-    set({ isNavigating: false, activeNavigationRoute: null, is3D: false });
-    const { map } = get();
-    if (map) {
-      const legs = get().selectRoute?.route.legs ?? [];
-      const bounds = new LngLatBounds();
-      for (const leg of legs) {
-        for (const [lng, lat] of leg.polyline ?? []) bounds.extend([lng, lat]);
+      // Apply the intent: switch to the target panel
+      if (intent.target === "plan") {
+        get().setSheetMode("plan");
+        return;
       }
-      if (!bounds.isEmpty()) {
-        map.fitBounds(bounds, {
-          pitch: 0,
-          bearing: 0,
-          duration: 1000,
-          padding: computeMapPadding(get().sidebarCollapsed),
-        });
-      } else {
-        map.easeTo({ pitch: 0, bearing: 0, duration: 1000 });
+      get().setSheetMode("home");
+      // Leaving navigation for somewhere outside the route flow is an explicit
+      // "I'm done with this route" — the one panel switch that still ends the
+      // session, because the user confirmed it in ExitNavDialog.
+      get().endRouteSession();
+      set({ infoShow: { isOpen: false, kind: null }, searchPlace: null });
+      if (intent.target !== "home") {
+        get().setActiveRailPanel(intent.target);
       }
-    }
-    // Apply the intent: switch to the target panel
-    if (intent.target === "plan") {
-      get().setSheetMode("plan");
-      return;
-    }
-    get().setSheetMode("home");
-    // Leaving navigation for somewhere outside the route flow is an explicit
-    // "I'm done with this route" — the one panel switch that still ends the
-    // session, because the user confirmed it in ExitNavDialog.
-    get().endRouteSession();
-    set({ infoShow: { isOpen: false, kind: null }, searchPlace: null });
-    if (intent.target !== "home") {
-      get().setActiveRailPanel(intent.target);
-    }
-  },
-  cancelNavExit: () => {
-    set({ pendingNavExit: null });
-  },
-  activeRailPanel: "search" as RailPanel,
-  setActiveRailPanel: (panel, reportContext) => {
-    const update: Partial<MapStore> = { activeRailPanel: panel };
-    if (panel === "hazard") {
-      update.pendingReportContext = reportContext ?? null;
-    }
-    if (panel !== "none") {
-      update.sidebarCollapsed = false;
-    }
-    if (get().chatOpen) {
-      update.chatOpen = false;
-    }
-    set(update);
-  },
-  routeSubPanel: "none" as RouteSubPanel,
-  setRouteSubPanel: (panel) =>
-    set({
-      routeSubPanel: panel,
-      ...(panel === "hazard" ? { pendingReportContext: null } : {}),
-    }),
-  resumeRouteSession: () => {
-    const target = routeResumeTarget(get().computeRoutes);
-    set({ routeSubPanel: "none" });
-    get().setSheetMode(target);
-  },
-});
+    },
+    cancelNavExit: () => {
+      set({ pendingNavExit: null });
+    },
+    activeRailPanel: "search" as RailPanel,
+    setActiveRailPanel: (panel, reportContext) => {
+      const update: Partial<MapStore> = {
+        activeRailPanel: panel,
+        indoorPanelOpen: false,
+      };
+      if (panel === "hazard") {
+        update.pendingReportContext = reportContext ?? null;
+      }
+      if (panel !== "none") {
+        update.sidebarCollapsed = false;
+      }
+      if (get().chatOpen) {
+        update.chatOpen = false;
+      }
+      set(update);
+    },
+    routeSubPanel: "none" as RouteSubPanel,
+    setRouteSubPanel: (panel) =>
+      set({
+        routeSubPanel: panel,
+        ...(panel === "hazard" ? { pendingReportContext: null } : {}),
+      }),
+    resumeRouteSession: () => {
+      const target = routeResumeTarget(get().computeRoutes, get().venueJourney);
+      set({ routeSubPanel: "none" });
+      get().setSheetMode(target);
+    },
+  };
+};

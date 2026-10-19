@@ -1,6 +1,11 @@
 import type React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const rendered = vi.hoisted(() => ({
+  sources: [] as { id: string; coordinates: [number, number][] }[],
+  colors: [] as { id: string; color: unknown }[],
+}));
 
 vi.mock("@/stores/useMapStore", () => ({
   default: vi.fn(),
@@ -15,14 +20,26 @@ import { TRAFFIC_BASE_COLOR, TRAFFIC_LEVEL_COLORS } from "@/types/route";
 const mockUseMapStore = vi.mocked(useMapStore);
 
 vi.mock("react-map-gl/maplibre", () => ({
-  Source: ({ id, children }: { id: string; children?: React.ReactNode }) => (
-    <div data-testid="mock-source" data-source-id={id}>
-      {children}
-    </div>
-  ),
-  Layer: ({ id }: { id: string }) => (
-    <div data-testid="mock-layer" data-layer-id={id} />
-  ),
+  Source: ({
+    id,
+    children,
+    data,
+  }: {
+    id: string;
+    children?: React.ReactNode;
+    data: { geometry: { coordinates: [number, number][] } };
+  }) => {
+    rendered.sources.push({ id, coordinates: data.geometry.coordinates });
+    return (
+      <div data-testid="mock-source" data-source-id={id}>
+        {children}
+      </div>
+    );
+  },
+  Layer: ({ id, paint }: { id: string; paint: Record<string, unknown> }) => {
+    rendered.colors.push({ id, color: paint["line-color"] });
+    return <div data-testid="mock-layer" data-layer-id={id} />;
+  },
   Marker: ({
     children,
     longitude,
@@ -37,6 +54,132 @@ vi.mock("react-map-gl/maplibre", () => ({
     </div>
   ),
 }));
+
+beforeEach(() => {
+  rendered.sources = [];
+  rendered.colors = [];
+});
+
+describe("venue outdoor and walking-tail display", () => {
+  const primary: AccessibleRoute = {
+    routeId: "synthetic-drive",
+    routeToken: "primary-token",
+    routeName: "Drive",
+    totalMinutes: 2,
+    transferCount: 0,
+    accessibilityHighlights: [],
+    legs: [
+      {
+        type: "DRIVE",
+        from: "Start",
+        to: "Parking",
+        distanceM: 100,
+        durationMin: 2,
+        polyline: [
+          [10, 10],
+          [10.001, 10],
+        ],
+      },
+    ],
+  };
+  const tail: AccessibleRoute = {
+    routeId: "synthetic-tail",
+    routeToken: "tail-token",
+    routeName: "Walk to gate",
+    totalMinutes: 1,
+    transferCount: 0,
+    accessibilityHighlights: [],
+    legs: [
+      {
+        type: "WALK",
+        from: "Parking",
+        to: "Gate",
+        distanceM: 20,
+        minutesEst: 1,
+        a11yFacilities: [],
+        polyline: [
+          [10.001, 10],
+          [10.001, 10.0001],
+          [10.0011, 10.0001],
+        ],
+      },
+    ],
+  };
+  const unusedTail: AccessibleRoute = {
+    ...tail,
+    routeId: "different-tail",
+    legs: [
+      {
+        ...tail.legs[0],
+        polyline: [
+          [20, 20],
+          [20.001, 20],
+        ],
+      },
+    ],
+  };
+  function renderState(
+    options: {
+      isNavigating?: boolean;
+      active?: AccessibleRoute | null;
+      status?: "idle" | "outdoor" | "guiding" | "arrived";
+      withoutVenue?: boolean;
+    } = {},
+  ) {
+    const state = {
+      selectRoute: { index: 0, route: primary },
+      routeWaypoints: [],
+      sosNavActive: false,
+      isNavigating: options.isNavigating ?? false,
+      activeNavigationRoute: options.active ?? null,
+      venueJourney: options.withoutVenue
+        ? null
+        : {
+            guidance: { status: options.status ?? "idle" },
+            outdoor: {
+              approachRoutes: {
+                "primary-token": tail,
+                "unselected-token": unusedTail,
+              },
+            },
+          },
+    };
+    mockUseMapStore.mockImplementation((selector) => selector(state as never));
+    const before = JSON.stringify({ primary, tail });
+    const html = renderToStaticMarkup(<RouteLine />);
+    expect(JSON.stringify({ primary, tail })).toBe(before);
+    return html;
+  }
+  it("draws the active walking tail during navigation instead of the selected primary route", () => {
+    renderState({ isNavigating: true, active: tail, status: "outdoor" });
+    expect(rendered.sources.map((source) => source.coordinates)).toEqual([
+      tail.legs[0].polyline,
+    ]);
+  });
+  it.each(["guiding", "arrived"] as const)(
+    "hides the old outdoor line once the venue journey is %s",
+    (status) => {
+      const html = renderState({ isNavigating: true, active: primary, status });
+      expect(rendered.sources).toHaveLength(0);
+      expect(html).not.toContain("mock-marker");
+    },
+  );
+  it("keeps the selected primary and its own walking tail as distinct blue overview geometry", () => {
+    renderState();
+    expect(rendered.sources.map((source) => source.coordinates)).toEqual([
+      primary.legs[0].polyline,
+      tail.legs[0].polyline,
+    ]);
+    expect(new Set(rendered.sources.map((source) => source.id)).size).toBe(2);
+    expect(rendered.colors.at(-1)?.color).toBe("#2563eb");
+  });
+  it("does not add a venue tail to an ordinary outdoor overview", () => {
+    renderState({ withoutVenue: true });
+    expect(rendered.sources.map((source) => source.coordinates)).toEqual([
+      primary.legs[0].polyline,
+    ]);
+  });
+});
 
 describe("Polyline component", () => {
   it("renders Source and Layer with matching keys and IDs", () => {

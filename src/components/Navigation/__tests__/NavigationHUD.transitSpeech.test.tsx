@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +7,10 @@ const h = vi.hoisted(() => ({
   cursor: 0,
   effects: [] as (() => unknown)[],
   gemini: false,
+  language: "en",
+  buttons: [] as { onClick?: () => void }[],
+  startApproach: vi.fn(),
+  confirmArrival: vi.fn(),
   synth: { cancel: vi.fn(), speak: vi.fn() },
 }));
 vi.mock("react", async (original) => ({
@@ -44,7 +49,7 @@ vi.mock("@/stores/useNavStore", async (original) => {
 vi.mock("@/i18n/client", () => ({
   useAppTranslation: () => ({
     t: (key: string) => key,
-    i18n: { language: "en" },
+    i18n: { language: h.language },
   }),
 }));
 vi.mock("@/hook/useComputeRoute", () => ({
@@ -64,7 +69,23 @@ vi.mock("@/lib/api/a11y", async (original) => ({
     data: { reports: [] },
   })),
 }));
+vi.mock("@/lib/navigation/navigationLifecycle", async (original) => ({
+  ...(await original<typeof import("@/lib/navigation/navigationLifecycle")>()),
+  startVenueApproach: h.startApproach,
+  confirmVenueArrival: h.confirmArrival,
+}));
+vi.mock("@/components/ui/button", () => ({
+  Button: ({ children, onClick, ...props }: ComponentProps<"button">) => {
+    h.buttons.push({ onClick: onClick as (() => void) | undefined });
+    return (
+      <button {...props} onClick={onClick}>
+        {children}
+      </button>
+    );
+  },
+}));
 
+import type { VenueJourney } from "@/lib/indoor/journey";
 import {
   confirmBoarded,
   newTransitRide,
@@ -72,6 +93,7 @@ import {
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type { AccessibleRoute, NavInstruction } from "@/types/route";
+import NavigationContent from "../../BottomSheet/NavigationContent";
 import NavigationHUD from "../NavigationHUD";
 
 const instructions = [
@@ -88,14 +110,19 @@ const route = {
 function frame() {
   h.cursor = 0;
   h.effects.length = 0;
-  renderToStaticMarkup(<NavigationHUD />);
+  const markup = renderToStaticMarkup(<NavigationHUD />);
   // Run actual HUD effects in declaration order (including generic/transit/arrival/advisory).
   for (const effect of h.effects) effect();
+  return markup;
 }
 beforeEach(() => {
   vi.useFakeTimers();
   h.refs.length = 0;
   h.gemini = false;
+  h.language = "en";
+  h.buttons.length = 0;
+  h.startApproach.mockClear();
+  h.confirmArrival.mockClear();
   h.synth.cancel.mockClear();
   h.synth.speak.mockClear();
   vi.stubGlobal("window", {
@@ -114,6 +141,7 @@ beforeEach(() => {
     activeNavigationRoute: route,
     isNavigating: true,
     userLocation: null,
+    venueJourney: null,
   });
   const nav = useNavStore.getState();
   nav.setNavigationIdentity("n", 1);
@@ -184,5 +212,292 @@ describe("real HUD effect ordering on bus exit", () => {
         ([utter]) => utter.text === "navBusSpeakAlight",
       ),
     ).toBe(false);
+  });
+});
+
+describe("an upcoming arrival maneuver is not a completed arrival", () => {
+  const walkInstructions = [
+    { type: "depart", legType: "WALK", legIndex: 0, text: "WALK AHEAD" },
+    {
+      type: "arrive",
+      legType: "WALK",
+      legIndex: 0,
+      text: "SOURCE ARRIVAL CLAIM",
+    },
+  ] as NavInstruction[];
+
+  function prepareWalk(arrived = false) {
+    const nav = useNavStore.getState();
+    nav.setInstructions(walkInstructions);
+    nav.setCurrentStepIndex(1);
+    nav.setTransitRide(null, null);
+    nav.setDistanceToNextM(100);
+    nav.setArrived(arrived);
+  }
+
+  it("keeps the arrival target and distance but presents and speaks continuing while 100 metres away", () => {
+    prepareWalk();
+    const markup = frame();
+    expect(markup).toContain("navContinueToDestination");
+    expect(markup).not.toContain("SOURCE ARRIVAL CLAIM");
+    expect(h.synth.speak).toHaveBeenCalledTimes(1);
+    expect(h.synth.speak.mock.calls[0][0].text).toBe(
+      "navContinueToDestination",
+    );
+    const nav = useNavStore.getState();
+    expect(nav.arrived).toBe(false);
+    expect(nav.currentStepIndex).toBe(1);
+    expect(nav.distanceToNextM).toBe(100);
+    expect(nav.instructions[1].text).toBe("SOURCE ARRIVAL CLAIM");
+  });
+
+  it("announces completed arrival only through the existing arrival effect", () => {
+    prepareWalk(true);
+    const markup = frame();
+    expect(markup).toContain("arrivedDesc");
+    expect(markup).not.toContain("navContinueToDestination");
+    expect(h.synth.speak).toHaveBeenCalledTimes(1);
+    expect(h.synth.speak.mock.calls[0][0].text).toBe("arrivedDesc");
+  });
+
+  it("does not claim arrival in either upcoming-maneuver preview", () => {
+    prepareWalk();
+    useNavStore.getState().setCurrentStepIndex(0);
+    const markup = frame();
+    expect(markup).toContain("WALK AHEAD");
+    expect(markup).toContain("navContinueToDestination");
+    expect(markup).not.toContain("SOURCE ARRIVAL CLAIM");
+  });
+
+  it("uses the same not-yet-arrived wording in the real step list", () => {
+    prepareWalk();
+    const markup = renderToStaticMarkup(<NavigationContent />);
+    expect(markup).toContain("navContinueToDestination");
+    expect(markup).not.toContain("SOURCE ARRIVAL CLAIM");
+    useNavStore.getState().setArrived(true);
+    expect(renderToStaticMarkup(<NavigationContent />)).toContain(
+      "arrivedDesc",
+    );
+  });
+});
+
+describe("visible mixed-journey arrival actions in the outdoor HUD", () => {
+  function prepareMixed(phase: "travel" | "approach", hasApproach = true) {
+    const primary = {
+      ...route,
+      legs: [
+        {
+          type: "DRIVE",
+          polyline: [
+            [10, 10],
+            [10.001, 10],
+          ],
+        },
+      ] as AccessibleRoute["legs"],
+    };
+    const value = {
+      id: "mixed-ui",
+      guidance: { status: "outdoor", stepIndex: 0 },
+      to: { name: "Synthetic Classroom" },
+      outdoor: {
+        phase,
+        selectedIndex: 0,
+        navigationIndex: 0,
+        routes: [primary],
+        arrival: { name: "Synthetic Gate" },
+        approachRoutes: hasApproach
+          ? { r: { ...route, routeToken: "walk-token" } }
+          : undefined,
+      },
+    } as VenueJourney;
+    useMapStore.setState({
+      venueJourney: value,
+      sidebarCollapsed: true,
+      activeNavigationRoute:
+        phase === "approach" ? value.outdoor?.approachRoutes?.r : primary,
+    });
+    h.language = "zh-TW";
+    const nav = useNavStore.getState();
+    nav.setInstructions([
+      {
+        type: "arrive",
+        legType: "WALK",
+        text: "SOURCE ARRIVAL CLAIM",
+      } as NavInstruction,
+    ]);
+    nav.setCurrentStepIndex(0);
+    nav.setTransitRide(null, null);
+    nav.setArrived(true);
+  }
+
+  it("shows the parking handoff action in the actual HUD even with the sheet closed, and speaks the parking stage", () => {
+    prepareMixed("travel");
+    const markup = frame();
+    expect(markup).toContain("已到下車點");
+    expect(markup).toMatch(/<button[^>]*>已下車，繼續前往校門<\/button>/);
+    expect(markup).toContain("endNav");
+    expect(markup).not.toContain("arrivedDesc");
+    expect(markup).not.toContain("SOURCE ARRIVAL CLAIM");
+    expect(h.synth.speak).toHaveBeenCalledTimes(1);
+    expect(h.synth.speak.mock.calls[0][0].text).toContain("已到下車點");
+    h.buttons.at(-1)?.onClick?.();
+    expect(h.startApproach).toHaveBeenCalledOnce();
+    expect(h.confirmArrival).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])(
+    "shows gate continuation without claiming classroom arrival (has approach: %s)",
+    (hasApproach) => {
+      prepareMixed(hasApproach ? "approach" : "travel", hasApproach);
+      const markup = frame();
+      expect(markup).toContain("接近校門");
+      expect(markup).toMatch(/<button[^>]*>接續校內引導<\/button>/);
+      expect(markup).not.toContain("arrivedDesc");
+      expect(h.synth.speak.mock.calls[0][0].text).toContain("接近校門");
+      h.buttons.at(-1)?.onClick?.();
+      expect(h.confirmArrival).toHaveBeenCalledOnce();
+      expect(h.startApproach).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([true, false])(
+    "uses the navigating primary even while previewing another candidate (active has approach: %s)",
+    (activeHasApproach) => {
+      prepareMixed("travel", activeHasApproach);
+      const journey = useMapStore.getState().venueJourney;
+      if (!journey?.outdoor) throw new Error("Expected outdoor fixture");
+      const active = journey.outdoor.routes[0];
+      const preview = { ...route, routeToken: "preview-primary" };
+      useMapStore.setState({
+        venueJourney: {
+          ...journey,
+          outdoor: {
+            ...journey.outdoor,
+            routes: [active, preview],
+            selectedIndex: 1,
+            navigationIndex: 0,
+            approachRoutes: activeHasApproach
+              ? journey.outdoor.approachRoutes
+              : { "preview-primary": { ...route, routeToken: "preview-walk" } },
+          },
+        },
+        selectRoute: { index: 1, route: preview },
+      });
+      const markup = frame();
+      expect(markup).toContain(activeHasApproach ? "已到下車點" : "接近校門");
+      expect(h.synth.speak.mock.calls[0][0].text).toContain(
+        activeHasApproach ? "已到下車點" : "接近校門",
+      );
+      h.buttons.at(-1)?.onClick?.();
+      expect(h.startApproach).toHaveBeenCalledTimes(activeHasApproach ? 1 : 0);
+      expect(h.confirmArrival).toHaveBeenCalledTimes(activeHasApproach ? 0 : 1);
+      expect(useMapStore.getState().activeNavigationRoute).toBe(active);
+    },
+  );
+
+  it("keeps the arrival action and speech in the current UI language", () => {
+    prepareMixed("travel");
+    h.language = "en";
+    const markup = frame();
+    expect(markup).toContain("You have reached the drop-off point");
+    expect(markup).toMatch(
+      /<button[^>]*>Continue on foot to the campus entrance<\/button>/,
+    );
+    expect(h.synth.speak.mock.calls[0][0].text).toContain(
+      "You have reached the drop-off point",
+    );
+    expect(markup).not.toContain("已到下車點");
+  });
+
+  it.each(["walk", "transit"] as const)(
+    "offers a walking continuation without a false drop-off claim when the %s primary ends on foot",
+    (travelMode) => {
+      prepareMixed("travel");
+      const value = useMapStore.getState().venueJourney;
+      if (!value?.outdoor) throw new Error("Expected outdoor fixture");
+      const primary = {
+        ...value.outdoor.routes[0],
+        legs: [
+          ...(travelMode === "transit"
+            ? [
+                {
+                  type: "BUS",
+                  polyline: [
+                    [9, 10],
+                    [10, 10],
+                  ],
+                },
+              ]
+            : []),
+          {
+            type: "WALK",
+            polyline: [
+              [10, 10],
+              [10.001, 10],
+            ],
+          },
+        ] as AccessibleRoute["legs"],
+      };
+      useMapStore.setState({
+        venueJourney: {
+          ...value,
+          outdoor: { ...value.outdoor, travelMode, routes: [primary] },
+        },
+        activeNavigationRoute: primary,
+      });
+      const markup = frame();
+      expect(markup).toMatch(/<button[^>]*>繼續步行前往校門<\/button>/);
+      expect(markup).not.toContain("下車");
+      expect(markup).not.toContain("接近校門");
+      expect(h.synth.speak.mock.calls[0][0].text).toContain("繼續步行");
+      expect(h.synth.speak.mock.calls[0][0].text).not.toContain("下車");
+      h.buttons.at(-1)?.onClick?.();
+      expect(h.startApproach).toHaveBeenCalledOnce();
+      expect(h.confirmArrival).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the ordinary HUD without origin notices or premature venue arrival actions before reaching the path", () => {
+    prepareMixed("travel", false);
+    const value = useMapStore.getState().venueJourney;
+    if (!value?.outdoor) throw new Error("Expected outdoor fixture");
+    const primary = {
+      ...value.outdoor.routes[0],
+      legs: [
+        {
+          type: "WALK",
+          polyline: [
+            [0.000125, 0],
+            [0.001, 0],
+          ],
+        },
+      ] as AccessibleRoute["legs"],
+    };
+    useMapStore.setState({
+      venueJourney: {
+        ...value,
+        outdoor: {
+          ...value.outdoor,
+          origin: {
+            kind: "coordinate",
+            position: { lat: 0, lng: 0 },
+            address: "Original origin",
+          },
+          routes: [primary],
+        },
+      },
+      activeNavigationRoute: primary,
+      userLocation: { lat: 0, lng: 0 },
+    });
+    useNavStore.getState().setArrived(false);
+    const markup = frame();
+    expect(markup).not.toContain("路線從附近道路開始");
+    expect(markup).not.toContain("查看路線起點");
+    expect(markup).not.toContain("校內部分路段的高差或通行條件待確認");
+    expect(markup).not.toContain("接續校內引導");
+    expect(markup).not.toContain("下車");
+    expect(markup).toContain("navContinueToDestination");
+    expect(useMapStore.getState().activeNavigationRoute).toBe(primary);
+    expect(useNavStore.getState().arrived).toBe(false);
   });
 });

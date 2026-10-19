@@ -9,11 +9,16 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { useAppTranslation } from "@/i18n/client";
+import { navigationInstructionText } from "@/lib/navigation/instructionPresentation";
 import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
 import { cn } from "@/lib/utils";
+import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import { formatDistance } from "@/types/route";
 import { Button } from "../ui/button";
+import VenueJourneyContent, {
+  VenueArrivalConfirmation,
+} from "./VenueJourneyContent";
 
 /**
  * Step list shown while navigating (the live banner/ETA moved to the on-map
@@ -21,6 +26,19 @@ import { Button } from "../ui/button";
  * only for local preview. Live and voice-owned steps remain read-only.
  */
 export default function NavigationContent() {
+  const journey = useMapStore((s) => s.venueJourney);
+  const arrived = useNavStore((s) => s.arrived);
+  if (journey && journey.guidance.status !== "outdoor")
+    return <VenueJourneyContent navigating />;
+  return (
+    <div className="space-y-4">
+      <VenueArrivalConfirmation />
+      {(!journey || !arrived) && <OutdoorNavigationContent />}
+    </div>
+  );
+}
+
+function OutdoorNavigationContent() {
   const { t } = useAppTranslation();
 
   const instructions = useNavStore((s) => s.instructions);
@@ -139,7 +157,7 @@ export default function NavigationContent() {
                     active ? "font-semibold" : "font-medium",
                   )}
                 >
-                  {step.text}
+                  {navigationInstructionText(step, arrived, t)}
                 </p>
                 <div className="flex items-center gap-2 mt-0.5">
                   {step.legType === "WALK" ? (

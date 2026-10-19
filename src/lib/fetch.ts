@@ -14,6 +14,7 @@ interface RequestOptions<T> {
   /** Business permission failures must not discard a valid login. */
   preserveSessionOnForbidden?: boolean;
   signal?: AbortSignal;
+  cache?: RequestCache;
   /**
    * Some authenticated endpoints reuse 401 for a business-logic error
    * (e.g. POST /user/auth/password's "current password wrong") rather

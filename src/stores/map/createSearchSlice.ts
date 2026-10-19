@@ -17,12 +17,9 @@ export const createSearchSlice: MapSliceCreator<SearchSlice> = (set, get) => ({
     });
     const seen = new Set<string>();
     const dedupedHistory = validHistory.filter((item) => {
-      const name =
-        item.kind === "place"
-          ? item.place.name || item.place.fullAddress || ""
-          : item.address;
-      if (seen.has(name)) return false;
-      seen.add(name);
+      const key = placeKey(item);
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
     set({ searchHistory: dedupedHistory });
@@ -34,13 +31,8 @@ export const createSearchSlice: MapSliceCreator<SearchSlice> = (set, get) => ({
         : searchTerm.address;
     if (!name?.trim()) return;
     const { searchHistory } = get();
-    const deduped = searchHistory.filter((item) => {
-      const itemName =
-        item.kind === "place"
-          ? item.place.name || item.place.fullAddress || ""
-          : item.address;
-      return itemName !== name;
-    });
+    const key = placeKey(searchTerm);
+    const deduped = searchHistory.filter((item) => placeKey(item) !== key);
     const newHistory = [searchTerm, ...deduped.slice(0, 9)];
     localStorage.setItem("searchHistory", JSON.stringify(newHistory));
     set({ searchHistory: newHistory });
@@ -57,12 +49,16 @@ export const createSearchSlice: MapSliceCreator<SearchSlice> = (set, get) => ({
   savedPlaceKeys: new Set<string>(),
   savedPlaceCategories: {},
   initSavedPlaces: (places) => {
+    const seen = new Set<string>();
     const validPlaces = places.filter((item) => {
       const name =
         item.kind === "place"
           ? item.place.name || item.place.fullAddress || ""
           : item.address;
-      return Boolean(name?.trim());
+      const key = placeKey(item);
+      if (!name?.trim() || seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
     set({
       savedPlaces: validPlaces,

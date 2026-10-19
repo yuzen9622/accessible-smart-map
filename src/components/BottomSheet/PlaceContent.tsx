@@ -35,6 +35,7 @@ import type { OsmPlaceDetail } from "@/types/route";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+import VenuePlaceContent from "./VenuePlaceContent";
 
 const PlaceReviewSection = dynamic(() => import("./PlaceReviewSection"), {
   loading: () => (
@@ -71,6 +72,13 @@ function getAccessibilityStatusLabel(
 }
 
 export default function PlaceContent() {
+  const detail = useMapStore((s) => s.infoShow);
+  if (detail.kind === "venue-place" || detail.kind === "venue-feature")
+    return <VenuePlaceContent detail={detail} />;
+  return <OutdoorPlaceContent />;
+}
+
+function OutdoorPlaceContent() {
   const { t, i18n } = useAppTranslation();
   const lang = toApiLang(i18n.language) ?? "zh-TW";
   const {

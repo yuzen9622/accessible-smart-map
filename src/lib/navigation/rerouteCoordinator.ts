@@ -1,3 +1,4 @@
+import { routeReachesArrival } from "@/lib/indoor/arrival";
 import { atomicStoreUpdates } from "@/stores/atomicNotifications";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
@@ -85,12 +86,88 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
     // nested route's independent warning array (including for legacy payloads).
     warningDetails: replacement.warningDetails,
   };
+  const journey = map.venueJourney;
+  const outdoor = journey?.outdoor;
+  let updatedOutdoor = outdoor;
+  let replacingApproach = false;
+  if (outdoor && journey) {
+    const reject = (target = "原校園入口") => {
+      nav.setRerouteError(
+        `重新規劃的路線未接到${target}，已保留原路線；請重新規劃完整行程。`,
+        false,
+      );
+      return false;
+    };
+    if (journey.guidance.status !== "outdoor") return reject();
+
+    if (outdoor.phase === "approach") {
+      // A walk token is a separate navigation session; never install it as a
+      // primary transport candidate, even while another candidate is previewed.
+      const matching = Object.entries(outdoor.approachRoutes ?? {}).filter(
+        ([primaryToken, approach]) =>
+          outdoor.routes.some((item) => item.routeToken === primaryToken) &&
+          approach.navigationId === currentNavigationId &&
+          approach.routeVersion === currentVersion &&
+          approach.routeToken === currentRoute?.routeToken,
+      );
+      if (
+        matching.length !== 1 ||
+        !routeReachesArrival(route, outdoor.arrival.position)
+      )
+        return reject();
+      updatedOutdoor = {
+        ...outdoor,
+        approachRoutes: {
+          ...outdoor.approachRoutes,
+          [matching[0][0]]: route,
+        },
+      };
+      replacingApproach = true;
+    } else {
+      const primary = outdoor.routes.find(
+        (item) =>
+          item.navigationId === currentNavigationId &&
+          item.routeVersion === currentVersion &&
+          item.routeToken === currentRoute?.routeToken,
+      );
+      if (!primary) return reject();
+      const approach = primary.routeToken
+        ? outdoor.approachRoutes?.[primary.routeToken]
+        : undefined;
+      const walkStart = approach?.legs.flatMap((leg) => leg.polyline ?? [])[0];
+      const target = approach
+        ? walkStart && { lng: walkStart[0], lat: walkStart[1] }
+        : outdoor.arrival.position;
+      const targetName = approach ? "原步行接續點" : "原校園入口";
+      if (!target || !routeReachesArrival(route, target))
+        return reject(targetName);
+
+      let approachRoutes = outdoor.approachRoutes;
+      if (approach && primary.routeToken) {
+        if (
+          replacement.routeToken !== primary.routeToken &&
+          approachRoutes?.[replacement.routeToken]
+        )
+          return reject(targetName);
+        approachRoutes = { ...approachRoutes };
+        delete approachRoutes[primary.routeToken];
+        approachRoutes[replacement.routeToken] = approach;
+      }
+      updatedOutdoor = {
+        ...outdoor,
+        routes: outdoor.routes.map((item) => (item === primary ? route : item)),
+        ...(approachRoutes ? { approachRoutes } : {}),
+      };
+    }
+  }
   const viewingReplaced =
+    !replacingApproach &&
     map.selectRoute?.route.navigationId === replacement.navigationId;
-  const computeRoutes =
-    map.computeRoutes?.map((item) =>
-      item.navigationId === replacement.navigationId ? route : item,
-    ) ?? null;
+  const computeRoutes = replacingApproach
+    ? map.computeRoutes
+    : (map.computeRoutes?.map((item) =>
+        item.navigationId === replacement.navigationId ? route : item,
+      ) ?? null);
   const selectedIndex = computeRoutes?.indexOf(route) ?? -1;
   const totalM = replacement.instructions.reduce(
     (sum, instruction) => sum + (instruction.distanceM ?? 0),
@@ -99,6 +176,14 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
 
   atomicStoreUpdates(() => {
     useMapStore.setState({
+      ...(updatedOutdoor && journey
+        ? {
+            venueJourney: {
+              ...journey,
+              outdoor: updatedOutdoor,
+            },
+          }
+        : {}),
       activeNavigationRoute: map.activeNavigationRoute ? route : null,
       ...(viewingReplaced
         ? {

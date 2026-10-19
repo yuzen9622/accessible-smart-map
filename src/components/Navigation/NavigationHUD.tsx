@@ -16,6 +16,10 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import {
+  VenueArrivalConfirmation,
+  venueOutdoorArrivalCopy,
+} from "@/components/BottomSheet/VenueJourneyContent";
 import { NumberTicker } from "@/components/motion/number-ticker";
 import useComputeRoute from "@/hook/useComputeRoute";
 import useNavigationAudio from "@/hook/useNavigationAudio";
@@ -23,6 +27,7 @@ import { useAppTranslation } from "@/i18n/client";
 import { getSafetyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
 import { selectAdvisoryAnnouncement } from "@/lib/navigation/advisorySpeech";
+import { navigationInstructionText } from "@/lib/navigation/instructionPresentation";
 import {
   findLegHandoffIndex,
   isVehicleLegType,
@@ -102,11 +107,12 @@ const REROUTE_REASON_KEY: Record<NavRerouteReason, string> = {
  */
 export default function NavigationHUD() {
   const { t, i18n } = useAppTranslation();
-  const { route, userLocation } = useMapStore(
+  const { route, userLocation, venueJourney } = useMapStore(
     useShallow((s) => ({
       // Keep nested references stable: useShallow only compares one level.
       route: s.activeNavigationRoute ?? s.selectRoute?.route,
       userLocation: s.userLocation,
+      venueJourney: s.venueJourney,
     })),
   );
   const { handleComputeRoute, isLoading } = useComputeRoute();
@@ -120,6 +126,10 @@ export default function NavigationHUD() {
   const estimatedArrivalAt = useNavStore((s) => s.estimatedArrivalAt);
   const isOffRoute = useNavStore((s) => s.isOffRoute);
   const arrived = useNavStore((s) => s.arrived);
+  const venueArrival = venueOutdoorArrivalCopy(venueJourney, i18n.language);
+  const arrivalSpeech = venueArrival
+    ? `${venueArrival.title}。${venueArrival.description}`
+    : t("arrivedDesc");
   const voiceEnabled = useNavStore((s) => s.voiceEnabled);
   const navigationSource = useNavStore((s) => s.navigationSource);
   const navigationMode = useNavStore((s) => s.navigationMode);
@@ -277,7 +287,9 @@ export default function NavigationHUD() {
       );
     } else if ((decision.generic || navigationSource === "voice") && !preview) {
       const s = instructions[currentStep];
-      if (s) speak(s.text);
+      // The arrival effect owns the completed-arrival announcement.
+      if (s && !(s.type === "arrive" && arrived))
+        speak(navigationInstructionText(s, arrived, t));
     }
   }, [
     speechScope,
@@ -289,11 +301,13 @@ export default function NavigationHUD() {
     navT,
     preview,
     navigationSource,
+    arrived,
+    t,
   ]);
 
   useEffect(() => {
-    if (arrived) speak(t("arrivedDesc"));
-  }, [arrived, speak, t]);
+    if (arrived) speak(arrivalSpeech);
+  }, [arrived, speak, arrivalSpeech]);
 
   const spokenAdvisoryKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -508,27 +522,49 @@ export default function NavigationHUD() {
           )}
         </div>
         {arrived ? (
-          <motion.div
-            role="alert"
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-green-600 text-white rounded-2xl shadow-2xl p-5 flex items-center gap-4"
-          >
-            <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="h-8 w-8" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xl font-bold leading-tight">{t("arrived")}</p>
-              <p className="text-sm text-white/80 mt-0.5">{t("arrivedDesc")}</p>
-            </div>
-            <button
-              type="button"
-              onClick={stopNavigation}
-              className="shrink-0 bg-white/20 hover:bg-white/30 rounded-full px-5 py-2.5 min-h-[44px] flex items-center text-sm font-semibold transition-colors"
+          venueArrival ? (
+            <motion.div
+              role="alert"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-primary/25 bg-background text-foreground shadow-2xl p-5 space-y-3"
             >
-              {t("endNav")}
-            </button>
-          </motion.div>
+              <VenueArrivalConfirmation inHud language={i18n.language} />
+              <button
+                type="button"
+                onClick={stopNavigation}
+                className="w-full min-h-[44px] rounded-xl border px-4 py-2 text-sm font-semibold hover:bg-muted"
+              >
+                {t("endNav")}
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              role="alert"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-green-600 text-white rounded-2xl shadow-2xl p-5 flex items-center gap-4"
+            >
+              <div className="h-14 w-14 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="h-8 w-8" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xl font-bold leading-tight">
+                  {t("arrived")}
+                </p>
+                <p className="text-sm text-white/80 mt-0.5">
+                  {t("arrivedDesc")}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={stopNavigation}
+                className="shrink-0 bg-white/20 hover:bg-white/30 rounded-full px-5 py-2.5 min-h-[44px] flex items-center text-sm font-semibold transition-colors"
+              >
+                {t("endNav")}
+              </button>
+            </motion.div>
+          )
         ) : (
           <div className="bg-slate-900 dark:ring-1 dark:ring-white/10 text-white rounded-2xl shadow-2xl overflow-hidden">
             <div className="flex items-center gap-3.5 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6">
@@ -562,7 +598,7 @@ export default function NavigationHUD() {
                 >
                   {transitGuide
                     ? transitInstruction(navT, transitGuide)
-                    : (step?.text ?? t("preparingNav"))}
+                    : navigationInstructionText(step, arrived, t)}
                 </p>
                 {transitGuide && (
                   <p className="text-sm text-white/70 mt-1">
@@ -621,7 +657,7 @@ export default function NavigationHUD() {
                 </span>
                 <NextIcon className="h-4.5 w-4.5 shrink-0 text-white/60" />
                 <span className="text-sm text-white/70 truncate">
-                  {nextStep.text}
+                  {navigationInstructionText(nextStep, false, t)}
                 </span>
               </div>
             )}
@@ -857,7 +893,7 @@ export default function NavigationHUD() {
             <div className="hidden lg:flex flex-1 items-center gap-2 min-w-0 px-3 py-2 rounded-xl bg-muted/50">
               <NextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="text-sm text-muted-foreground truncate">
-                {nextStep.text}
+                {navigationInstructionText(nextStep, false, t)}
               </span>
             </div>
           )}

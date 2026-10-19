@@ -27,6 +27,7 @@ export interface RouteSessionSnapshot {
   computeRoutes: unknown[] | null;
   selectRoute: unknown | null;
   destination: unknown | null;
+  venueJourney?: unknown | null;
 }
 
 /**
@@ -43,7 +44,8 @@ export function hasRouteSession(snapshot: RouteSessionSnapshot): boolean {
   return (
     snapshot.computeRoutes !== null ||
     snapshot.selectRoute !== null ||
-    snapshot.destination !== null
+    snapshot.destination !== null ||
+    snapshot.venueJourney != null
   );
 }
 
@@ -56,8 +58,11 @@ export type RouteResumeTarget = Extract<SheetMode, "plan" | "route">;
  */
 export function routeResumeTarget(
   computeRoutes: unknown[] | null,
+  venueJourney?: unknown | null,
 ): RouteResumeTarget {
-  return computeRoutes && computeRoutes.length > 0 ? "route" : "plan";
+  return venueJourney || (computeRoutes && computeRoutes.length > 0)
+    ? "route"
+    : "plan";
 }
 
 /**

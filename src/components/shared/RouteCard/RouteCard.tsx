@@ -15,6 +15,7 @@ import { fitRouteBounds, routeBoundsFromLegs } from "@/lib/mapCamera";
 import { legSourceName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
+import type { LatLng } from "@/types";
 import type { AccessibleRoute } from "@/types/route";
 import {
   formatDistance,
@@ -40,15 +41,23 @@ import {
   STAR_COLOR,
   scoreBarColor,
 } from "./utils";
+import { type WalkingContinuation, WalkStepsList } from "./WalkStepsList";
 
 type RouteCardProps = {
   route: AccessibleRoute;
   idx: number;
+  /** A mixed journey's primary ends at its real outdoor handoff, not the room. */
+  destinationDisplay?: { position: LatLng; name: string };
+  durationLabel?: string;
+  walkingContinuation?: WalkingContinuation;
 };
 
 export const RouteCard = memo(function RouteCard({
   route,
   idx,
+  destinationDisplay,
+  durationLabel,
+  walkingContinuation,
 }: RouteCardProps) {
   const {
     setRouteSelect,
@@ -76,13 +85,16 @@ export const RouteCard = memo(function RouteCard({
   const isSelected = selectRoute?.index === idx;
   const [scoreOpen, setScoreOpen] = useState(false);
   const scoreDetailId = useId();
+  const separateWalkingContinuation =
+    walkingContinuation && route.legs.at(-1)?.type !== "WALK";
 
   const pointCtx: PointLabelContext = {
     originPosition: origin?.position ?? null,
-    destinationPosition: destination?.position ?? null,
+    destinationPosition:
+      destinationDisplay?.position ?? destination?.position ?? null,
     userLocation,
     originName,
-    destinationName,
+    destinationName: destinationDisplay?.name ?? destinationName,
     originFallback: t("origin"),
     destinationFallback: t("destination"),
     myLocationFallback: t("myLocation"),
@@ -196,6 +208,7 @@ export const RouteCard = memo(function RouteCard({
           <div className="flex items-center gap-1.5 text-muted-foreground shrink-0">
             <Clock className="h-4 w-4" />
             <span className="font-bold text-sm tabular-nums">
+              {durationLabel && `${durationLabel} `}
               {formatDuration(route.totalMinutes)}
             </span>
           </div>
@@ -292,12 +305,12 @@ export const RouteCard = memo(function RouteCard({
           {/* The only channel telling the user this route carries no
               accessibility guarantee, so it sits above the leg list. */}
           {!route.routeToken && (
-            <p role="status" className="text-amber-700">
+            <p role="status" className="text-amber-700 dark:text-amber-400">
               {t("routeTokenUnavailable")}
             </p>
           )}
           {route.legs.some((leg) => !leg.polyline?.length) && (
-            <p role="status" className="text-amber-700">
+            <p role="status" className="text-amber-700 dark:text-amber-400">
               {t("routeGeometryIncomplete")}
             </p>
           )}
@@ -329,7 +342,8 @@ export const RouteCard = memo(function RouteCard({
               const color = getLegColor(leg);
               return (
                 <div key={getLegKey(leg)} className="relative pl-8">
-                  {index !== route.legs.length - 1 && (
+                  {(index !== route.legs.length - 1 ||
+                    separateWalkingContinuation) && (
                     <div
                       className="absolute left-3.5 top-11 bottom-0 w-0.5 rounded-full"
                       style={{
@@ -361,11 +375,32 @@ export const RouteCard = memo(function RouteCard({
                       routeToken={route.routeToken}
                       routeIndex={idx}
                       legIndex={index}
+                      walkingContinuation={
+                        index === route.legs.length - 1 && leg.type === "WALK"
+                          ? walkingContinuation
+                          : undefined
+                      }
                     />
                   </div>
                 </div>
               );
             })}
+            {separateWalkingContinuation && (
+              <div className="relative pl-8">
+                <div className="absolute left-0 top-1 flex items-center justify-center w-8 h-8 rounded-full border-2 border-blue-500/55 bg-blue-500/10">
+                  <Footprints className="h-4 w-4 text-blue-500" aria-hidden />
+                </div>
+                <div className="pb-4 ml-4 space-y-1">
+                  <p className="text-sm font-medium">
+                    {t("walkToDestination", {
+                      destination: walkingContinuation.destinationName,
+                    })}
+                  </p>
+                  {walkingContinuation.summary}
+                  <WalkStepsList continuation={walkingContinuation.steps} />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Level 3: Professional layer (opt-in disclosure) ── */}

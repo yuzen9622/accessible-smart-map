@@ -1,0 +1,3555 @@
+{
+  "detail": {
+    "venueId": "nutc-sanmin",
+    "name": "合成測試校園（非實際圖資）",
+    "version": 7,
+    "sourceSha256": "synthetic-source",
+    "importedAt": "2026-10-17T00:00:00Z",
+    "center": [120, 24],
+    "buildings": [
+      {
+        "id": "info",
+        "name": "資訊館",
+        "aliases": ["info"],
+        "footprint": [
+          [
+            [120.0, 24],
+            [120.0003, 24],
+            [120.0003, 24.0003],
+            [120.0, 24.0003],
+            [120.0, 24]
+          ]
+        ],
+        "levels": [
+          {
+            "ordinal": 0,
+            "ref": "1F",
+            "elevationM": 0.0,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 1,
+            "ref": "2F",
+            "elevationM": 3.6,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 2,
+            "ref": "3F",
+            "elevationM": 7.2,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 3,
+            "ref": "4F",
+            "elevationM": 10.8,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 4,
+            "ref": "5F",
+            "elevationM": 14.4,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          }
+        ],
+        "floorHeightM": 3.6,
+        "groundOffsetM": 0,
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk",
+        "name": "中科大樓",
+        "aliases": ["zk"],
+        "footprint": [
+          [
+            [120.0005, 24],
+            [120.0008, 24],
+            [120.0008, 24.0003],
+            [120.0005, 24.0003],
+            [120.0005, 24]
+          ]
+        ],
+        "levels": [
+          {
+            "ordinal": -2,
+            "ref": "B2",
+            "elevationM": -7.2,
+            "coverage": {
+              "hasAnchor": false,
+              "hasRouteData": false,
+              "hasDisplayGeometry": false
+            }
+          },
+          {
+            "ordinal": -1,
+            "ref": "B1",
+            "elevationM": -3.6,
+            "coverage": {
+              "hasAnchor": false,
+              "hasRouteData": false,
+              "hasDisplayGeometry": false
+            }
+          },
+          {
+            "ordinal": 0,
+            "ref": "1F",
+            "elevationM": 0.0,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 1,
+            "ref": "2F",
+            "elevationM": 3.6,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 2,
+            "ref": "3F",
+            "elevationM": 7.2,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 3,
+            "ref": "4F",
+            "elevationM": 10.8,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 4,
+            "ref": "5F",
+            "elevationM": 14.4,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          }
+        ],
+        "floorHeightM": 3.6,
+        "groundOffsetM": 0,
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming",
+        "name": "昌明樓",
+        "aliases": ["changming"],
+        "footprint": [
+          [
+            [120.001, 24],
+            [120.0013, 24],
+            [120.0013, 24.0003],
+            [120.001, 24.0003],
+            [120.001, 24]
+          ]
+        ],
+        "levels": [
+          {
+            "ordinal": 0,
+            "ref": "1F",
+            "elevationM": 0.0,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 1,
+            "ref": "2F",
+            "elevationM": 3.6,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 2,
+            "ref": "3F",
+            "elevationM": 7.2,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 3,
+            "ref": "4F",
+            "elevationM": 10.8,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 4,
+            "ref": "5F",
+            "elevationM": 14.4,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          }
+        ],
+        "floorHeightM": 3.6,
+        "groundOffsetM": 0,
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying",
+        "name": "翰英樓",
+        "aliases": ["hanying"],
+        "footprint": [
+          [
+            [120.0015, 24],
+            [120.00179999999999, 24],
+            [120.00179999999999, 24.0003],
+            [120.0015, 24.0003],
+            [120.0015, 24]
+          ]
+        ],
+        "levels": [
+          {
+            "ordinal": 0,
+            "ref": "1F",
+            "elevationM": 0.0,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 1,
+            "ref": "2F",
+            "elevationM": 3.6,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 2,
+            "ref": "3F",
+            "elevationM": 7.2,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 3,
+            "ref": "4F",
+            "elevationM": 10.8,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          },
+          {
+            "ordinal": 4,
+            "ref": "5F",
+            "elevationM": 14.4,
+            "coverage": {
+              "hasAnchor": true,
+              "hasRouteData": true,
+              "hasDisplayGeometry": true
+            }
+          }
+        ],
+        "floorHeightM": 3.6,
+        "groundOffsetM": 0,
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      }
+    ],
+    "places": [
+      {
+        "id": "info@1F",
+        "name": "資訊館 1F",
+        "kind": "anchor",
+        "buildingId": "info",
+        "levelRef": "1F",
+        "nodeId": "info@1F",
+        "location": [120.0001, 24.0001]
+      },
+      {
+        "id": "info@1F-room",
+        "name": "資訊館教室 1F",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "1F",
+        "nodeId": "info@1F",
+        "location": [120.0001, 24.0001],
+        "ref": "測試1F"
+      },
+      {
+        "id": "info@2F",
+        "name": "資訊館 2F",
+        "kind": "anchor",
+        "buildingId": "info",
+        "levelRef": "2F",
+        "nodeId": "info@2F",
+        "location": [120.0001, 24.0001]
+      },
+      {
+        "id": "info@2F-room",
+        "name": "資訊館教室 2F",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "2F",
+        "nodeId": "info@2F",
+        "location": [120.0001, 24.0001],
+        "ref": "測試2F"
+      },
+      {
+        "id": "info@3F",
+        "name": "資訊館 3F",
+        "kind": "anchor",
+        "buildingId": "info",
+        "levelRef": "3F",
+        "nodeId": "info@3F",
+        "location": [120.0001, 24.0001]
+      },
+      {
+        "id": "info@3F-room",
+        "name": "資訊館教室 3F",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "3F",
+        "nodeId": "info@3F",
+        "location": [120.0001, 24.0001],
+        "ref": "測試3F"
+      },
+      {
+        "id": "info@4F",
+        "name": "資訊館 4F",
+        "kind": "anchor",
+        "buildingId": "info",
+        "levelRef": "4F",
+        "nodeId": "info@4F",
+        "location": [120.0001, 24.0001]
+      },
+      {
+        "id": "info@4F-room",
+        "name": "資訊館教室 4F",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "4F",
+        "nodeId": "info@4F",
+        "location": [120.0001, 24.0001],
+        "ref": "測試4F"
+      },
+      {
+        "id": "info@5F",
+        "name": "資訊館 5F",
+        "kind": "anchor",
+        "buildingId": "info",
+        "levelRef": "5F",
+        "nodeId": "info@5F",
+        "location": [120.0001, 24.0001]
+      },
+      {
+        "id": "info@5F-room",
+        "name": "資訊館教室 5F",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "5F",
+        "nodeId": "info@5F",
+        "location": [120.0001, 24.0001],
+        "ref": "測試5F"
+      },
+      {
+        "id": "zk@1F",
+        "name": "中科大樓 1F",
+        "kind": "anchor",
+        "buildingId": "zk",
+        "levelRef": "1F",
+        "nodeId": "zk@1F",
+        "location": [120.0006, 24.0001]
+      },
+      {
+        "id": "zk@1F-room",
+        "name": "中科大樓教室 1F",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "1F",
+        "nodeId": "zk@1F",
+        "location": [120.0006, 24.0001],
+        "ref": "測試1F"
+      },
+      {
+        "id": "zk@2F",
+        "name": "中科大樓 2F",
+        "kind": "anchor",
+        "buildingId": "zk",
+        "levelRef": "2F",
+        "nodeId": "zk@2F",
+        "location": [120.0006, 24.0001]
+      },
+      {
+        "id": "zk@2F-room",
+        "name": "中科大樓教室 2F",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "2F",
+        "nodeId": "zk@2F",
+        "location": [120.0006, 24.0001],
+        "ref": "測試2F"
+      },
+      {
+        "id": "zk@3F",
+        "name": "中科大樓 3F",
+        "kind": "anchor",
+        "buildingId": "zk",
+        "levelRef": "3F",
+        "nodeId": "zk@3F",
+        "location": [120.0006, 24.0001]
+      },
+      {
+        "id": "zk@3F-room",
+        "name": "中科大樓教室 3F",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "3F",
+        "nodeId": "zk@3F",
+        "location": [120.0006, 24.0001],
+        "ref": "測試3F"
+      },
+      {
+        "id": "zk@4F",
+        "name": "中科大樓 4F",
+        "kind": "anchor",
+        "buildingId": "zk",
+        "levelRef": "4F",
+        "nodeId": "zk@4F",
+        "location": [120.0006, 24.0001]
+      },
+      {
+        "id": "zk@4F-room",
+        "name": "中科大樓教室 4F",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "4F",
+        "nodeId": "zk@4F",
+        "location": [120.0006, 24.0001],
+        "ref": "測試4F"
+      },
+      {
+        "id": "zk@5F",
+        "name": "中科大樓 5F",
+        "kind": "anchor",
+        "buildingId": "zk",
+        "levelRef": "5F",
+        "nodeId": "zk@5F",
+        "location": [120.0006, 24.0001]
+      },
+      {
+        "id": "zk@5F-room",
+        "name": "中科大樓教室 5F",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "5F",
+        "nodeId": "zk@5F",
+        "location": [120.0006, 24.0001],
+        "ref": "測試5F"
+      },
+      {
+        "id": "changming@1F",
+        "name": "昌明樓 1F",
+        "kind": "anchor",
+        "buildingId": "changming",
+        "levelRef": "1F",
+        "nodeId": "changming@1F",
+        "location": [120.00110000000001, 24.0001]
+      },
+      {
+        "id": "changming@1F-room",
+        "name": "昌明樓教室 1F",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "1F",
+        "nodeId": "changming@1F",
+        "location": [120.00110000000001, 24.0001],
+        "ref": "測試1F"
+      },
+      {
+        "id": "changming@2F",
+        "name": "昌明樓 2F",
+        "kind": "anchor",
+        "buildingId": "changming",
+        "levelRef": "2F",
+        "nodeId": "changming@2F",
+        "location": [120.00110000000001, 24.0001]
+      },
+      {
+        "id": "changming@2F-room",
+        "name": "昌明樓教室 2F",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "2F",
+        "nodeId": "changming@2F",
+        "location": [120.00110000000001, 24.0001],
+        "ref": "測試2F"
+      },
+      {
+        "id": "changming@3F",
+        "name": "昌明樓 3F",
+        "kind": "anchor",
+        "buildingId": "changming",
+        "levelRef": "3F",
+        "nodeId": "changming@3F",
+        "location": [120.00110000000001, 24.0001]
+      },
+      {
+        "id": "changming@3F-room",
+        "name": "昌明樓教室 3F",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "3F",
+        "nodeId": "changming@3F",
+        "location": [120.00110000000001, 24.0001],
+        "ref": "測試3F"
+      },
+      {
+        "id": "changming@4F",
+        "name": "昌明樓 4F",
+        "kind": "anchor",
+        "buildingId": "changming",
+        "levelRef": "4F",
+        "nodeId": "changming@4F",
+        "location": [120.00110000000001, 24.0001]
+      },
+      {
+        "id": "changming@4F-room",
+        "name": "昌明樓教室 4F",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "4F",
+        "nodeId": "changming@4F",
+        "location": [120.00110000000001, 24.0001],
+        "ref": "測試4F"
+      },
+      {
+        "id": "changming@5F",
+        "name": "昌明樓 5F",
+        "kind": "anchor",
+        "buildingId": "changming",
+        "levelRef": "5F",
+        "nodeId": "changming@5F",
+        "location": [120.00110000000001, 24.0001]
+      },
+      {
+        "id": "changming@5F-room",
+        "name": "昌明樓教室 5F",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "5F",
+        "nodeId": "changming@5F",
+        "location": [120.00110000000001, 24.0001],
+        "ref": "測試5F"
+      },
+      {
+        "id": "hanying@1F",
+        "name": "翰英樓 1F",
+        "kind": "anchor",
+        "buildingId": "hanying",
+        "levelRef": "1F",
+        "nodeId": "hanying@1F",
+        "location": [120.0016, 24.0001]
+      },
+      {
+        "id": "hanying@1F-room",
+        "name": "翰英樓教室 1F",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "1F",
+        "nodeId": "hanying@1F",
+        "location": [120.0016, 24.0001],
+        "ref": "測試1F"
+      },
+      {
+        "id": "hanying@2F",
+        "name": "翰英樓 2F",
+        "kind": "anchor",
+        "buildingId": "hanying",
+        "levelRef": "2F",
+        "nodeId": "hanying@2F",
+        "location": [120.0016, 24.0001]
+      },
+      {
+        "id": "hanying@2F-room",
+        "name": "翰英樓教室 2F",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "2F",
+        "nodeId": "hanying@2F",
+        "location": [120.0016, 24.0001],
+        "ref": "測試2F"
+      },
+      {
+        "id": "hanying@3F",
+        "name": "翰英樓 3F",
+        "kind": "anchor",
+        "buildingId": "hanying",
+        "levelRef": "3F",
+        "nodeId": "hanying@3F",
+        "location": [120.0016, 24.0001]
+      },
+      {
+        "id": "hanying@3F-room",
+        "name": "翰英樓教室 3F",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "3F",
+        "nodeId": "hanying@3F",
+        "location": [120.0016, 24.0001],
+        "ref": "測試3F"
+      },
+      {
+        "id": "hanying@4F",
+        "name": "翰英樓 4F",
+        "kind": "anchor",
+        "buildingId": "hanying",
+        "levelRef": "4F",
+        "nodeId": "hanying@4F",
+        "location": [120.0016, 24.0001]
+      },
+      {
+        "id": "hanying@4F-room",
+        "name": "翰英樓教室 4F",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "4F",
+        "nodeId": "hanying@4F",
+        "location": [120.0016, 24.0001],
+        "ref": "測試4F"
+      },
+      {
+        "id": "hanying@5F",
+        "name": "翰英樓 5F",
+        "kind": "anchor",
+        "buildingId": "hanying",
+        "levelRef": "5F",
+        "nodeId": "hanying@5F",
+        "location": [120.0016, 24.0001]
+      },
+      {
+        "id": "hanying@5F-room",
+        "name": "翰英樓教室 5F",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "5F",
+        "nodeId": "hanying@5F",
+        "location": [120.0016, 24.0001],
+        "ref": "測試5F"
+      }
+    ],
+    "features": [
+      {
+        "id": "info@1F-room",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "1F",
+        "ordinal": 0,
+        "name": "資訊館教室",
+        "ref": "測試1F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0, 24],
+              [120.0003, 24],
+              [120.0003, 24.0003],
+              [120.0, 24.0003],
+              [120.0, 24]
+            ],
+            [
+              [120.00012, 24.00012],
+              [120.00018, 24.00012],
+              [120.00018, 24.00018],
+              [120.00012, 24.00018],
+              [120.00012, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "info@2F-room",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "2F",
+        "ordinal": 1,
+        "name": "資訊館教室",
+        "ref": "測試2F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0, 24],
+              [120.0003, 24],
+              [120.0003, 24.0003],
+              [120.0, 24.0003],
+              [120.0, 24]
+            ],
+            [
+              [120.00012, 24.00012],
+              [120.00018, 24.00012],
+              [120.00018, 24.00018],
+              [120.00012, 24.00018],
+              [120.00012, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "info@3F-room",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "3F",
+        "ordinal": 2,
+        "name": "資訊館教室",
+        "ref": "測試3F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0, 24],
+              [120.0003, 24],
+              [120.0003, 24.0003],
+              [120.0, 24.0003],
+              [120.0, 24]
+            ],
+            [
+              [120.00012, 24.00012],
+              [120.00018, 24.00012],
+              [120.00018, 24.00018],
+              [120.00012, 24.00018],
+              [120.00012, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "info@4F-room",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "4F",
+        "ordinal": 3,
+        "name": "資訊館教室",
+        "ref": "測試4F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0, 24],
+              [120.0003, 24],
+              [120.0003, 24.0003],
+              [120.0, 24.0003],
+              [120.0, 24]
+            ],
+            [
+              [120.00012, 24.00012],
+              [120.00018, 24.00012],
+              [120.00018, 24.00018],
+              [120.00012, 24.00018],
+              [120.00012, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "info@5F-room",
+        "kind": "room",
+        "buildingId": "info",
+        "levelRef": "5F",
+        "ordinal": 4,
+        "name": "資訊館教室",
+        "ref": "測試5F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0, 24],
+              [120.0003, 24],
+              [120.0003, 24.0003],
+              [120.0, 24.0003],
+              [120.0, 24]
+            ],
+            [
+              [120.00012, 24.00012],
+              [120.00018, 24.00012],
+              [120.00018, 24.00018],
+              [120.00012, 24.00018],
+              [120.00012, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk@1F-room",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "1F",
+        "ordinal": 0,
+        "name": "中科大樓教室",
+        "ref": "測試1F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0005, 24],
+              [120.0008, 24],
+              [120.0008, 24.0003],
+              [120.0005, 24.0003],
+              [120.0005, 24]
+            ],
+            [
+              [120.00062, 24.00012],
+              [120.00068, 24.00012],
+              [120.00068, 24.00018],
+              [120.00062, 24.00018],
+              [120.00062, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk@2F-room",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "2F",
+        "ordinal": 1,
+        "name": "中科大樓教室",
+        "ref": "測試2F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0005, 24],
+              [120.0008, 24],
+              [120.0008, 24.0003],
+              [120.0005, 24.0003],
+              [120.0005, 24]
+            ],
+            [
+              [120.00062, 24.00012],
+              [120.00068, 24.00012],
+              [120.00068, 24.00018],
+              [120.00062, 24.00018],
+              [120.00062, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk@3F-room",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "3F",
+        "ordinal": 2,
+        "name": "中科大樓教室",
+        "ref": "測試3F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0005, 24],
+              [120.0008, 24],
+              [120.0008, 24.0003],
+              [120.0005, 24.0003],
+              [120.0005, 24]
+            ],
+            [
+              [120.00062, 24.00012],
+              [120.00068, 24.00012],
+              [120.00068, 24.00018],
+              [120.00062, 24.00018],
+              [120.00062, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk@4F-room",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "4F",
+        "ordinal": 3,
+        "name": "中科大樓教室",
+        "ref": "測試4F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0005, 24],
+              [120.0008, 24],
+              [120.0008, 24.0003],
+              [120.0005, 24.0003],
+              [120.0005, 24]
+            ],
+            [
+              [120.00062, 24.00012],
+              [120.00068, 24.00012],
+              [120.00068, 24.00018],
+              [120.00062, 24.00018],
+              [120.00062, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk@5F-room",
+        "kind": "room",
+        "buildingId": "zk",
+        "levelRef": "5F",
+        "ordinal": 4,
+        "name": "中科大樓教室",
+        "ref": "測試5F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0005, 24],
+              [120.0008, 24],
+              [120.0008, 24.0003],
+              [120.0005, 24.0003],
+              [120.0005, 24]
+            ],
+            [
+              [120.00062, 24.00012],
+              [120.00068, 24.00012],
+              [120.00068, 24.00018],
+              [120.00062, 24.00018],
+              [120.00062, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming@1F-room",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "1F",
+        "ordinal": 0,
+        "name": "昌明樓教室",
+        "ref": "測試1F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.001, 24],
+              [120.0013, 24],
+              [120.0013, 24.0003],
+              [120.001, 24.0003],
+              [120.001, 24]
+            ],
+            [
+              [120.00112, 24.00012],
+              [120.00118, 24.00012],
+              [120.00118, 24.00018],
+              [120.00112, 24.00018],
+              [120.00112, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming@2F-room",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "2F",
+        "ordinal": 1,
+        "name": "昌明樓教室",
+        "ref": "測試2F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.001, 24],
+              [120.0013, 24],
+              [120.0013, 24.0003],
+              [120.001, 24.0003],
+              [120.001, 24]
+            ],
+            [
+              [120.00112, 24.00012],
+              [120.00118, 24.00012],
+              [120.00118, 24.00018],
+              [120.00112, 24.00018],
+              [120.00112, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming@3F-room",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "3F",
+        "ordinal": 2,
+        "name": "昌明樓教室",
+        "ref": "測試3F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.001, 24],
+              [120.0013, 24],
+              [120.0013, 24.0003],
+              [120.001, 24.0003],
+              [120.001, 24]
+            ],
+            [
+              [120.00112, 24.00012],
+              [120.00118, 24.00012],
+              [120.00118, 24.00018],
+              [120.00112, 24.00018],
+              [120.00112, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming@4F-room",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "4F",
+        "ordinal": 3,
+        "name": "昌明樓教室",
+        "ref": "測試4F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.001, 24],
+              [120.0013, 24],
+              [120.0013, 24.0003],
+              [120.001, 24.0003],
+              [120.001, 24]
+            ],
+            [
+              [120.00112, 24.00012],
+              [120.00118, 24.00012],
+              [120.00118, 24.00018],
+              [120.00112, 24.00018],
+              [120.00112, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming@5F-room",
+        "kind": "room",
+        "buildingId": "changming",
+        "levelRef": "5F",
+        "ordinal": 4,
+        "name": "昌明樓教室",
+        "ref": "測試5F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.001, 24],
+              [120.0013, 24],
+              [120.0013, 24.0003],
+              [120.001, 24.0003],
+              [120.001, 24]
+            ],
+            [
+              [120.00112, 24.00012],
+              [120.00118, 24.00012],
+              [120.00118, 24.00018],
+              [120.00112, 24.00018],
+              [120.00112, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying@1F-room",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "1F",
+        "ordinal": 0,
+        "name": "翰英樓教室",
+        "ref": "測試1F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0015, 24],
+              [120.00179999999999, 24],
+              [120.00179999999999, 24.0003],
+              [120.0015, 24.0003],
+              [120.0015, 24]
+            ],
+            [
+              [120.00161999999999, 24.00012],
+              [120.00168, 24.00012],
+              [120.00168, 24.00018],
+              [120.00161999999999, 24.00018],
+              [120.00161999999999, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying@2F-room",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "2F",
+        "ordinal": 1,
+        "name": "翰英樓教室",
+        "ref": "測試2F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0015, 24],
+              [120.00179999999999, 24],
+              [120.00179999999999, 24.0003],
+              [120.0015, 24.0003],
+              [120.0015, 24]
+            ],
+            [
+              [120.00161999999999, 24.00012],
+              [120.00168, 24.00012],
+              [120.00168, 24.00018],
+              [120.00161999999999, 24.00018],
+              [120.00161999999999, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying@3F-room",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "3F",
+        "ordinal": 2,
+        "name": "翰英樓教室",
+        "ref": "測試3F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0015, 24],
+              [120.00179999999999, 24],
+              [120.00179999999999, 24.0003],
+              [120.0015, 24.0003],
+              [120.0015, 24]
+            ],
+            [
+              [120.00161999999999, 24.00012],
+              [120.00168, 24.00012],
+              [120.00168, 24.00018],
+              [120.00161999999999, 24.00018],
+              [120.00161999999999, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying@4F-room",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "4F",
+        "ordinal": 3,
+        "name": "翰英樓教室",
+        "ref": "測試4F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0015, 24],
+              [120.00179999999999, 24],
+              [120.00179999999999, 24.0003],
+              [120.0015, 24.0003],
+              [120.0015, 24]
+            ],
+            [
+              [120.00161999999999, 24.00012],
+              [120.00168, 24.00012],
+              [120.00168, 24.00018],
+              [120.00161999999999, 24.00018],
+              [120.00161999999999, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying@5F-room",
+        "kind": "room",
+        "buildingId": "hanying",
+        "levelRef": "5F",
+        "ordinal": 4,
+        "name": "翰英樓教室",
+        "ref": "測試5F",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [120.0015, 24],
+              [120.00179999999999, 24],
+              [120.00179999999999, 24.0003],
+              [120.0015, 24.0003],
+              [120.0015, 24]
+            ],
+            [
+              [120.00161999999999, 24.00012],
+              [120.00168, 24.00012],
+              [120.00168, 24.00018],
+              [120.00161999999999, 24.00018],
+              [120.00161999999999, 24.00012]
+            ]
+          ]
+        },
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      }
+    ],
+    "walkways": [
+      {
+        "id": "info-zk",
+        "kind": "footway",
+        "indoor": false,
+        "coordinates": [[120.0001, 24.0001, 3.6], [120.0006, 24.0001, 3.6]],
+        "buildingId": null,
+        "levelRef": null,
+        "buildingIds": ["info", "zk"],
+        "levelRefs": ["2F", "2F"],
+        "wheelchair": "yes",
+        "osmRef": "way/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated"
+      },
+      {
+        "id": "zk-changming",
+        "kind": "footway",
+        "indoor": false,
+        "coordinates": [
+          [120.0006, 24.0001, 3.6],
+          [120.00110000000001, 24.0001, 3.6]
+        ],
+        "buildingId": null,
+        "levelRef": null,
+        "buildingIds": ["zk", "changming"],
+        "levelRefs": ["2F", "2F"],
+        "wheelchair": "yes",
+        "osmRef": "way/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated"
+      },
+      {
+        "id": "changming-hanying",
+        "kind": "footway",
+        "indoor": false,
+        "coordinates": [
+          [120.00110000000001, 24.0001, 3.6],
+          [120.0016, 24.0001, 3.6]
+        ],
+        "buildingId": null,
+        "levelRef": null,
+        "buildingIds": ["changming", "hanying"],
+        "levelRefs": ["2F", "2F"],
+        "wheelchair": "yes",
+        "osmRef": "way/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated"
+      }
+    ],
+    "connections": [
+      {
+        "id": "info-lift",
+        "kind": "elevator",
+        "buildingId": "info",
+        "coordinates": [
+          [120.0001, 24.0001, 0.0],
+          [120.0001, 24.0001, 3.6],
+          [120.0001, 24.0001, 7.2],
+          [120.0001, 24.0001, 10.8],
+          [120.0001, 24.0001, 14.4]
+        ],
+        "levelRefs": ["1F", "2F", "3F", "4F", "5F"],
+        "wheelchair": "yes",
+        "osmRef": "node/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "zk-lift",
+        "kind": "elevator",
+        "buildingId": "zk",
+        "coordinates": [
+          [120.0006, 24.0001, 0.0],
+          [120.0006, 24.0001, 3.6],
+          [120.0006, 24.0001, 7.2],
+          [120.0006, 24.0001, 10.8],
+          [120.0006, 24.0001, 14.4]
+        ],
+        "levelRefs": ["1F", "2F", "3F", "4F", "5F"],
+        "wheelchair": "yes",
+        "osmRef": "node/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "changming-lift",
+        "kind": "elevator",
+        "buildingId": "changming",
+        "coordinates": [
+          [120.00110000000001, 24.0001, 0.0],
+          [120.00110000000001, 24.0001, 3.6],
+          [120.00110000000001, 24.0001, 7.2],
+          [120.00110000000001, 24.0001, 10.8],
+          [120.00110000000001, 24.0001, 14.4]
+        ],
+        "levelRefs": ["1F", "2F", "3F", "4F", "5F"],
+        "wheelchair": "yes",
+        "osmRef": "node/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      },
+      {
+        "id": "hanying-lift",
+        "kind": "elevator",
+        "buildingId": "hanying",
+        "coordinates": [
+          [120.0016, 24.0001, 0.0],
+          [120.0016, 24.0001, 3.6],
+          [120.0016, 24.0001, 7.2],
+          [120.0016, 24.0001, 10.8],
+          [120.0016, 24.0001, 14.4]
+        ],
+        "levelRefs": ["1F", "2F", "3F", "4F", "5F"],
+        "wheelchair": "yes",
+        "osmRef": "node/synthetic",
+        "geometryStatus": "schematic",
+        "heightStatus": "estimated",
+        "heightPending": true,
+        "source": "synthetic contract fixture",
+        "note": "合成資料，非實測；停靠待現場核實"
+      }
+    ]
+  },
+  "routes": {
+    "info@1F>hanying@4F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "info@1F",
+      "toPlaceId": "hanying@4F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0001, 24.0001, 0.0],
+          [120.0001, 24.0001, 0],
+          [120.00015, 24.0001, 0],
+          [120.00155, 24.0001, 0],
+          [120.0016, 24.0001, 0],
+          [120.0016, 24.0001, 10.8]
+        ],
+        "buildingIds": ["info", "info", null, null, "hanying", "hanying"],
+        "levelRefs": ["1F", "1F", null, null, "1F", "4F"]
+      },
+      "segments": [
+        {
+          "buildingId": "info",
+          "levelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "hanying",
+          "levelRef": "4F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "4F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "4F",
+          "fromLevelRef": "4F",
+          "toLevelRef": "4F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "info@3F>zk@5F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "info@3F",
+      "toPlaceId": "zk@5F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0001, 24.0001, 7.2],
+          [120.0001, 24.0001, 0],
+          [120.00015, 24.0001, 0],
+          [120.00055, 24.0001, 0],
+          [120.0006, 24.0001, 0],
+          [120.0006, 24.0001, 14.4]
+        ],
+        "buildingIds": ["info", "info", null, null, "zk", "zk"],
+        "levelRefs": ["3F", "1F", null, null, "1F", "5F"]
+      },
+      "segments": [
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "info@3F>changming@3F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "info@3F",
+      "toPlaceId": "changming@3F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0001, 24.0001, 7.2],
+          [120.0001, 24.0001, 0],
+          [120.00015, 24.0001, 0],
+          [120.00105, 24.0001, 0],
+          [120.00110000000001, 24.0001, 0],
+          [120.00110000000001, 24.0001, 7.2]
+        ],
+        "buildingIds": ["info", "info", null, null, "changming", "changming"],
+        "levelRefs": ["3F", "1F", null, null, "1F", "3F"]
+      },
+      "segments": [
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "info@3F>hanying@2F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "info@3F",
+      "toPlaceId": "hanying@2F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0001, 24.0001, 7.2],
+          [120.0001, 24.0001, 0],
+          [120.00015, 24.0001, 0],
+          [120.00155, 24.0001, 0],
+          [120.0016, 24.0001, 0],
+          [120.0016, 24.0001, 3.6]
+        ],
+        "buildingIds": ["info", "info", null, null, "hanying", "hanying"],
+        "levelRefs": ["3F", "1F", null, null, "1F", "2F"]
+      },
+      "segments": [
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "2F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "zk@5F>info@3F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "zk@5F",
+      "toPlaceId": "info@3F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0006, 24.0001, 14.4],
+          [120.0006, 24.0001, 0],
+          [120.00065000000001, 24.0001, 0],
+          [120.00005, 24.0001, 0],
+          [120.0001, 24.0001, 0],
+          [120.0001, 24.0001, 7.2]
+        ],
+        "buildingIds": ["zk", "zk", null, null, "info", "info"],
+        "levelRefs": ["5F", "1F", null, null, "1F", "3F"]
+      },
+      "segments": [
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "zk@5F>changming@3F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "zk@5F",
+      "toPlaceId": "changming@3F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0006, 24.0001, 14.4],
+          [120.0006, 24.0001, 0],
+          [120.00065000000001, 24.0001, 0],
+          [120.00105, 24.0001, 0],
+          [120.00110000000001, 24.0001, 0],
+          [120.00110000000001, 24.0001, 7.2]
+        ],
+        "buildingIds": ["zk", "zk", null, null, "changming", "changming"],
+        "levelRefs": ["5F", "1F", null, null, "1F", "3F"]
+      },
+      "segments": [
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "zk@5F>hanying@2F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "zk@5F",
+      "toPlaceId": "hanying@2F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0006, 24.0001, 14.4],
+          [120.0006, 24.0001, 0],
+          [120.00065000000001, 24.0001, 0],
+          [120.00155, 24.0001, 0],
+          [120.0016, 24.0001, 0],
+          [120.0016, 24.0001, 3.6]
+        ],
+        "buildingIds": ["zk", "zk", null, null, "hanying", "hanying"],
+        "levelRefs": ["5F", "1F", null, null, "1F", "2F"]
+      },
+      "segments": [
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "2F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "changming@2F>hanying@2F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "changming@2F",
+      "toPlaceId": "hanying@2F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.00110000000001, 24.0001, 3.6],
+          [120.0016, 24.0001, 3.6]
+        ],
+        "buildingIds": ["changming", "hanying"],
+        "levelRefs": ["2F", "2F"]
+      },
+      "segments": [
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 0,
+          "pathEnd": 1
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "walk",
+          "instruction": "經二樓連通道",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 1,
+          "pathEnd": 1
+        }
+      ]
+    },
+    "changming@3F>info@3F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "changming@3F",
+      "toPlaceId": "info@3F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.00110000000001, 24.0001, 7.2],
+          [120.00110000000001, 24.0001, 0],
+          [120.00115000000001, 24.0001, 0],
+          [120.00005, 24.0001, 0],
+          [120.0001, 24.0001, 0],
+          [120.0001, 24.0001, 7.2]
+        ],
+        "buildingIds": ["changming", "changming", null, null, "info", "info"],
+        "levelRefs": ["3F", "1F", null, null, "1F", "3F"]
+      },
+      "segments": [
+        {
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "changming@3F>zk@5F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "changming@3F",
+      "toPlaceId": "zk@5F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.00110000000001, 24.0001, 7.2],
+          [120.00110000000001, 24.0001, 0],
+          [120.00115000000001, 24.0001, 0],
+          [120.00055, 24.0001, 0],
+          [120.0006, 24.0001, 0],
+          [120.0006, 24.0001, 14.4]
+        ],
+        "buildingIds": ["changming", "changming", null, null, "zk", "zk"],
+        "levelRefs": ["3F", "1F", null, null, "1F", "5F"]
+      },
+      "segments": [
+        {
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "changming@3F>hanying@2F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "changming@3F",
+      "toPlaceId": "hanying@2F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.00110000000001, 24.0001, 7.2],
+          [120.00110000000001, 24.0001, 0],
+          [120.00115000000001, 24.0001, 0],
+          [120.00155, 24.0001, 0],
+          [120.0016, 24.0001, 0],
+          [120.0016, 24.0001, 3.6]
+        ],
+        "buildingIds": [
+          "changming",
+          "changming",
+          null,
+          null,
+          "hanying",
+          "hanying"
+        ],
+        "levelRefs": ["3F", "1F", null, null, "1F", "2F"]
+      },
+      "segments": [
+        {
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "2F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "hanying@2F>info@3F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "hanying@2F",
+      "toPlaceId": "info@3F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0016, 24.0001, 3.6],
+          [120.0016, 24.0001, 0],
+          [120.00165, 24.0001, 0],
+          [120.00005, 24.0001, 0],
+          [120.0001, 24.0001, 0],
+          [120.0001, 24.0001, 7.2]
+        ],
+        "buildingIds": ["hanying", "hanying", null, null, "info", "info"],
+        "levelRefs": ["2F", "1F", null, null, "1F", "3F"]
+      },
+      "segments": [
+        {
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "hanying@2F>zk@5F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "hanying@2F",
+      "toPlaceId": "zk@5F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0016, 24.0001, 3.6],
+          [120.0016, 24.0001, 0],
+          [120.00165, 24.0001, 0],
+          [120.00055, 24.0001, 0],
+          [120.0006, 24.0001, 0],
+          [120.0006, 24.0001, 14.4]
+        ],
+        "buildingIds": ["hanying", "hanying", null, null, "zk", "zk"],
+        "levelRefs": ["2F", "1F", null, null, "1F", "5F"]
+      },
+      "segments": [
+        {
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "hanying@2F>changming@3F": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "hanying@2F",
+      "toPlaceId": "changming@3F",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0016, 24.0001, 3.6],
+          [120.0016, 24.0001, 0],
+          [120.00165, 24.0001, 0],
+          [120.00105, 24.0001, 0],
+          [120.00110000000001, 24.0001, 0],
+          [120.00110000000001, 24.0001, 7.2]
+        ],
+        "buildingIds": [
+          "hanying",
+          "hanying",
+          null,
+          null,
+          "changming",
+          "changming"
+        ],
+        "levelRefs": ["2F", "1F", null, null, "1F", "3F"]
+      },
+      "segments": [
+        {
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "2F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "2F",
+          "fromLevelRef": "2F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "hanying",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "3F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "changming",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    },
+    "info@3F-room>zk@5F-room": {
+      "venueId": "nutc-sanmin",
+      "venueVersion": 7,
+      "mode": "wheelchair",
+      "fromPlaceId": "info@3F-room",
+      "toPlaceId": "zk@5F-room",
+      "distanceM": 50,
+      "durationS": 120,
+      "elevatorRides": 2,
+      "stairFlights": 0,
+      "path": {
+        "coordinates": [
+          [120.0001, 24.0001, 7.2],
+          [120.0001, 24.0001, 0],
+          [120.00015, 24.0001, 0],
+          [120.00055, 24.0001, 0],
+          [120.0006, 24.0001, 0],
+          [120.0006, 24.0001, 14.4]
+        ],
+        "buildingIds": ["info", "info", null, null, "zk", "zk"],
+        "levelRefs": ["3F", "1F", null, null, "1F", "5F"]
+      },
+      "segments": [
+        {
+          "buildingId": "info",
+          "levelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "buildingId": null,
+          "levelRef": null,
+          "pathStart": 1,
+          "pathEnd": 4
+        },
+        {
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        }
+      ],
+      "steps": [
+        {
+          "type": "depart",
+          "instruction": "從起點出發",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "3F",
+          "pathStart": 0,
+          "pathEnd": 0
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "3F",
+          "fromLevelRef": "3F",
+          "toLevelRef": "1F",
+          "pathStart": 0,
+          "pathEnd": 1
+        },
+        {
+          "type": "exit",
+          "instruction": "離開建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "info",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 1,
+          "pathEnd": 2
+        },
+        {
+          "type": "walk",
+          "instruction": "沿校園步道行進",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": null,
+          "levelRef": null,
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 2,
+          "pathEnd": 3
+        },
+        {
+          "type": "enter",
+          "instruction": "進入建築",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 3,
+          "pathEnd": 4
+        },
+        {
+          "type": "ramp",
+          "instruction": "經坡道（坡度未實測）",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "1F",
+          "pathStart": 4,
+          "pathEnd": 4
+        },
+        {
+          "type": "elevator",
+          "instruction": "搭乘電梯",
+          "distanceM": 10,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "1F",
+          "fromLevelRef": "1F",
+          "toLevelRef": "5F",
+          "pathStart": 4,
+          "pathEnd": 5
+        },
+        {
+          "type": "arrive",
+          "instruction": "抵達目的地",
+          "distanceM": 0,
+          "durationS": 5,
+          "buildingId": "zk",
+          "levelRef": "5F",
+          "fromLevelRef": "5F",
+          "toLevelRef": "5F",
+          "pathStart": 5,
+          "pathEnd": 5
+        }
+      ]
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import type maplibregl from "maplibre-gl";
 import type { StateCreator } from "zustand";
 import type { RouteDetailStop } from "@/lib/api/transit";
+import type { VenueJourney } from "@/lib/indoor/journey";
 import type {
   AiResultMarker,
   InfoShow,
@@ -61,11 +62,21 @@ export interface HazardReportContext {
   location: LatLng | null;
 }
 
+export interface UserLocationFix {
+  accuracyM: number;
+  /** Epoch milliseconds from the actual GeolocationPosition. */
+  timestamp: number;
+}
+
 export interface MapInstanceSlice {
   map: maplibregl.Map | null;
   setMap: (map: maplibregl.Map) => void;
   userLocation: LatLng | null;
-  setUserLocation: (location: LatLng | null) => void;
+  userLocationFix: UserLocationFix | null;
+  setUserLocation: (
+    location: LatLng | null,
+    fix?: UserLocationFix | null,
+  ) => void;
   infoShow: InfoShow;
   setInfoShow: (infoShow: Partial<InfoShow>) => void;
   is3D: boolean;
@@ -75,6 +86,14 @@ export interface MapInstanceSlice {
 }
 
 export interface RouteSlice {
+  venueJourney: VenueJourney | null;
+  setVenueJourney: (journey: VenueJourney | null) => void;
+  setVenueJourneyPreview: (preview: Partial<VenueJourney["preview"]>) => void;
+  startVenueGuidance: () => void;
+  startVenueTour: (autoplay?: boolean) => void;
+  advanceVenueGuidance: () => void;
+  stopVenueGuidance: () => void;
+  beginVenueOutdoorNavigation: () => void;
   activeNavigationRoute: AccessibleRoute | null;
   routeGeneration: number;
   planId: string | null;
@@ -236,6 +255,11 @@ export interface A11ySlice {
 }
 
 export interface SheetSlice {
+  indoorExploring: boolean;
+  setIndoorExploring: (active: boolean) => void;
+  /** Indoor content occupies the existing sheet without replacing its mode. */
+  indoorPanelOpen: boolean;
+  setIndoorPanelOpen: (open: boolean) => void;
   sheetMode: SheetMode;
   /**
    * The panel slot only ever shows one thing at a time (see
@@ -278,6 +302,8 @@ export const SAVED_PLACE_CATEGORIES = [
 export type SavedPlaceCategory = (typeof SAVED_PLACE_CATEGORIES)[number];
 
 export function placeKey(p: PlaceDetail): string {
+  if (p.kind === "venue-place")
+    return `v_${JSON.stringify([p.venueId, p.buildingId, p.levelRef, p.placeId])}`;
   return p.kind === "place"
     ? `p_${p.place.id}`
     : `c_${p.position.lat}_${p.position.lng}`;
