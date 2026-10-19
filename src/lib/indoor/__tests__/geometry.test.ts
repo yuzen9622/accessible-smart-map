@@ -158,6 +158,44 @@ describe("indoor floor geometry", () => {
     }
   });
 
+  it("fills explicit floor coverage without closing authored holes, recesses or shafts", () => {
+    const outline: XY[] = [
+      [0, 0],
+      [8, 0],
+      [8, 4],
+      [5, 4],
+      [5, 6],
+      [0, 6],
+      [0, 0],
+    ];
+    const courtyard = rectangle(1, 1, 2, 2);
+    const shaft = rectangle(6, 1, 7, 2);
+    const base = feature("display-floor", outline, {
+      kind: "area",
+      tags: { "a11ymap:area_type": "indoor-floor-base" },
+      geometry: { type: "Polygon", coordinates: [outline, courtyard] },
+    });
+    const data = model([
+      base,
+      feature("known-room", rectangle(3, 0, 4, 2)),
+      feature("shaft", shaft, {
+        kind: "area",
+        tags: { "a11ymap:area_type": "elevator-shaft" },
+      }),
+    ]);
+    const source = JSON.stringify(data);
+    const floor = floorGeometry(data, 0);
+    expect(surfaceArea(floor)).toBeCloseTo(40);
+    expect(
+      surfaceArea(polygonClipping.intersection(floor, [rectangle(0, 3, 4, 4)])),
+    ).toBeCloseTo(4);
+    for (const empty of [courtyard, shaft, rectangle(5, 4, 8, 6)])
+      expect(polygonClipping.intersection(floor, [empty])).toEqual([]);
+    expect(roomWalls([base])).toEqual([]);
+    expect(floorGeometry(data, 1)).toEqual([]);
+    expect(JSON.stringify(data)).toBe(source);
+  });
+
   it("preserves each floor and excludes unknown areas and the bounding footprint", () => {
     const data = model([
       feature("ground-room", rectangle(0, 0, 4, 4)),

@@ -429,6 +429,74 @@ describe("single-floor scene rendering", () => {
     disposeTree(s.marker);
   });
 
+  it("renders floor coverage only as a neutral slab below known rooms, without selection or outlines", () => {
+    const value = model();
+    value.features = [
+      value.features[0],
+      {
+        ...value.features[0],
+        id: "display-floor",
+        kind: "area",
+        name: "Display coverage",
+        ref: "not-a-room",
+        geometry: {
+          type: "Polygon",
+          coordinates: [
+            [
+              [0, 0],
+              [8, 0],
+              [8, 4],
+              [0, 4],
+              [0, 0],
+            ],
+          ],
+        },
+        tags: { "a11ymap:area_type": "indoor-floor-base" },
+      },
+    ];
+    value.connections = [];
+    value.stairDesigns = [];
+    const source = JSON.stringify(value);
+    for (const grounded of [true, false]) {
+      const p = props({ model: value, route: null, grounded });
+      const s = createIndoorContent();
+      rebuildIndoorContent(s, container(), p, p.onSelect);
+      s.content.updateMatrixWorld(true);
+      const ray = new THREE.Raycaster(
+        v3([6, 2, 10]),
+        new THREE.Vector3(0, -1, 0),
+      );
+      const hits = ray
+        .intersectObjects(s.content.children, true)
+        .filter((hit) => hit.object instanceof THREE.Mesh);
+      expect(hits.length).toBeGreaterThan(0);
+      const floor = hits[0].object as THREE.Mesh<
+        THREE.BufferGeometry,
+        THREE.MeshStandardMaterial
+      >;
+      expect(floor.material.userData.indoorColorRole).toBe("slab");
+      expect(hits[0].point.y).toBeCloseTo(0);
+      expect(ray.intersectObjects(s.pickable)).toEqual([]);
+      expect(s.featureMeshes.has("display-floor")).toBe(false);
+      expect(s.targets.has("display-floor")).toBe(false);
+      expect(s.labels.map((label) => label.id)).toEqual(["room-low"]);
+      // Only the established building outline remains, with no floor-base edge.
+      expect(
+        s.content.children.filter((child) => child instanceof THREE.Line),
+      ).toHaveLength(1);
+      const room = s.featureMeshes.get("room-low")?.[0];
+      expect(room).toBeDefined();
+      room?.geometry.computeBoundingBox();
+      expect(room?.geometry.boundingBox?.min.y).toBeGreaterThan(
+        hits[0].point.y,
+      );
+      expect(p.onSelect).not.toHaveBeenCalled();
+      disposeTree(s.content);
+      disposeTree(s.marker);
+    }
+    expect(JSON.stringify(value)).toBe(source);
+  });
+
   it("keeps source space boundaries subtle and solid on the product map while retaining diagnostic dashes and picking", () => {
     const value = model();
     value.features.push(

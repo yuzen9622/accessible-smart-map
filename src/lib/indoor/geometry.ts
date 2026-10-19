@@ -99,6 +99,14 @@ export function isOpening(feature: IndoorFeature) {
   );
 }
 
+/** Explicit display-only coverage; this does not imply a walkable surface. */
+export function isFloorBase(feature: IndoorFeature) {
+  return (
+    feature.kind === "area" &&
+    feature.tags["a11ymap:area_type"] === "indoor-floor-base"
+  );
+}
+
 export function isEnclosed(feature: IndoorFeature) {
   return feature.kind === "room" || feature.tags.amenity === "toilets";
 }
@@ -114,7 +122,8 @@ export function floorGeometry(
     .filter(
       (f) =>
         !isOpening(f) &&
-        (f.kind === "room" ||
+        (isFloorBase(f) ||
+          f.kind === "room" ||
           f.kind === "corridor" ||
           f.tags.amenity === "toilets"),
     )

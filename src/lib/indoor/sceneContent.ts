@@ -20,6 +20,7 @@ import {
   DISPLAY_WALL_HEIGHT,
   floorGeometry,
   isEnclosed,
+  isFloorBase,
   isOpening,
   segmentRectangle,
   wallGeometry,
@@ -386,7 +387,9 @@ export function rebuildIndoorContent(
       );
     for (const f of features) {
       if (f.geometry.type !== "Polygon") continue;
-      if (facilityFeatureIds.has(f.id)) continue;
+      // Display-only coverage is already part of the shared floor slab. It
+      // supplies neither an individual boundary nor a selectable destination.
+      if (isFloorBase(f) || facilityFeatureIds.has(f.id)) continue;
       const rings = f.geometry.coordinates;
       const opening = isOpening(f);
       const colorRole: IndoorMaterialRole =
