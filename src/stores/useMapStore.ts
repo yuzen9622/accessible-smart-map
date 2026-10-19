@@ -1,5 +1,6 @@
 "use client";
 import { create } from "zustand";
+import { withAtomicNotifications } from "./atomicNotifications";
 import { createA11ySlice } from "./map/createA11ySlice";
 import { createMapInstanceSlice } from "./map/createMapInstanceSlice";
 import { createRouteSlice } from "./map/createRouteSlice";
@@ -22,13 +23,15 @@ export function getMapPadding(): ReturnType<typeof computeMapPadding> {
   return computeMapPadding(useMapStore.getState().sidebarCollapsed);
 }
 
-const useMapStore = create<MapStore>((...a) => ({
-  ...createMapInstanceSlice(...a),
-  ...createRouteSlice(...a),
-  ...createSearchSlice(...a),
-  ...createTransitSlice(...a),
-  ...createA11ySlice(...a),
-  ...createSheetSlice(...a),
-}));
+const useMapStore = create<MapStore>(
+  withAtomicNotifications((...a) => ({
+    ...createMapInstanceSlice(...a),
+    ...createRouteSlice(...a),
+    ...createSearchSlice(...a),
+    ...createTransitSlice(...a),
+    ...createA11ySlice(...a),
+    ...createSheetSlice(...a),
+  })),
+);
 
 export default useMapStore;

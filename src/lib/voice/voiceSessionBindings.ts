@@ -38,7 +38,12 @@ export interface BindingSinks {
   publishTool(event: VoiceToolEvent): void;
   /** Bind to `useVoiceStore.getState().setMicLevel`. */
   setMicLevel(level: number): void;
-  persistTurn?(entries: AggEntry[], summaries: ToolSummary[]): void;
+  persistTurn?(
+    entries: AggEntry[],
+    summaries: ToolSummary[],
+  ): ReadonlyMap<number, string> | undefined;
+  correctPersistedMessage?(messageId: string, text: string): void;
+  clearPersistedMappings?(): void;
 }
 
 export interface VoiceBindings {
@@ -70,6 +75,7 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   let muted = false;
   let summaries: ToolSummary[] = [];
   let persisted = 0;
+  const utteranceMessages = new Map<string, string>();
 
   function onTranscript(transcript: TranscriptFragment): void {
     agg = appendFragment(agg, transcript);
@@ -78,13 +84,27 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
 
   function onTranscriptCorrection(correction: TranscriptCorrection): void {
     agg = applyCorrection(agg, correction);
+    const messageId = utteranceMessages.get(correction.utteranceId);
+    const entry = agg.entries.find(
+      (item) =>
+        item.role === "user" && item.utteranceId === correction.utteranceId,
+    );
+    if (messageId && entry)
+      sinks.correctPersistedMessage?.(messageId, entry.text);
     sinks.publishTranscripts(agg.entries);
   }
 
   function onTurnComplete(): void {
     agg = sealRole(agg, "model");
     sinks.publishTranscripts(agg.entries);
-    sinks.persistTurn?.(agg.entries.slice(persisted), summaries);
+    const entries = agg.entries.slice(persisted);
+    const ids = sinks.persistTurn?.(entries, summaries);
+    if (ids)
+      for (const entry of entries) {
+        const messageId = ids.get(entry.id);
+        if (entry.role === "user" && entry.utteranceId && messageId)
+          utteranceMessages.set(entry.utteranceId, messageId);
+      }
     persisted = agg.entries.length;
     summaries = [];
   }
@@ -97,6 +117,27 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
 
   function onStatusChange(status: VoiceStatus): void {
     agg = applyStatusTransition(agg, currentStatus, status.status);
+    if (
+      [
+        "reconnecting",
+        "draining-playback",
+        "ended",
+        "error",
+        "needs-login",
+      ].includes(status.status)
+    ) {
+      utteranceMessages.clear();
+      sinks.clearPersistedMappings?.();
+      // A rebuilt transport may reuse u1. Keep the displayed history, not its wire identity.
+      agg = {
+        ...agg,
+        entries: agg.entries.map((entry) => ({
+          ...entry,
+          utteranceId: undefined,
+          sealed: true,
+        })),
+      };
+    }
     sinks.publishTranscripts(agg.entries);
     sinks.publishStatus(status);
     if (!isMicActiveStatus(status.status)) {
@@ -141,6 +182,8 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
 
   function reset(): void {
     agg = emptyAggState();
+    utteranceMessages.clear();
+    sinks.clearPersistedMappings?.();
     summaries = [];
     persisted = 0;
     currentStatus = "idle";
@@ -149,6 +192,8 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   }
 
   function dispose(): void {
+    // UI unmount is not a transport close: an assistant farewell may still drain.
+    // onStatusChange owns mapping cleanup at the actual disconnect/terminal boundary.
     sinks.setMicLevel(0);
   }
 

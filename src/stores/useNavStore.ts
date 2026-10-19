@@ -1,5 +1,5 @@
 "use client";
-import { create } from "zustand";
+import { create, type StateCreator } from "zustand";
 import type { TransitGuide } from "@/lib/navigation/transitRide";
 import {
   confirmBoarded,
@@ -11,6 +11,7 @@ import type {
 } from "@/lib/voice/voiceSession";
 import type { LatLng } from "@/types";
 import type { NavInstruction } from "@/types/route";
+import { withAtomicNotifications } from "./atomicNotifications";
 
 export type NavAdvisory = VoiceNavAdvisory;
 export type NavRerouteReason = VoiceRerouteReason;
@@ -183,7 +184,7 @@ const initialState: NavState = {
   stepCoord: null,
 };
 
-const useNavStore = create<NavStore>((set) => ({
+const navState: StateCreator<NavStore> = (set) => ({
   ...initialState,
   setNavigationSource: (navigationSource) =>
     set((state) =>
@@ -380,6 +381,7 @@ const useNavStore = create<NavStore>((set) => ({
       ...initialState,
       compassPermission: s.compassPermission,
     })),
-}));
+});
 
+const useNavStore = create<NavStore>(withAtomicNotifications(navState));
 export default useNavStore;

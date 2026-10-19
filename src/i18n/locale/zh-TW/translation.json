@@ -368,6 +368,8 @@
       "statusReady": "已連線",
       "statusListening": "聆聽中…",
       "statusModelSpeaking": "回覆中…",
+      "statusAssistantEnding": "正在播放道別…",
+      "statusDrainingPlayback": "正在播完道別…",
       "statusReconnecting": "連線中斷，重連中",
       "statusPlaybackBlocked": "播放已暫停",
       "statusNeedsLogin": "請重新登入",
