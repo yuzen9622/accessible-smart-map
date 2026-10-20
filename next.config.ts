@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 
-const isCapacitorBuild = process.env.CAP_BUILD === "1";
 const isDevelopment = process.env.NODE_ENV === "development";
 const indoorPreviewPort = process.env.INDOOR_PREVIEW_PORT;
 const localBackendPort = process.env.LOCAL_BACKEND_PORT;
@@ -11,7 +10,7 @@ const localHosts = [
 ];
 
 const nextConfig: NextConfig = {
-  output: isCapacitorBuild ? "export" : "standalone",
+  output: "standalone",
   /* config options here */ trailingSlash: true,
 
   // Survey files stay outside Next's assets and output tracing. Only the
@@ -48,26 +47,21 @@ const nextConfig: NextConfig = {
     : {}),
 
   // Apple fetches the Universal Links file without an extension; serve it as JSON.
-  // (Static export builds have no server, so headers only apply to the web host.)
-  ...(isCapacitorBuild
-    ? {}
-    : {
-        async headers() {
-          return [
-            {
-              source: "/.well-known/apple-app-site-association",
-              headers: [{ key: "Content-Type", value: "application/json" }],
-            },
-            {
-              source: "/:lng(zh-TW|en)/sos/:path*",
-              headers: [
-                { key: "Referrer-Policy", value: "no-referrer" },
-                { key: "X-Robots-Tag", value: "noindex, nofollow" },
-              ],
-            },
-          ];
-        },
-      }),
+  async headers() {
+    return [
+      {
+        source: "/.well-known/apple-app-site-association",
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      },
+      {
+        source: "/:lng(zh-TW|en)/sos/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+    ];
+  },
 
   images: {
     unoptimized: true,
