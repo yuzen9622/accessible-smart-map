@@ -322,6 +322,7 @@ export default function ClientMap() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const hasSpecialParam =
+      params.has("planToken") ||
       params.has("sessionId") ||
       params.has("liff.state") ||
       params.has("sos") ||

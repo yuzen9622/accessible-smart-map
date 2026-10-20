@@ -357,11 +357,23 @@ export interface DriveIncident {
   location: { lat: number; lng: number };
 }
 
+export interface DriveManeuver {
+  instruction?: string;
+  type: number;
+  lengthKm: number;
+  timeSec: number;
+  beginShapeIndex: number;
+  endShapeIndex: number;
+  streetNames?: string[];
+  highway?: boolean;
+  stairs?: boolean;
+}
+
 export interface DriveLeg extends RouteSourceNames {
   type: "DRIVE" | "MOTORCYCLE";
   label?: string;
-  from: string;
-  to: string;
+  from: string | { lat: number; lng: number };
+  to: string | { lat: number; lng: number };
   distanceM: number;
   durationMinutes?: number;
   durationMin: number;
@@ -375,6 +387,7 @@ export interface DriveLeg extends RouteSourceNames {
   arrivalTime?: string | null;
   polyline: [number, number][];
   steps?: DriveStep[];
+  maneuvers?: DriveManeuver[];
 }
 
 export type RouteLeg =

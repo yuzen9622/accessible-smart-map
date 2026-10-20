@@ -12,13 +12,16 @@ const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const strings = (value: unknown) =>
   Array.isArray(value) && value.every((v) => typeof v === "string");
-const point = (value: unknown) =>
+const geographicPoint = (value: unknown) =>
   record(value) &&
   finite(value.lat) &&
   Math.abs(value.lat) <= 90 &&
   finite(value.lng) &&
-  Math.abs(value.lng) <= 180 &&
-  typeof value.name === "string";
+  Math.abs(value.lng) <= 180;
+const point = (value: unknown) =>
+  record(value) && geographicPoint(value) && typeof value.name === "string";
+const roadPoint = (value: unknown) =>
+  typeof value === "string" || geographicPoint(value);
 const coordinate = (value: unknown) =>
   Array.isArray(value) &&
   value.length === 2 &&
@@ -108,14 +111,17 @@ export function parseAiRoutePlan(value: unknown): AiRoutePlan {
         (!Array.isArray(leg.polyline) || !leg.polyline.every(coordinate))
       )
         return fail();
-      if (
-        leg.type === "WALK" ||
-        leg.type === "DRIVE" ||
-        leg.type === "MOTORCYCLE"
-      ) {
+      if (leg.type === "WALK") {
         if (
           typeof leg.from !== "string" ||
           typeof leg.to !== "string" ||
+          !finite(leg.distanceM)
+        )
+          return fail();
+      } else if (leg.type === "DRIVE" || leg.type === "MOTORCYCLE") {
+        if (
+          !roadPoint(leg.from) ||
+          !roadPoint(leg.to) ||
           !finite(leg.distanceM)
         )
           return fail();
