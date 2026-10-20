@@ -368,6 +368,7 @@ export default function AccountLogin({ active = true }: { active?: boolean }) {
               state.setActiveRailPanel("my-reports");
               state.setMobileSheetSnap("full");
             }}
+            className="text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
           >
             <ClipboardList size={16} className="mr-2" />
             {t("myReportsTitle")}

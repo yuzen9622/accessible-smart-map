@@ -20,7 +20,13 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
 import ShareTargets from "@/components/shared/ShareTargets";
@@ -31,6 +37,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import useIsDesktop from "@/hook/useIsDesktop";
 import useNavigationAudio from "@/hook/useNavigationAudio";
 import usePin from "@/hook/usePin";
@@ -103,6 +115,23 @@ function normalizeQuality(quality?: string): AirQualityLevel {
   if (!quality) return "";
   if (quality in LEVEL_CONFIG) return quality as AirQualityLevel;
   return QUALITY_ALIASES[quality] ?? "";
+}
+
+function MapControlTooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactElement;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="left" sideOffset={8} collisionPadding={16}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function Metric({
@@ -294,7 +323,7 @@ export default function MapControlsWrapper() {
   const pillConfig = air ? envConfig : LEVEL_CONFIG[""];
 
   return (
-    <>
+    <TooltipProvider delayDuration={300}>
       <div className="fixed inset-0 pointer-events-none z-(--z-floating-controls)">
         {/* 1. Top-Right Container: Environment Info Badge */}
         {showAirPill && (
@@ -418,45 +447,51 @@ export default function MapControlsWrapper() {
           {outdoorNavigation ? (
             // Navigation Mode Controls
             <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                onClick={toggleVoice}
-                aria-label={t("voiceNav")}
-                aria-pressed={isAudioActive}
-                className={cn(
-                  "rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:shadow-xl transition-all",
-                  isAudioActive
-                    ? "bg-primary text-primary-foreground border-primary/50"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {isAudioActive ? (
-                  <Volume2 className="h-5 w-5" />
-                ) : (
-                  <VolumeXIcon size={20} />
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                onClick={recenterNav}
-                aria-label={t("recenter")}
-                className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-foreground"
-              >
-                <LocateFixed className="h-5 w-5" />
-              </Button>
+              <MapControlTooltip label={t("voiceNav")}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={toggleVoice}
+                  aria-label={t("voiceNav")}
+                  aria-pressed={isAudioActive}
+                  className={cn(
+                    "rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:shadow-xl transition-all",
+                    isAudioActive
+                      ? "bg-primary text-primary-foreground border-primary/50"
+                      : "text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {isAudioActive ? (
+                    <Volume2 className="h-5 w-5" />
+                  ) : (
+                    <VolumeXIcon size={20} />
+                  )}
+                </Button>
+              </MapControlTooltip>
+              <MapControlTooltip label={t("recenter")}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  onClick={recenterNav}
+                  aria-label={t("recenter")}
+                  className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-foreground"
+                >
+                  <LocateFixed className="h-5 w-5" />
+                </Button>
+              </MapControlTooltip>
               {/* SOS button during navigation (single tap) */}
-              <button
-                type="button"
-                aria-label="SOS"
-                onClick={() => setSosOpen(true)}
-                className="h-11 w-11 rounded-full bg-red-600 text-white shadow-lg hover:bg-red-700 hover:shadow-xl transition-colors flex items-center justify-center select-none shrink-0"
-              >
-                <span className="text-sm font-black">SOS</span>
-              </button>
+              <MapControlTooltip label={t("sosSelectTitle")}>
+                <button
+                  type="button"
+                  aria-label={t("sosSelectTitle")}
+                  onClick={() => setSosOpen(true)}
+                  className="h-11 w-11 rounded-full bg-red-600 text-white shadow-lg hover:bg-red-700 hover:shadow-xl transition-colors flex items-center justify-center select-none shrink-0"
+                >
+                  <span className="text-sm font-black">SOS</span>
+                </button>
+              </MapControlTooltip>
             </div>
           ) : (
             // Standard Map Mode Controls
@@ -473,50 +508,56 @@ export default function MapControlsWrapper() {
                 inert={isDesktop}
               >
                 {/* Recenter Button (Mobile, always visible) */}
-                <Button
-                  aria-label={t("recenter")}
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => handlePinClick(userLocation)}
-                  className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all"
-                >
-                  <Navigation className="h-5 w-5 text-foreground" />
-                </Button>
+                <MapControlTooltip label={t("recenter")}>
+                  <Button
+                    aria-label={t("recenter")}
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => handlePinClick(userLocation)}
+                    className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all"
+                  >
+                    <Navigation className="h-5 w-5 text-foreground" />
+                  </Button>
+                </MapControlTooltip>
 
                 {/* AI ChatBot FAB (Mobile, always visible — primary entry) */}
                 {!chatOpen && (
-                  <Button
-                    data-coach="ai"
-                    onClick={openAssistant}
-                    variant="default"
-                    size="icon"
-                    className="rounded-full h-11 w-11 shadow-lg bg-primary hover:shadow-xl transition-all text-primary-foreground"
-                    aria-label={t("chatbot.open", "開啟聊天助理")}
-                  >
-                    <BotMessageSquare className="h-6 w-6" />
-                  </Button>
+                  <MapControlTooltip label={t("chatbot.open", "開啟聊天助理")}>
+                    <Button
+                      data-coach="ai"
+                      onClick={openAssistant}
+                      variant="default"
+                      size="icon"
+                      className="rounded-full h-11 w-11 shadow-lg bg-primary hover:shadow-xl transition-all text-primary-foreground"
+                      aria-label={t("chatbot.open", "開啟聊天助理")}
+                    >
+                      <BotMessageSquare className="h-6 w-6" />
+                    </Button>
+                  </MapControlTooltip>
                 )}
 
                 {/* More controls toggle (Mobile) */}
-                <Button
-                  ref={moreToggleRef}
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => setMoreControlsOpen((v) => !v)}
-                  aria-label={t("moreControls", "更多控制項")}
-                  aria-expanded={moreControlsOpen}
-                  aria-controls="mobile-more-controls"
-                  className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-foreground"
-                >
-                  <motion.span
-                    animate={{ rotate: moreControlsOpen ? 135 : 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex"
+                <MapControlTooltip label={t("moreControls", "更多控制項")}>
+                  <Button
+                    ref={moreToggleRef}
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => setMoreControlsOpen((v) => !v)}
+                    aria-label={t("moreControls", "更多控制項")}
+                    aria-expanded={moreControlsOpen}
+                    aria-controls="mobile-more-controls"
+                    className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-foreground"
                   >
-                    <PlusIcon size={20} />
-                  </motion.span>
-                </Button>
+                    <motion.span
+                      animate={{ rotate: moreControlsOpen ? 135 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex"
+                    >
+                      <PlusIcon size={20} />
+                    </motion.span>
+                  </Button>
+                </MapControlTooltip>
 
                 {moreControlsOpen && (
                   <div
@@ -524,36 +565,42 @@ export default function MapControlsWrapper() {
                     className="flex flex-col-reverse gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200"
                   >
                     {/* 3D/2D Toggle (Mobile) */}
-                    <Button
-                      aria-label={is3D ? t("switchTo2D") : t("switchTo3D")}
-                      aria-pressed={is3D}
-                      variant="secondary"
-                      size="icon"
-                      onClick={() => setIs3D(!is3D)}
-                      className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-xs font-bold text-foreground"
+                    <MapControlTooltip
+                      label={is3D ? t("switchTo2D") : t("switchTo3D")}
                     >
-                      {is3D ? "2D" : "3D"}
-                    </Button>
+                      <Button
+                        aria-label={is3D ? t("switchTo2D") : t("switchTo3D")}
+                        aria-pressed={is3D}
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => setIs3D(!is3D)}
+                        className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-xs font-bold text-foreground"
+                      >
+                        {is3D ? "2D" : "3D"}
+                      </Button>
+                    </MapControlTooltip>
 
                     {/* Share Location Button (Mobile) */}
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      onClick={() => {
-                        if (!userLocation) {
+                    <MapControlTooltip label={t("shareLocation")}>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => {
+                          if (!userLocation) {
+                            openShare();
+                            return;
+                          }
+                          moreToggleRef.current?.focus();
                           openShare();
-                          return;
-                        }
-                        moreToggleRef.current?.focus();
-                        openShare();
-                        setMoreControlsOpen(false);
-                      }}
-                      aria-label={t("shareLocation")}
-                      className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-primary"
-                    >
-                      <ShareIcon size={20} />
-                    </Button>
+                          setMoreControlsOpen(false);
+                        }}
+                        aria-label={t("shareLocation")}
+                        className="rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-primary"
+                      >
+                        <ShareIcon size={20} />
+                      </Button>
+                    </MapControlTooltip>
                   </div>
                 )}
               </div>
@@ -564,76 +611,88 @@ export default function MapControlsWrapper() {
               <div className="flex flex-col gap-2">
                 {/* 3D/2D Toggle (Desktop only — mobile has its own copy in
                     the collapsible "more" group above) */}
-                <Button
-                  aria-label={is3D ? t("switchTo2D") : t("switchTo3D")}
-                  aria-pressed={is3D}
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => setIs3D(!is3D)}
-                  aria-hidden={!isDesktop}
-                  inert={!isDesktop}
-                  className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-xs font-bold text-foreground"
+                <MapControlTooltip
+                  label={is3D ? t("switchTo2D") : t("switchTo3D")}
                 >
-                  {is3D ? "2D" : "3D"}
-                </Button>
+                  <Button
+                    aria-label={is3D ? t("switchTo2D") : t("switchTo3D")}
+                    aria-pressed={is3D}
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => setIs3D(!is3D)}
+                    aria-hidden={!isDesktop}
+                    inert={!isDesktop}
+                    className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-xs font-bold text-foreground"
+                  >
+                    {is3D ? "2D" : "3D"}
+                  </Button>
+                </MapControlTooltip>
 
                 {/* Recenter / My Location (Desktop only — mobile's copy is
                     the always-visible button in the stack above) */}
-                <Button
-                  aria-label={t("recenter")}
-                  variant="secondary"
-                  size="icon"
-                  onClick={() => handlePinClick(userLocation)}
-                  aria-hidden={!isDesktop}
-                  inert={!isDesktop}
-                  className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all"
-                >
-                  <Navigation className="h-5 w-5 text-foreground" />
-                </Button>
+                <MapControlTooltip label={t("recenter")}>
+                  <Button
+                    aria-label={t("recenter")}
+                    variant="secondary"
+                    size="icon"
+                    onClick={() => handlePinClick(userLocation)}
+                    aria-hidden={!isDesktop}
+                    inert={!isDesktop}
+                    className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all"
+                  >
+                    <Navigation className="h-5 w-5 text-foreground" />
+                  </Button>
+                </MapControlTooltip>
 
                 {/* Share Location Button (Desktop only) */}
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="icon"
-                  onClick={openShare}
-                  aria-label={t("shareLocation")}
-                  aria-hidden={!isDesktop}
-                  inert={!isDesktop}
-                  className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-primary"
-                >
-                  <ShareIcon size={20} />
-                </Button>
+                <MapControlTooltip label={t("shareLocation")}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    onClick={openShare}
+                    aria-label={t("shareLocation")}
+                    aria-hidden={!isDesktop}
+                    inert={!isDesktop}
+                    className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-background/90 backdrop-blur-sm border border-border/50 hover:bg-muted hover:shadow-xl transition-all text-primary"
+                  >
+                    <ShareIcon size={20} />
+                  </Button>
+                </MapControlTooltip>
 
                 {/* AI ChatBot FAB (Desktop only — an independent floating
                     button next to SOS/locate, same as the mobile copy above,
                     not a Side Rail item. Rendered only when the assistant
                     isn't already open, matching the mobile FAB. */}
                 {!chatOpen && (
-                  <Button
-                    data-coach="ai"
-                    onClick={openAssistant}
-                    variant="default"
-                    size="icon"
-                    aria-hidden={!isDesktop}
-                    inert={!isDesktop}
-                    className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-primary hover:shadow-xl transition-all text-primary-foreground"
-                    aria-label={t("chatbot.open", "開啟聊天助理")}
-                  >
-                    <BotMessageSquare className="h-5 w-5" />
-                  </Button>
+                  <MapControlTooltip label={t("chatbot.open", "開啟聊天助理")}>
+                    <Button
+                      data-coach="ai"
+                      onClick={openAssistant}
+                      variant="default"
+                      size="icon"
+                      aria-hidden={!isDesktop}
+                      inert={!isDesktop}
+                      className="hidden lg:inline-flex rounded-full h-11 w-11 shadow-lg bg-primary hover:shadow-xl transition-all text-primary-foreground"
+                      aria-label={t("chatbot.open", "開啟聊天助理")}
+                    >
+                      <BotMessageSquare className="h-5 w-5" />
+                    </Button>
+                  </MapControlTooltip>
                 )}
 
                 {/* SOS Button (single tap) */}
-                <button
-                  type="button"
-                  data-coach="sos"
-                  aria-label="SOS"
-                  onClick={() => setSosOpen(true)}
-                  className="h-11 w-11 rounded-full bg-red-600 text-white shadow-lg hover:bg-red-700 hover:shadow-xl transition-colors flex items-center justify-center select-none shrink-0"
-                >
-                  <span className="text-sm font-black">SOS</span>
-                </button>
+                <MapControlTooltip label={t("sosSelectTitle")}>
+                  <button
+                    type="button"
+                    data-coach="sos"
+                    aria-label={t("sosSelectTitle")}
+                    onClick={() => setSosOpen(true)}
+                    className="h-11 w-11 rounded-full bg-red-600 text-white shadow-lg hover:bg-red-700 hover:shadow-xl transition-colors flex items-center justify-center select-none shrink-0"
+                  >
+                    <span className="text-sm font-black">SOS</span>
+                  </button>
+                </MapControlTooltip>
               </div>
             </>
           )}
@@ -662,6 +721,6 @@ export default function MapControlsWrapper() {
 
       {/* SOS Dialog */}
       <SosDialog open={sosOpen} onOpenChange={setSosOpen} />
-    </>
+    </TooltipProvider>
   );
 }

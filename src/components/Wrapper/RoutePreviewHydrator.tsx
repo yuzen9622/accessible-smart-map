@@ -1,208 +1,152 @@
 "use client";
 
 import { LngLatBounds } from "maplibre-gl";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import { AI_ROUTE_UNAVAILABLE, parseAiRoutePlan } from "@/lib/ai/routeContract";
 import { getLineRoutePreview } from "@/lib/api/line";
 import { extendBounds, fitRouteBounds } from "@/lib/mapCamera";
-import { adaptRoutePreviewRoutes } from "@/lib/routePreviewAdapter";
+import { parseSosRoutePreview } from "@/lib/routePreviewAdapter";
 import useMapStore from "@/stores/useMapStore";
-import type { PlaceDetail } from "@/types";
-import type { RoutePreviewPageData } from "@/types/line";
+import type { RoutePreviewQuery } from "@/types/line";
 import type { AccessibleRoute } from "@/types/route";
 
-function coordinatePlace(label: string, lat?: number, lng?: number) {
-  if (lat == null || lng == null) return null;
-  return {
-    kind: "coordinate",
-    address: label,
-    position: { lat, lng },
-  } satisfies PlaceDetail;
+function parseQuery(search: string): RoutePreviewQuery | null {
+  const params = new URLSearchParams(search);
+  const state = params.get("liff.state");
+  const nested = new URLSearchParams(
+    state?.includes("?") ? state.slice(state.indexOf("?") + 1) : (state ?? ""),
+  );
+  const entries = [params, nested].flatMap((source) =>
+    ["planToken", "sessionId"].flatMap((key) =>
+      source.getAll(key).map((value) => [key, value] as const),
+    ),
+  );
+  if (entries.length === 0) return null;
+  if (entries.length !== 1) throw new Error(AI_ROUTE_UNAVAILABLE);
+  const [key, value] = entries[0];
+  if (key === "planToken" && /^[A-Za-z0-9_-]{43}$/.test(value))
+    return { planToken: value };
+  if (key === "sessionId" && /^[a-f0-9]{32}$/i.test(value))
+    return { sessionId: value };
+  throw new Error(AI_ROUTE_UNAVAILABLE);
 }
 
-function getSessionId(
-  searchParams: ReturnType<typeof useSearchParams>,
-): string | null {
-  const direct = searchParams.get("sessionId");
-  if (direct) return direct;
-
-  const liffState = searchParams.get("liff.state");
-  if (liffState) {
-    try {
-      const queryStart = liffState.indexOf("?");
-      const queryString =
-        queryStart !== -1
-          ? liffState.substring(queryStart)
-          : liffState.includes("=")
-            ? `?${liffState}`
-            : "";
-      if (queryString) {
-        const parsed = new URLSearchParams(queryString);
-        return parsed.get("sessionId");
-      }
-    } catch (e) {
-      console.error("Failed to parse liff.state:", e);
-    }
-  }
-
-  return null;
-}
+type CameraPreview = {
+  origin: { lat: number; lng: number };
+  destination: { lat: number; lng: number };
+  route: AccessibleRoute;
+  generation: number;
+  search: string;
+};
 
 export default function RoutePreviewHydrator() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  const {
-    map,
-    setComputeRoutes,
-    setRouteSelect,
-    setRouteInfoShow,
-    setSheetMode,
-    setRouteSubPanel,
-    setOrigin,
-    setDestination,
-    setOriginName,
-    setDestinationName,
-  } = useMapStore(
+  const search = useSearchParams().toString();
+  const { map, routeGeneration, isNavigating } = useMapStore(
     useShallow((s) => ({
       map: s.map,
-      setComputeRoutes: s.setComputeRoutes,
-      setRouteSelect: s.setRouteSelect,
-      setRouteInfoShow: s.setRouteInfoShow,
-      setSheetMode: s.setSheetMode,
-      setRouteSubPanel: s.setRouteSubPanel,
-      setOrigin: s.setOrigin,
-      setDestination: s.setDestination,
-      setOriginName: s.setOriginName,
-      setDestinationName: s.setDestinationName,
+      routeGeneration: s.routeGeneration,
+      isNavigating: s.isNavigating,
     })),
   );
+  const [camera, setCamera] = useState<CameraPreview | null>(null);
 
-  const [sessionData, setSessionData] = useState<RoutePreviewPageData | null>(
-    null,
-  );
-  const [selectedRouteData, setSelectedRouteData] =
-    useState<AccessibleRoute | null>(null);
-  const [hasCentered, setHasCentered] = useState(false);
-
-  // We track the last fetched sessionId to prevent duplicate fetching
-  const fetchedSessionIdRef = useRef<string | null>(null);
-
-  const sessionId = getSessionId(searchParams);
-
-  // 1. Fetching Effect
   useEffect(() => {
-    if (!sessionId || fetchedSessionIdRef.current === sessionId) return;
-
     let cancelled = false;
-    fetchedSessionIdRef.current = sessionId;
-
-    const clearQuery = () => {
-      router.replace(pathname, { scroll: false });
-    };
+    setCamera(null);
+    const state = useMapStore.getState();
+    const generation = state.routeGeneration;
+    const isCurrent = () =>
+      !cancelled &&
+      useMapStore.getState().routeGeneration === generation &&
+      !useMapStore.getState().isNavigating;
 
     const hydrate = async () => {
       try {
-        const response = await getLineRoutePreview(sessionId);
-        if (cancelled || !response.data?.routes?.length) {
-          if (!cancelled) {
-            fetchedSessionIdRef.current = null;
-            clearQuery();
-          }
-          return;
+        const query = parseQuery(search);
+        if (!query) return;
+        if (state.isNavigating) throw new Error(AI_ROUTE_UNAVAILABLE);
+        const response = await getLineRoutePreview(query);
+        if (!isCurrent()) return;
+        if (!response.ok) throw new Error(AI_ROUTE_UNAVAILABLE);
+
+        let preview: Omit<CameraPreview, "generation" | "search">;
+        if ("planToken" in query) {
+          const plan = parseAiRoutePlan(response.data);
+          const selected = plan.routes.find(
+            (route) => route.routeId === plan.selectedRouteId,
+          );
+          if (!selected) throw new Error(AI_ROUTE_UNAVAILABLE);
+          state.applyAiRoutePlan(plan);
+          preview = {
+            origin: plan.origin,
+            destination: plan.destination,
+            route: selected,
+          };
+        } else {
+          const sos = parseSosRoutePreview(response.data);
+          const selected = sos.routes[0];
+          state.setComputeRoutes(sos.routes);
+          state.setRouteSelect({ index: 0, route: selected });
+          state.setOrigin({
+            kind: "coordinate",
+            address: sos.originLabel,
+            position: sos.origin,
+          });
+          state.setDestination({
+            kind: "coordinate",
+            address: sos.destinationLabel,
+            position: sos.destination,
+          });
+          state.setOriginName(sos.originLabel);
+          state.setDestinationName(sos.destinationLabel);
+          state.setRouteInfoShow(true);
+          state.setSheetMode("route");
+          state.setRouteSubPanel("none");
+          preview = {
+            origin: sos.origin,
+            destination: sos.destination,
+            route: selected,
+          };
         }
-
-        const preview = response.data;
-        const routes = adaptRoutePreviewRoutes(preview.routes);
-        const selectedRoute = routes[0];
-        if (!selectedRoute) {
-          fetchedSessionIdRef.current = null;
-          clearQuery();
-          return;
-        }
-
-        // Save locally to trigger camera centering and UI updates
-        setSessionData(preview);
-        setSelectedRouteData(selectedRoute);
-        setHasCentered(false);
-
-        // Update global store
-        setComputeRoutes(routes);
-        setRouteSelect({ index: 0, route: selectedRoute });
-        setRouteInfoShow(true);
-        setSheetMode("route");
-        setRouteSubPanel("none");
-        setOriginName(preview.origin.label);
-        setDestinationName(preview.destination.label);
-        setOrigin(
-          coordinatePlace(
-            preview.origin.label,
-            preview.origin.lat,
-            preview.origin.lng,
-          ),
-        );
-        setDestination(
-          coordinatePlace(
-            preview.destination.label,
-            preview.destination.lat,
-            preview.destination.lng,
-          ),
-        );
-
-        // Clear query string from URL since we have successfully loaded the route
-        clearQuery();
-      } catch (_err) {
-        fetchedSessionIdRef.current = null;
-        clearQuery();
+        setCamera({
+          ...preview,
+          search,
+          generation: useMapStore.getState().routeGeneration,
+        });
+      } catch {
+        if (!cancelled && useMapStore.getState().routeGeneration === generation)
+          toast.error(AI_ROUTE_UNAVAILABLE);
       }
     };
-
-    hydrate();
-
+    void hydrate();
     return () => {
       cancelled = true;
-      if (fetchedSessionIdRef.current === sessionId) {
-        fetchedSessionIdRef.current = null;
-      }
     };
-  }, [
-    sessionId,
-    pathname,
-    router,
-    setRouteSubPanel,
-    setComputeRoutes,
-    setDestination,
-    setDestinationName,
-    setOrigin,
-    setOriginName,
-    setRouteInfoShow,
-    setRouteSelect,
-    setSheetMode,
-  ]);
+  }, [search]);
 
-  // 2. Camera Centering Effect - Runs as soon as map becomes ready and we have route data
   useEffect(() => {
-    if (!map || !sessionData || !selectedRouteData || hasCentered) return;
-
+    if (
+      !map ||
+      !camera ||
+      camera.search !== search ||
+      camera.generation !== routeGeneration ||
+      isNavigating
+    )
+      return;
     const bounds = new LngLatBounds();
-    extendBounds(bounds, sessionData.origin.lng, sessionData.origin.lat);
-    extendBounds(
-      bounds,
-      sessionData.destination.lng,
-      sessionData.destination.lat,
-    );
-    for (const leg of selectedRouteData.legs) {
+    extendBounds(bounds, camera.origin.lng, camera.origin.lat);
+    extendBounds(bounds, camera.destination.lng, camera.destination.lat);
+    for (const leg of camera.route.legs) {
       for (const point of leg.polyline ?? []) {
-        extendBounds(bounds, point?.[0], point?.[1]);
+        extendBounds(bounds, point[0], point[1]);
       }
     }
-    if (!bounds.isEmpty()) {
-      fitRouteBounds(map, bounds);
-      setHasCentered(true);
-    }
-  }, [map, sessionData, selectedRouteData, hasCentered]);
+    if (!bounds.isEmpty()) fitRouteBounds(map, bounds);
+    setCamera(null);
+  }, [map, camera, routeGeneration, isNavigating, search]);
 
   return null;
 }

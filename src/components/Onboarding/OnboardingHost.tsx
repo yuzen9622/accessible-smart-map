@@ -16,7 +16,14 @@ const OnboardingFlow = dynamic(() => import("./OnboardingFlow"), {
  * would be actively harmful — someone opening an SOS link is trying to find a
  * person right now.
  */
-const DEEP_LINK_PARAMS = ["sos", "sessionId", "liff.state", "loc", "place"];
+const DEEP_LINK_PARAMS = [
+  "sos",
+  "planToken",
+  "sessionId",
+  "liff.state",
+  "loc",
+  "place",
+];
 
 function arrivedViaDeepLink() {
   if (typeof window === "undefined") return false;
