@@ -463,8 +463,7 @@ describe("RouteCard", () => {
 
     // Score warnings + confidence.
     expect(html).toContain("部分路段缺乏無障礙資料");
-    expect(html).toContain("資料可信度");
-    expect(html).toContain("中"); // confidenceMedium
+    expect(html).not.toContain("資料可信度");
 
     // Total walk distance summary badge.
     expect(html).toContain("450 m");

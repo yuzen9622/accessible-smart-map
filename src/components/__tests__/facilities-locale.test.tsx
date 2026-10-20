@@ -1,3 +1,4 @@
+import { isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -110,14 +111,22 @@ function deferred() {
 function render(component: () => unknown) {
   h.effects = [];
   h.stateIndex = 0;
-  component();
+  // Follow a root wrapper into the selected content component, stopping at
+  // its host element. This still exercises the real outdoor hooks after
+  // PlaceContent delegates venue and outdoor details to separate children.
+  let element = component();
+  while (isValidElement(element) && typeof element.type === "function") {
+    element = (element.type as (props: unknown) => unknown)(element.props);
+  }
   return h.effects;
 }
 async function flush() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 beforeEach(() => {
-  vi.clearAllMocks();
+  // A failed case must not leave queued mockReturnValueOnce responses for
+  // another consumer of the same nearby API (for example station details).
+  vi.resetAllMocks();
   h.writes = [];
   h.stateValues = null;
   h.language = "zh-TW";

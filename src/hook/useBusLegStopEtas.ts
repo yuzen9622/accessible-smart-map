@@ -6,8 +6,13 @@ import {
   fetchRouteDetailSnapshot,
   peekRouteDetailSnapshot,
   routeDetailKey,
+  subscribeRouteDetail,
 } from "@/lib/transit/busRouteDetailCache";
-import type { BusLeg, BusPlanContext } from "@/types/route";
+import type {
+  BusCandidateMetadata,
+  BusLeg,
+  BusPlanContext,
+} from "@/types/route";
 
 export type BusLegEtaStatus = "idle" | "loading" | "ready" | "error";
 
@@ -15,7 +20,7 @@ export type BusLegEtaStatus = "idle" | "loading" | "ready" | "error";
 // its data before it expires instead of blanking the list between ticks.
 const POLL_INTERVAL_MS = 10_000;
 
-interface EtaState {
+interface EtaState extends BusCandidateMetadata {
   /** Branch identity the data belongs to; data under another key is never shown. */
   key: string;
   directions: RouteDetailDirection[] | null;
@@ -45,8 +50,7 @@ function seed(
   return warm
     ? {
         key,
-        directions: warm.directions,
-        expiresAt: warm.expiresAt,
+        ...warm,
         status: "ready",
       }
     : emptyState(key, "idle");
@@ -72,7 +76,14 @@ export function useBusLegStopEtas(
   leg: BusLeg | null,
   enabled: boolean,
   poll: boolean,
-): { directions: RouteDetailDirection[] | null; status: BusLegEtaStatus } {
+  /** Passive summaries observe fresh snapshots without starting requests. */
+  cacheOnly = false,
+  /** A leg outside the plan (another service being viewed) reads the public feed. */
+  publicFeed = false,
+): BusCandidateMetadata & {
+  directions: RouteDetailDirection[] | null;
+  status: BusLegEtaStatus;
+} {
   useAppTranslation();
   const lang = getAppLanguage();
   const city = leg?.tdxCity ?? leg?.cityCode ?? "";
@@ -83,6 +94,7 @@ export function useBusLegStopEtas(
   const planContext = leg?.planContext;
   const routeToken = planContext?.routeToken;
   const legIndex = planContext?.legIndex;
+  const hasFeed = publicFeed || (!!routeToken && legIndex !== undefined);
   const key = routeDetailKey(routeName, city, subRouteUid, planContext, lang);
 
   // Seed from an already-warm cache entry so the first render after expanding
@@ -95,13 +107,7 @@ export function useBusLegStopEtas(
   pollRef.current = poll;
 
   useEffect(() => {
-    if (
-      !enabled ||
-      !routeName ||
-      !city ||
-      !routeToken ||
-      legIndex === undefined
-    ) {
+    if ((!enabled && !cacheOnly) || !routeName || !city || !hasFeed) {
       setState(emptyState(key, "idle"));
       return;
     }
@@ -110,6 +116,10 @@ export function useBusLegStopEtas(
     let version = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
+    const feed =
+      routeToken && legIndex !== undefined
+        ? { routeToken, legIndex }
+        : undefined;
 
     const fetchEtas = async (force: boolean) => {
       const mine = ++version;
@@ -117,7 +127,7 @@ export function useBusLegStopEtas(
         lang,
         force,
         subRouteUid,
-        planContext: { routeToken, legIndex },
+        planContext: feed,
         signal: controller.signal,
       });
       // Superseded or cancelled: a late response must not overwrite newer state.
@@ -127,12 +137,7 @@ export function useBusLegStopEtas(
         setState(emptyState(key, "error"));
         return;
       }
-      setState({
-        key,
-        directions: snapshot.directions,
-        expiresAt: snapshot.expiresAt,
-        status: "ready",
-      });
+      setState({ key, ...snapshot, status: "ready" });
     };
 
     function scheduleNext() {
@@ -162,39 +167,54 @@ export function useBusLegStopEtas(
       routeName,
       city,
       subRouteUid,
-      {
-        routeToken,
-        legIndex,
-      },
+      feed,
       lang,
     );
     setState(
       warm
         ? {
             key,
-            directions: warm.directions,
-            expiresAt: warm.expiresAt,
+            ...warm,
             status: "ready",
           }
-        : emptyState(key, "loading"),
+        : emptyState(key, cacheOnly ? "idle" : "loading"),
     );
 
-    if (poll) {
+    const unsubscribe = subscribeRouteDetail(key, () => {
+      if (cancelled) return;
+      const snapshot = peekRouteDetailSnapshot(
+        routeName,
+        city,
+        subRouteUid,
+        feed,
+        lang,
+      );
+      setState(
+        snapshot
+          ? { key, ...snapshot, status: "ready" }
+          : emptyState(key, "error"),
+      );
+    });
+
+    if (!cacheOnly && poll) {
       tick();
       document.addEventListener("visibilitychange", onVisibility);
-    } else {
-      // Prefetch only: warm the shared cache once, no timer, no listener.
+    } else if (!cacheOnly) {
+      // Prefetch only: warm the shared cache once, no polling timer.
       void fetchEtas(false);
     }
 
     return () => {
       cancelled = true;
+      unsubscribe();
       controller.abort();
       if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [
     enabled,
+    cacheOnly,
+    hasFeed,
     poll,
     routeName,
     city,
@@ -221,7 +241,7 @@ export function useBusLegStopEtas(
     return () => clearTimeout(timer);
   }, [stateKey, expiresAt]);
 
-  if (!enabled || !routeToken || legIndex === undefined)
+  if ((!enabled && !cacheOnly) || !hasFeed)
     return { directions: null, status: "idle" };
 
   // Render guard: nothing from another branch, nothing past its deadline.
@@ -231,5 +251,14 @@ export function useBusLegStopEtas(
   if (state.directions && Date.now() >= state.expiresAt) {
     return { directions: null, status: poll ? "loading" : "idle" };
   }
-  return { directions: state.directions, status: state.status };
+  return {
+    directions: state.directions,
+    status: state.status,
+    ...(state.departureCandidates === undefined
+      ? {}
+      : { departureCandidates: state.departureCandidates }),
+    ...(state.candidateSearchComplete === undefined
+      ? {}
+      : { candidateSearchComplete: state.candidateSearchComplete }),
+  };
 }

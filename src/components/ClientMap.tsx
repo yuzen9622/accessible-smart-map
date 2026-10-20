@@ -4,10 +4,13 @@ import type maplibregl from "maplibre-gl";
 import dynamic from "next/dynamic";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
+import type { MapLayerMouseEvent, MapRef } from "react-map-gl/maplibre";
 import MapView, { NavigationControl } from "react-map-gl/maplibre";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
+import IndoorMapEntry, {
+  INDOOR_BUILDING_LAYER_ID,
+} from "@/components/Indoor/IndoorMapEntry";
 import RouteSessionPill from "@/components/Route/RouteSessionPill";
 import NowPin from "@/components/shared/NowPin";
 import A11yFacilitiesWrapper from "@/components/Wrapper/A11yFacilitiesWrapper";
@@ -16,10 +19,14 @@ import RoutePreviewHydrator from "@/components/Wrapper/RoutePreviewHydrator";
 import RouteLine from "@/components/Wrapper/RouteWrapper";
 import { useAppTranslation } from "@/i18n/client";
 import { getPlaceDetails, reverseGeocode } from "@/lib/api/placeSearch";
+import { venueBuildingKey } from "@/lib/indoor/catalog";
+import { selectIndoorAtPoint } from "@/lib/indoor/mapInteraction";
+import { indoorBasemapRequest } from "@/lib/indoor/mapRequests";
 import { applyMapDimension, type MapTheme } from "@/lib/map/basemap3d";
 import { createGpsErrorTracker } from "@/lib/map/gpsErrorHandler";
 import { nominatimToPlaceResult } from "@/lib/place/adapters";
 import { toApiLang } from "@/lib/place/lang";
+import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import NavigationController from "./NavigationController";
@@ -91,6 +98,13 @@ function applyMapLanguage(map: maplibregl.Map, language: string) {
 }
 
 export default function ClientMap() {
+  const mapViewRef = useRef<MapRef>(null);
+  const transformBasemapRequest =
+    useCallback<maplibregl.RequestTransformFunction>(
+      (url, type) =>
+        indoorBasemapRequest(mapViewRef.current?.getMap(), url, type),
+      [],
+    );
   const {
     map,
     setMap,
@@ -121,6 +135,9 @@ export default function ClientMap() {
   const { resolvedTheme } = useTheme();
   const { i18n, t } = useAppTranslation();
   const [mounted, setMounted] = useState(false);
+  const indoorOpen = useMapStore((s) => s.indoorExploring);
+  const setIndoorOpen = useMapStore((s) => s.setIndoorExploring);
+  useEffect(() => () => setIndoorOpen(false), [setIndoorOpen]);
 
   // Shared-location links (?loc=lat,lng) start the camera on the shared point.
   // Falls back to the last-known GPS position cached in localStorage so the map
@@ -214,6 +231,14 @@ export default function ClientMap() {
     [i18n.language, attachSpriteFallback, restoreDimension],
   );
 
+  // Reloading building tiles can temporarily make isStyleLoaded() false.
+  // A dimension change during that window is retried when the map settles;
+  // source completion does not necessarily emit another styledata event.
+  const handleIdle = useCallback(
+    (evt: { target: maplibregl.Map }) => restoreDimension(evt.target),
+    [restoreDimension],
+  );
+
   useEffect(() => {
     if (map?.isStyleLoaded()) applyMapLanguage(map, i18n.language);
   }, [map, i18n.language]);
@@ -231,13 +256,16 @@ export default function ClientMap() {
     if (mock) {
       const [lat, lng] = mock.split(",").map(Number);
       const loc = { lat, lng };
-      setUserLocation(loc);
+      setUserLocation(loc, { accuracyM: 5, timestamp: Date.now() });
       try {
         localStorage.setItem("lastUserLocation", JSON.stringify(loc));
       } catch (_err) {
         // localStorage write failure is non-fatal.
       }
-      const tId = setInterval(() => setUserLocation(loc), 2000);
+      const tId = setInterval(
+        () => setUserLocation(loc, { accuracyM: 5, timestamp: Date.now() }),
+        2000,
+      );
       return () => clearInterval(tId);
     }
 
@@ -251,7 +279,10 @@ export default function ClientMap() {
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
       };
-      setUserLocation(loc);
+      setUserLocation(loc, {
+        accuracyM: pos.coords.accuracy,
+        timestamp: pos.timestamp,
+      });
       try {
         localStorage.setItem("lastUserLocation", JSON.stringify(loc));
       } catch (_err) {
@@ -294,7 +325,9 @@ export default function ClientMap() {
       params.has("sessionId") ||
       params.has("liff.state") ||
       params.has("sos") ||
-      params.has("place");
+      params.has("place") ||
+      (process.env.NEXT_PUBLIC_INDOOR_PREVIEW === "1" &&
+        params.get("indoor") === "1");
     if (hasSpecialParam) return;
 
     if (initialCenter) return;
@@ -393,13 +426,33 @@ export default function ClientMap() {
 
   const handleClick = useCallback(
     async (e: MapLayerMouseEvent) => {
-      if (isNavigating) return;
       const dt = Date.now() - pointerDownTime.current;
       const [sx, sy] = pointerDownPos.current;
       const dx = Math.abs(e.point.x - sx);
       const dy = Math.abs(e.point.y - sy);
       // Only trigger on deliberate taps: short press + minimal movement
       if (dt > 250 || dx > 4 || dy > 4) return;
+
+      if (selectIndoorAtPoint(e.target, e.point)) return;
+
+      // The private footprint is its own destination. Do not reverse-geocode
+      // the campus or replace a mounted outdoor navigation session on entry.
+      if (
+        e.target.getLayer(INDOOR_BUILDING_LAYER_ID) &&
+        e.target.queryRenderedFeatures(e.point, {
+          layers: [INDOOR_BUILDING_LAYER_ID],
+        }).length > 0
+      ) {
+        const key = e.target.queryRenderedFeatures(e.point, {
+          layers: [INDOOR_BUILDING_LAYER_ID],
+        })[0]?.properties?.buildingKey;
+        const model = useIndoorCatalog
+          .getState()
+          .models.find((item) => venueBuildingKey(item) === key);
+        if (model) useIndoorCatalog.getState().showBuilding(model);
+        return;
+      }
+      if (isNavigating) return;
 
       const { lngLat } = e;
       const lat = lngLat.lat;
@@ -438,34 +491,42 @@ export default function ClientMap() {
   if (!mounted)
     return <div style={{ flex: 1, backgroundColor: "transparent" }} />;
 
+  const pinPlace = searchPlace ?? destination;
   return (
     <MapView
+      ref={mapViewRef}
       initialViewState={{
         longitude: initialCenter?.lng ?? 121.55,
         latitude: initialCenter?.lat ?? 25.03,
         zoom: initialCenter ? 17 : 15,
       }}
       mapStyle={mapStyle}
+      transformRequest={transformBasemapRequest}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
       onLoad={handleLoad}
       onStyleData={handleStyleData}
+      onIdle={handleIdle}
       style={{ position: "relative", flex: 1, overflow: "hidden" }}
       // Explicit `compact: true` (not relying on MapLibre's width-based
       // auto-detect) so the OSM/OpenFreeMap/OpenMapTiles/MapLibre credit
       // links always start collapsed behind a single toggle button instead
       // of sitting in the tab order as four separate stops on every load.
       attributionControl={{ compact: true }}
+      canvasContextAttributes={{ antialias: true }}
     >
       <NavigationControl position="top-right" showCompass={false} />
+      <IndoorMapEntry
+        open={indoorOpen}
+        onOpenChange={setIndoorOpen}
+        is3D={is3D}
+      />
       <MapWrapper />
       <A11yFacilitiesWrapper />
       <NowPin />
       <MapControlsWrapper />
-      {searchPlace ? (
-        <SearchPin destination={searchPlace} />
-      ) : destination ? (
-        <SearchPin destination={destination} />
+      {pinPlace && pinPlace.kind !== "venue-place" ? (
+        <SearchPin destination={pinPlace} />
       ) : null}
       <TransitWrapper />
       <ParkingWrapper />

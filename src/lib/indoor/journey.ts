@@ -1,0 +1,468 @@
+import type { TFunction } from "i18next";
+import zhTW from "@/i18n/locale/zh-TW/translation.json";
+import type { PlaceDetail, VenuePlaceDetail } from "@/types";
+import type { AccessibleRoute } from "@/types/route";
+import type { BackendRouteProvenance } from "./backendRoute";
+import { indoorModelVersion } from "./catalog";
+import { effectiveVerticalPreference } from "./profilePolicy";
+import { pathDistance, planIndoorRoute, segmentDistance } from "./route";
+import type {
+  IndoorMode,
+  IndoorRoute,
+  IndoorRouteStep,
+  IndoorVerticalPreference,
+  LocalIndoorModel,
+} from "./types";
+
+/** One route session; the catalog owns only the map's current building/view. */
+export interface VenueJourney {
+  id: string;
+  venueId: string;
+  buildingId: string;
+  sourceVersion: string;
+  backendRoute?: BackendRouteProvenance;
+  from: VenuePlaceDetail;
+  to: VenuePlaceDetail;
+  mode: IndoorMode;
+  verticalPreference: IndoorVerticalPreference;
+  route: IndoorRoute;
+  preview: {
+    progress: number;
+    playing: boolean;
+    direction: 1 | -1;
+    following?: boolean;
+  };
+  guidance: {
+    status: "idle" | "outdoor" | "touring" | "guiding" | "arrived";
+    stepIndex: number;
+  };
+  /** Real outdoor results only. The venue path begins at this known arrival. */
+  outdoor?: {
+    origin: PlaceDetail;
+    travelMode?: "walk" | "transit" | "drive" | "motorcycle";
+    /** Separate provider tokens: finish the vehicle route, then walk to the gate. */
+    approachRoutes?: Record<string, AccessibleRoute>;
+    phase?: "travel" | "approach";
+    routes: AccessibleRoute[];
+    selectedIndex: number;
+    /** The primary actually started; preview selection must not replace its tail. */
+    navigationIndex?: number;
+    arrival: VenuePlaceDetail;
+  };
+}
+
+export type VenueJourneyResult =
+  | { ok: true; journey: VenueJourney }
+  | {
+      ok: false;
+      reason:
+        | "UNSUPPORTED_CONTEXT"
+        | "STALE_SOURCE"
+        | "UNKNOWN_PLACE"
+        | "NO_ROUTE"
+        | "NO_ACCESSIBLE_ROUTE";
+      message: string;
+    };
+
+export function buildVenueJourney(
+  model: LocalIndoorModel,
+  from: VenuePlaceDetail,
+  to: VenuePlaceDetail,
+  mode: IndoorMode,
+  verticalPreference: IndoorVerticalPreference = "auto",
+): VenueJourneyResult {
+  const endpoints = [from, to];
+  if (
+    endpoints.some(
+      (p) =>
+        p.dataSource !== "local" ||
+        p.venueId !== model.venueId ||
+        (p.buildingId !== null && p.buildingId !== model.building.id),
+    )
+  )
+    return {
+      ok: false,
+      reason: "UNSUPPORTED_CONTEXT",
+      message:
+        "目前資料尚未提供這兩個地點之間的完整接續路線，請選擇已載入的同一場域地點。",
+    };
+  if (endpoints.some((p) => p.sourceVersion !== model.source.sha256))
+    return {
+      ok: false,
+      reason: "STALE_SOURCE",
+      message: "場域資料已更新，請重新選擇起點與終點。",
+    };
+  if (
+    endpoints.some((endpoint) => {
+      const place = model.places.find((p) => p.id === endpoint.placeId);
+      return (
+        !place ||
+        place.levelRef !== endpoint.levelRef ||
+        (endpoint.buildingId === null && place.levelRef !== null)
+      );
+    })
+  )
+    return {
+      ok: false,
+      reason: "UNKNOWN_PLACE",
+      message: "找不到這個樓層上的來源到達點，請重新選擇地點。",
+    };
+  const preference = effectiveVerticalPreference(mode, verticalPreference);
+  const result = planIndoorRoute(model, from.placeId, to.placeId, mode, {
+    verticalPreference: preference,
+  });
+  if (!result.ok)
+    return {
+      ...result,
+      message:
+        result.reason === "NO_ACCESSIBLE_ROUTE"
+          ? "找不到符合此模式的電梯與通路；不會改用樓梯。"
+          : "來源路網尚未連通這兩個地點，無法提供完整路線。",
+    };
+  return {
+    ok: true,
+    journey: assembleVenueJourney(model, from, to, mode, preference, result),
+  };
+}
+
+/** Assemble the UI session from the selected provider's validated route. */
+export function assembleVenueJourney(
+  model: LocalIndoorModel,
+  from: VenuePlaceDetail,
+  to: VenuePlaceDetail,
+  mode: IndoorMode,
+  preference: IndoorVerticalPreference,
+  route: IndoorRoute,
+  backendRoute?: BackendRouteProvenance,
+): VenueJourney {
+  return {
+    id: JSON.stringify([
+      model.venueId,
+      model.building.id,
+      indoorModelVersion(model),
+      from.placeId,
+      to.placeId,
+      mode,
+      preference,
+      ...(backendRoute
+        ? [
+            backendRoute.provider,
+            backendRoute.baseUrl,
+            backendRoute.venueVersion,
+          ]
+        : []),
+    ]),
+    venueId: model.venueId,
+    buildingId: model.building.id,
+    sourceVersion: indoorModelVersion(model),
+    from: { ...from },
+    to: { ...to },
+    mode,
+    verticalPreference: preference,
+    route,
+    ...(backendRoute ? { backendRoute } : {}),
+    preview: { progress: 0, playing: false, direction: 1, following: true },
+    guidance: { status: "idle", stepIndex: 0 },
+  };
+}
+
+function floorOrdinal(ref: string | null): number | null {
+  const above = ref?.match(/^(-?\d+)F$/i);
+  if (above) return Number(above[1]);
+  const basement = ref?.match(/^B(\d+)F?$/i);
+  return basement ? -Number(basement[1]) : null;
+}
+
+const compactVerticalKinds = new Set<IndoorRouteStep["kind"]>([
+  "steps",
+  "escalator",
+  "elevator",
+]);
+
+function verticalDirection(step: IndoorRouteStep) {
+  const from = floorOrdinal(step.fromLevel);
+  const to = floorOrdinal(step.toLevel);
+  return from === null || to === null ? 0 : Math.sign(to - from);
+}
+
+function canMergeVerticalSteps(
+  current: IndoorRouteStep,
+  next: IndoorRouteStep,
+) {
+  if (
+    current.kind !== next.kind ||
+    !compactVerticalKinds.has(current.kind) ||
+    current.endIndex !== next.startIndex ||
+    current.toLevel === null ||
+    current.toLevel !== next.fromLevel
+  )
+    return false;
+  const direction = verticalDirection(current);
+  if (direction === 0 || direction !== verticalDirection(next)) return false;
+  const currentBuilding =
+    current.toBuildingId ?? current.buildingId ?? current.fromBuildingId;
+  const nextBuilding =
+    next.fromBuildingId ?? next.buildingId ?? next.toBuildingId;
+  if (currentBuilding !== nextBuilding) return false;
+  // A different elevator or escalator can require an actual transfer. Stair
+  // spans are commonly authored one floor at a time despite being one climb.
+  return (
+    current.kind === "steps" ||
+    !current.connectionId ||
+    !next.connectionId ||
+    current.connectionId === next.connectionId
+  );
+}
+
+/** Collapse consecutive same-direction vertical spans for user-facing guidance
+ * while preserving the source route's geometry and authored step metadata. */
+export function venueJourneySteps(journey: VenueJourney): IndoorRouteStep[] {
+  const result: IndoorRouteStep[] = [];
+  for (const source of journey.route.steps) {
+    const current = result.at(-1);
+    if (!current || !canMergeVerticalSteps(current, source)) {
+      result.push({ ...source });
+      continue;
+    }
+    const sameConnection = current.connectionId === source.connectionId;
+    result[result.length - 1] = {
+      ...current,
+      toLevel: source.toLevel,
+      toBuildingId: source.toBuildingId ?? source.buildingId,
+      endIndex: source.endIndex,
+      distanceM: current.distanceM + source.distanceM,
+      durationS:
+        current.durationS === undefined && source.durationS === undefined
+          ? undefined
+          : (current.durationS ?? 0) + (source.durationS ?? 0),
+      heightPending: current.heightPending || source.heightPending,
+      instruction: undefined,
+      maneuver: undefined,
+      connectionId: sameConnection ? current.connectionId : undefined,
+    };
+  }
+  return result;
+}
+
+/** A stretch of the route on one floor of one building, or outdoors. */
+export interface VenueRouteSection {
+  key: string;
+  buildingId: string | null;
+  buildingName?: string;
+  levelRef: string | null;
+  /** Walked on this floor; a floor change's own length is not counted. */
+  distanceM: number;
+  steps: IndoorRouteStep[];
+}
+
+function stepBuildingName(journey: VenueJourney, buildingId: string | null) {
+  return [journey.from, journey.to, journey.outdoor?.arrival].find(
+    (place) => place?.buildingId === buildingId,
+  )?.buildingName;
+}
+
+/** Graph edges split a straight corridor wherever a door branches off. */
+function isPlainWalk(step: IndoorRouteStep) {
+  return (
+    !step.instruction &&
+    !step.maneuver &&
+    !step.action &&
+    step.fromLevel === step.toLevel &&
+    !["steps", "escalator", "elevator", "ramp"].includes(step.kind)
+  );
+}
+
+/** Riding an elevator or climbing stairs is not distance walked on the floor. */
+function walkedDistance(step: IndoorRouteStep) {
+  return step.fromLevel !== null &&
+    step.toLevel !== null &&
+    step.fromLevel !== step.toLevel
+    ? 0
+    : step.distanceM;
+}
+
+/** Group the user-facing steps by where they start. A floor change stays with
+ * the floor it leaves; zero-length depart/arrive markers add nothing a header
+ * and the destination row do not already say. */
+export function venueRouteSections(journey: VenueJourney): VenueRouteSection[] {
+  const sections: VenueRouteSection[] = [];
+  for (const step of venueJourneySteps(journey)) {
+    if (
+      (step.action === "depart" || step.action === "arrive") &&
+      step.distanceM < 1
+    )
+      continue;
+    const levelRef = step.fromLevel;
+    const buildingId =
+      levelRef === null
+        ? null
+        : (step.fromBuildingId ?? step.buildingId ?? journey.buildingId);
+    const current = sections.at(-1);
+    if (
+      current &&
+      current.buildingId === buildingId &&
+      current.levelRef === levelRef
+    ) {
+      const previous = current.steps.at(-1) as IndoorRouteStep;
+      current.distanceM += walkedDistance(step);
+      if (
+        isPlainWalk(previous) &&
+        isPlainWalk(step) &&
+        previous.name === step.name
+      )
+        current.steps[current.steps.length - 1] = {
+          ...previous,
+          endIndex: step.endIndex,
+          distanceM: previous.distanceM + step.distanceM,
+        };
+      else current.steps.push(step);
+      continue;
+    }
+    sections.push({
+      key: `${buildingId ?? "outdoor"}/${levelRef ?? ""}/${step.startIndex}`,
+      buildingId,
+      buildingName:
+        buildingId === null
+          ? undefined
+          : (step.buildingName ?? stepBuildingName(journey, buildingId)),
+      levelRef,
+      distanceM: walkedDistance(step),
+      steps: [step],
+    });
+  }
+  return sections;
+}
+
+/** Manual confirmations never depend on selected floors or preview animation. */
+export function advanceVenueJourney(journey: VenueJourney): VenueJourney {
+  if (journey.guidance.status !== "guiding") return journey;
+  const steps = venueJourneySteps(journey);
+  const next = journey.guidance.stepIndex + 1;
+  return {
+    ...journey,
+    guidance:
+      next >= steps.length
+        ? { status: "arrived", stepIndex: steps.length }
+        : { status: "guiding", stepIndex: next },
+  };
+}
+
+export function venueJourneyPresentation(journey: VenueJourney): {
+  progress: number;
+  direction: 1 | -1;
+} {
+  const { status, stepIndex } = journey.guidance;
+  if (status === "idle" || status === "outdoor" || status === "touring")
+    return journey.preview;
+  if (status === "arrived") return { progress: 1, direction: 1 };
+  const index = venueJourneySteps(journey)[stepIndex]?.startIndex ?? 0;
+  const total = pathDistance(journey.route.points);
+  const travelled = journey.route.points
+    .slice(1, index + 1)
+    .reduce(
+      (sum, point, i) => sum + segmentDistance(journey.route.points[i], point),
+      0,
+    );
+  return { progress: total ? travelled / total : 0, direction: 1 };
+}
+
+type JourneyTextKey = Extract<keyof typeof zhTW, `venue${string}`>;
+
+/** Standalone callers retain Chinese without initializing client i18n or React. */
+function journeyText(
+  key: JourneyTextKey,
+  t?: TFunction,
+  values: Record<string, string | number> = {},
+): string {
+  if (t) return t(key, values);
+  return zhTW[key].replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+    values[name] === undefined ? match : String(values[name]),
+  );
+}
+
+// Only generic router defaults are translated. Authored names and floor refs
+// remain source text; this does not invent English names for campus facilities.
+const genericStepNames = new Map<string, JourneyTextKey>([
+  ["電梯", "venueGenericElevator"],
+  ["搭乘電梯", "venueGenericElevator"],
+  ["樓梯", "venueGenericStairs"],
+  ["沿樓梯行進", "venueGenericStairs"],
+  ["電扶梯", "venueGenericEscalator"],
+  ["坡道", "venueGenericRamp"],
+  ["沿坡道行進", "venueGenericRamp"],
+  ["公共通路", "venueGenericPassage"],
+  ["公共走廊", "venueGenericCorridor"],
+  ["沿公共走廊行進", "venueGenericCorridor"],
+]);
+
+export function venueJourneyStepLabel(
+  step: IndoorRouteStep,
+  t?: TFunction,
+): string {
+  if (step.instruction) return step.instruction;
+  const genericName = genericStepNames.get(step.name);
+  const name = genericName ? journeyText(genericName, t) : step.name;
+  if (step.kind === "elevator")
+    return journeyText("venueStepElevator", t, {
+      name,
+      floor: step.toLevel ?? journeyText("venueDestinationFloor", t),
+    });
+  if (step.kind === "steps" || step.kind === "escalator") {
+    const from = floorOrdinal(step.fromLevel),
+      to = floorOrdinal(step.toLevel);
+    if (from !== null && to !== null && from !== to)
+      return journeyText(to > from ? "venueStepUp" : "venueStepDown", t, {
+        name,
+        floor: step.toLevel as string,
+      });
+    return journeyText("venueStepVia", t, {
+      name,
+      floor: step.toLevel ?? journeyText("venueNextSection", t),
+    });
+  }
+  if (step.kind === "ramp") return journeyText("venueStepRamp", t, { name });
+  return step.fromLevel
+    ? journeyText("venueStepOnFloor", t, { floor: step.fromLevel, name })
+    : name;
+}
+
+/** A step inside a floor section: the header already names the floor. */
+export function venueSectionStepLabel(
+  step: IndoorRouteStep,
+  t?: TFunction,
+): string {
+  if (
+    step.instruction ||
+    step.fromLevel !== step.toLevel ||
+    step.kind === "ramp"
+  )
+    return venueJourneyStepLabel(step, t);
+  const genericName = genericStepNames.get(step.name);
+  return genericName ? journeyText(genericName, t) : step.name;
+}
+
+export function venueJourneyConfirmLabel(
+  journey: VenueJourney,
+  t?: TFunction,
+): string {
+  const steps = venueJourneySteps(journey);
+  const step = steps[journey.guidance.stepIndex];
+  if (step?.fromLevel === null && step.toLevel !== null)
+    return journeyText("venueConfirmEntry", t, {
+      building: step.buildingName ?? journey.to.buildingName,
+      floor: step.toLevel,
+    });
+  if (
+    step?.toLevel &&
+    step.fromLevel !== step.toLevel &&
+    ["steps", "elevator", "escalator", "ramp"].includes(step.kind)
+  )
+    return journeyText("venueConfirmFloor", t, { floor: step.toLevel });
+  if (journey.guidance.stepIndex >= steps.length - 1)
+    return journey.to.arrivalKind === "corridor"
+      ? journeyText("venueConfirmCorridor", t)
+      : journeyText("venueConfirmDestination", t);
+  if (journey.guidance.stepIndex === 0 && journey.from.buildingId === null)
+    return journeyText("venueConfirmEntranceSection", t);
+  return journeyText("venueConfirmSection", t);
+}

@@ -29,6 +29,9 @@ function EtaBadge({
     );
   }
 
+  // Repeating "no arrival info" on every stop is noise, not information.
+  if (key === "busArrivalUnavailable") return null;
+
   const translated = t(key, params);
   const labelText =
     kind === "scheduled" ? t("busPlannedAt", { time: translated }) : translated;

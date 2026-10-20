@@ -33,10 +33,11 @@ import { MODE_PANELS } from "./railConfig";
 // --- Panel title based on active panel ---
 export function PanelTitle() {
   const { t } = useAppTranslation();
-  const { sheetMode, activeRailPanel } = useMapStore(
+  const { sheetMode, activeRailPanel, venueTouring } = useMapStore(
     useShallow((s) => ({
       sheetMode: s.sheetMode,
       activeRailPanel: s.activeRailPanel,
+      venueTouring: s.venueJourney?.guidance.status === "touring",
     })),
   );
 
@@ -61,7 +62,7 @@ export function PanelTitle() {
         return (
           <>
             <Navigation className="h-4 w-4 text-blue-500" />{" "}
-            {t("navInstructions")}
+            {t(venueTouring ? "venueTourTitle" : "navInstructions")}
           </>
         );
       case "station":

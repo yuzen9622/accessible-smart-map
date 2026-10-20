@@ -26,8 +26,15 @@ import { useShallow } from "zustand/react/shallow";
 import PlaceInput from "@/components/shared/PlaceInput";
 import useComputeRoute from "@/hook/useComputeRoute";
 import { useAppTranslation } from "@/i18n/client";
+import { planVenueJourney } from "@/lib/indoor/planJourney";
+import {
+  effectiveVerticalPreference,
+  requiresElevatorOnly,
+} from "@/lib/indoor/profilePolicy";
+import { toApiLang } from "@/lib/place/lang";
 import { cn } from "@/lib/utils";
-import useMapStore from "@/stores/useMapStore";
+import useIndoorCatalog from "@/stores/useIndoorCatalog";
+import useMapStore, { placeKey } from "@/stores/useMapStore";
 import useOnboardingStore from "@/stores/useOnboardingStore";
 import type { PlaceDetail } from "@/types";
 import { Button } from "../ui/button";
@@ -46,7 +53,7 @@ const DISALLOWED_TRAVEL_MODES: Record<string, ("drive" | "motorcycle")[]> = {
 };
 
 export default function RoutePlanContent() {
-  const { t } = useAppTranslation();
+  const { t, i18n } = useAppTranslation();
   const {
     origin,
     destination,
@@ -61,6 +68,7 @@ export default function RoutePlanContent() {
     setSearchPlace,
     setPendingSearchQuery,
     setRouteSubPanel,
+    setVenueJourney,
   } = useMapStore(
     useShallow((s) => ({
       origin: s.origin,
@@ -76,21 +84,33 @@ export default function RoutePlanContent() {
       setSearchPlace: s.setSearchPlace,
       setPendingSearchQuery: s.setPendingSearchQuery,
       setRouteSubPanel: s.setRouteSubPanel,
+      setVenueJourney: s.setVenueJourney,
     })),
   );
   const { isLoading, handleComputeRoute } = useComputeRoute();
-
+  const models = useIndoorCatalog((state) => state.models);
+  const previousJourney = useMapStore((state) => state.venueJourney);
+  const [venueLoading, setVenueLoading] = useState(false);
+  const [routeError, setRouteError] = useState("");
+  const venueRequest = useRef(0);
+  const venueAbortController = useRef<AbortController | null>(null);
+  const hasVenueEndpoint =
+    origin?.kind === "venue-place" || destination?.kind === "venue-place";
   const [originInput, setOriginInput] = useState(originName || "");
   const [destInput, setDestInput] = useState(destinationName || "");
   const [useMyLocation, setUseMyLocation] = useState(!origin);
   const [destEditing, setDestEditing] = useState(!destination);
+  const campusOnly =
+    !useMyLocation &&
+    origin?.kind === "venue-place" &&
+    destination?.kind === "venue-place";
 
   useEffect(() => {
     if (destination) setDestEditing(false);
   }, [destination]);
   const [travelMode, setTravelMode] = useState<
     "transit" | "drive" | "motorcycle" | "walk"
-  >("transit");
+  >(() => previousJourney?.outdoor?.travelMode ?? "transit");
   // Defaults to the onboarding profile's derived mode so the answers the user
   // already gave pay off immediately; still just a starting point — picking a
   // different pill here only changes this one route, it never writes back to
@@ -103,13 +123,16 @@ export default function RoutePlanContent() {
   const onboardingHydrated = useOnboardingStore((s) => s.hydrated);
   const [a11yMode, setA11yMode] = useState<
     "normal" | "wheelchair" | "elderly" | "visual_impaired"
-  >(() => useOnboardingStore.getState().profile.routeMode);
-  const userPickedModeRef = useRef(false);
+  >(
+    () =>
+      previousJourney?.mode ?? useOnboardingStore.getState().profile.routeMode,
+  );
+  const userPickedModeRef = useRef(Boolean(previousJourney));
   useEffect(() => {
-    if (onboardingHydrated && !userPickedModeRef.current) {
+    if (onboardingHydrated && !userPickedModeRef.current && !previousJourney) {
       setA11yMode(useOnboardingStore.getState().profile.routeMode);
     }
-  }, [onboardingHydrated]);
+  }, [onboardingHydrated, previousJourney]);
   const disabledTravelModes = DISALLOWED_TRAVEL_MODES[a11yMode] ?? [];
   useEffect(() => {
     const disallowed = DISALLOWED_TRAVEL_MODES[a11yMode] ?? [];
@@ -120,9 +143,36 @@ export default function RoutePlanContent() {
   const [waypointRows, setWaypointRows] = useState<WaypointRow[]>([]);
   const nextWaypointId = useRef(0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each planning intent invalidates its in-flight result, even when the callback only resets request state.
+  useEffect(() => {
+    venueRequest.current += 1;
+    venueAbortController.current?.abort();
+    venueAbortController.current = null;
+    setVenueLoading(false);
+    setRouteError("");
+    return () => {
+      venueRequest.current += 1;
+      venueAbortController.current?.abort();
+      venueAbortController.current = null;
+    };
+  }, [
+    origin,
+    destination,
+    a11yMode,
+    travelMode,
+    i18n.language,
+    i18n.resolvedLanguage,
+    useMyLocation,
+    waypointRows,
+  ]);
+
   useEffect(() => {
     setOriginInput(originName || "");
   }, [originName]);
+
+  useEffect(() => {
+    if (origin) setUseMyLocation(false);
+  }, [origin]);
 
   useEffect(() => {
     setDestInput(destinationName || "");
@@ -245,16 +295,30 @@ export default function RoutePlanContent() {
       setOrigin(null);
       setOriginName("");
       setOriginInput("");
+      setUseMyLocation(false);
     }
 
     if (tmpUseMyLoc) {
-      setDestination(null);
-      setDestinationName("");
-      setDestInput("");
+      const currentLocation = userLocation
+        ? {
+            kind: "coordinate" as const,
+            address: t("myLocation"),
+            position: userLocation,
+          }
+        : null;
+      setDestination(currentLocation);
+      setDestinationName(currentLocation?.address ?? "");
+      setDestInput(currentLocation?.address ?? "");
+      setDestEditing(!currentLocation);
     } else if (tmpOrigin) {
       setDestination(tmpOrigin);
       setDestinationName(tmpOriginName);
       setDestInput(tmpOriginName);
+    } else {
+      setDestination(null);
+      setDestinationName(tmpOriginName);
+      setDestInput(tmpOriginName);
+      setDestEditing(true);
     }
   }, [
     origin,
@@ -266,6 +330,8 @@ export default function RoutePlanContent() {
     setDestination,
     setOriginName,
     setDestinationName,
+    userLocation,
+    t,
   ]);
 
   const canStart =
@@ -273,7 +339,13 @@ export default function RoutePlanContent() {
     !!destination?.position;
 
   const handleStartRoute = useCallback(async () => {
-    if (isLoading) return;
+    if (isLoading || venueLoading) return;
+    setRouteError("");
+    const planningVenue =
+      hasVenueEndpoint ||
+      waypointRows.some((row) => row.place?.kind === "venue-place");
+    // A new attempt invalidates the old result, but leaves the user's draft.
+    if (planningVenue) setVenueJourney(null);
     if (!canStart) {
       if (!destination?.position) {
         toast.error(
@@ -298,6 +370,82 @@ export default function RoutePlanContent() {
     );
     if (unresolvedWaypoint) {
       toast.error(t("selectWaypointFromSuggestions"));
+      return;
+    }
+
+    if (planningVenue) {
+      if (waypointRows.some((row) => row.place)) {
+        setRouteError(
+          "校園路線目前請直接選擇起點與終點；中途點已保留，請移除後再規劃。",
+        );
+        return;
+      }
+      const from =
+        useMyLocation && userLocation
+          ? {
+              kind: "coordinate" as const,
+              address: t("myLocation"),
+              position: userLocation,
+            }
+          : origin;
+      if (!from || !destination) return;
+      if (
+        from.kind === "venue-place" &&
+        destination.kind === "venue-place" &&
+        placeKey(from) === placeKey(destination)
+      ) {
+        setRouteError("起點與終點是同一個地點，請選擇另一個地點。");
+        return;
+      }
+      const request = ++venueRequest.current;
+      venueAbortController.current?.abort();
+      const controller = new AbortController();
+      venueAbortController.current = controller;
+      const generation = useMapStore.getState().routeGeneration;
+      const language =
+        toApiLang(i18n.resolvedLanguage ?? i18n.language) ?? "zh-TW";
+      const isCurrent = () =>
+        !controller.signal.aborted &&
+        request === venueRequest.current &&
+        generation === useMapStore.getState().routeGeneration &&
+        language ===
+          (toApiLang(i18n.resolvedLanguage ?? i18n.language) ?? "zh-TW");
+      setVenueLoading(true);
+      try {
+        const result = await planVenueJourney({
+          routeProvider:
+            process.env.NEXT_PUBLIC_INDOOR_ROUTE_PROVIDER === "backend"
+              ? "backend"
+              : "local",
+          models,
+          origin: from,
+          destination,
+          mode: a11yMode,
+          verticalPreference: effectiveVerticalPreference(a11yMode),
+          travelMode: campusOnly ? "walk" : travelMode,
+          language,
+          signal: controller.signal,
+        });
+        if (!isCurrent()) return;
+        if (result.refreshedModels)
+          useIndoorCatalog.getState().setModels(result.refreshedModels);
+        if (!result.ok) {
+          setRouteError(result.message);
+          return;
+        }
+        setSearchPlace(null);
+        setRouteSubPanel("none");
+        setVenueJourney(result.journey);
+      } catch {
+        if (isCurrent())
+          setRouteError(
+            "暫時無法取得完整路線，起終點與選項已保留，請稍後重試。",
+          );
+      } finally {
+        if (venueAbortController.current === controller)
+          venueAbortController.current = null;
+        if (request === venueRequest.current) setVenueLoading(false);
+      }
       return;
     }
 
@@ -342,6 +490,13 @@ export default function RoutePlanContent() {
     t,
     travelMode,
     a11yMode,
+    venueLoading,
+    hasVenueEndpoint,
+    campusOnly,
+    models,
+    i18n.language,
+    i18n.resolvedLanguage,
+    setVenueJourney,
   ]);
 
   const handleBack = useCallback(() => {
@@ -399,9 +554,12 @@ export default function RoutePlanContent() {
                   hideIcon
                   className="border-none shadow-none text-sm h-11"
                   value={originInput}
-                  onChange={(e) =>
-                    setOriginInput((e.target as HTMLInputElement).value)
-                  }
+                  onChange={(e) => {
+                    const value = (e.target as HTMLInputElement).value;
+                    setOrigin(null);
+                    setOriginName(value);
+                    setOriginInput(value);
+                  }}
                   placeholder={t("chooseOrigin")}
                   onPlaceSelect={handleOriginSelect}
                 />
@@ -466,6 +624,13 @@ export default function RoutePlanContent() {
                           {destination.place.fullAddress}
                         </span>
                       )}
+                    {destination.kind === "venue-place" && (
+                      <span className="text-xs text-muted-foreground truncate block">
+                        {[destination.buildingName, destination.levelRef]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -489,9 +654,12 @@ export default function RoutePlanContent() {
                   hideIcon
                   className="border-none shadow-none text-sm h-11"
                   value={destInput}
-                  onChange={(e) =>
-                    setDestInput((e.target as HTMLInputElement).value)
-                  }
+                  onChange={(e) => {
+                    const value = (e.target as HTMLInputElement).value;
+                    setDestination(null);
+                    setDestinationName(value);
+                    setDestInput(value);
+                  }}
                   placeholder={t("searchOrInputDest", "搜尋或輸入目的地")}
                   onPlaceSelect={handleDestSelect}
                   onSearchRequest={handleSearchRequest}
@@ -505,6 +673,7 @@ export default function RoutePlanContent() {
             <button
               type="button"
               onClick={handleSwap}
+              aria-label={t("switchOriginDestination", "交換起終點")}
               className="h-9 w-9 rounded-full bg-muted/60 flex items-center justify-center hover:bg-muted transition-colors"
             >
               <ArrowDownUpIcon size={16} className="text-muted-foreground" />
@@ -562,35 +731,41 @@ export default function RoutePlanContent() {
                 label: t("walk", "步行"),
               },
             ].map((tm) => {
-              const isDisallowed = disabledTravelModes.includes(
-                tm.id as "drive" | "motorcycle",
-              );
+              const isDisallowed =
+                disabledTravelModes.includes(tm.id as "drive" | "motorcycle") ||
+                (campusOnly && tm.id !== "walk");
               return (
                 <Button
                   key={tm.id}
-                  variant={travelMode === tm.id ? "default" : "ghost"}
+                  variant={
+                    (campusOnly ? "walk" : travelMode) === tm.id
+                      ? "default"
+                      : "ghost"
+                  }
                   size="sm"
                   disabled={isDisallowed}
                   aria-disabled={isDisallowed}
                   className={cn(
                     "flex-1 h-10 px-3 rounded-xl text-xs flex flex-col items-center justify-center gap-1 transition-all",
-                    travelMode === tm.id
+                    (campusOnly ? "walk" : travelMode) === tm.id
                       ? "shadow-sm"
                       : "text-muted-foreground hover:bg-muted/80",
                   )}
                   onClick={() => setTravelMode(tm.id)}
                   aria-label={
-                    isDisallowed
-                      ? t("travelModeUnavailableFor", {
-                          mode: tm.label,
-                          a11yMode: t(
-                            a11yMode === "wheelchair"
-                              ? "wheelchairMode"
-                              : "visualImpairedMode",
-                          ),
-                          defaultValue: "{{a11yMode}}模式不支援{{mode}}",
-                        })
-                      : tm.label
+                    campusOnly && tm.id !== "walk"
+                      ? "校園內使用步行或輪椅通路"
+                      : isDisallowed
+                        ? t("travelModeUnavailableFor", {
+                            mode: tm.label,
+                            a11yMode: t(
+                              a11yMode === "wheelchair"
+                                ? "wheelchairMode"
+                                : "visualImpairedMode",
+                            ),
+                            defaultValue: "{{a11yMode}}模式不支援{{mode}}",
+                          })
+                        : tm.label
                   }
                 >
                   <tm.icon className="h-4 w-4" />
@@ -662,18 +837,33 @@ export default function RoutePlanContent() {
             ))}
           </div>
         </div>
+
+        {hasVenueEndpoint && requiresElevatorOnly(a11yMode) && (
+          <p className="text-xs text-muted-foreground ml-1">
+            校內跨樓層使用電梯，不使用樓梯；坡道與現場通行條件仍需確認。
+          </p>
+        )}
       </div>
+
+      {routeError && (
+        <p
+          role="alert"
+          className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          {routeError}
+        </p>
+      )}
 
       {/* Start Route */}
       <Button
         onClick={handleStartRoute}
-        disabled={isLoading}
+        disabled={isLoading || venueLoading}
         aria-disabled={!canStart}
         className={`w-full rounded-xl h-12 text-base gap-2 ${
           !canStart ? "opacity-50" : ""
         }`}
       >
-        {isLoading ? (
+        {isLoading || venueLoading ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" />
             {t("loadingRoute")}

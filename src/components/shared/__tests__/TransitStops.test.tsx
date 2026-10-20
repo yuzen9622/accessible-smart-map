@@ -106,10 +106,11 @@ describe("TransitStops endpoint timing", () => {
     expect(html).not.toContain("0 分鐘後");
   });
 
-  it("does not leak the active leg's live countdown into a closed leg", () => {
+  // The caller resolves the countdown from its own leg's feed, so a closed
+  // stop list still shows the boarding countdown.
+  it("shows the boarding countdown while the stop list is closed", () => {
     const html = renderStops(4, false);
 
-    expect(html).toContain("預定 20:46");
-    expect(html).not.toContain("即時・4 分鐘後");
+    expect(html).toContain("即時・4 分鐘後");
   });
 });

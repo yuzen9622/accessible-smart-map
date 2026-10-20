@@ -16,6 +16,8 @@ export interface AuthSession {
 
 export interface AuthStatePort {
   getSession(): AuthSession | null;
+  /** Monotonic identity epoch also protects a null-session logout/relogin (ABA). */
+  getIdentityEpoch?(): number;
   setSession(session: { accessToken: string }): void;
   /** authRefresh only ever clears the user (never sets a real one). */
   setUser(user: null): void;
@@ -31,6 +33,7 @@ export function configureAuthState(port: AuthStatePort): void {
 interface RefreshLane {
   /** Session identity (object reference) this lane was started for. */
   sessionAtStart: AuthSession | null;
+  identityEpoch: number | undefined;
   promise: Promise<string | null>;
 }
 
@@ -63,9 +66,11 @@ export async function refreshAccessToken(): Promise<string | null> {
 
     if (!existing) {
       const sessionAtStart = cur;
+      const identityEpoch = port.getIdentityEpoch?.();
       const lane: RefreshLane = {
         sessionAtStart,
-        promise: runRefresh(port, sessionAtStart),
+        identityEpoch,
+        promise: runRefresh(port, sessionAtStart, identityEpoch),
       };
       inFlight = lane;
       lane.promise.finally(() => {
@@ -76,7 +81,10 @@ export async function refreshAccessToken(): Promise<string | null> {
       return lane.promise;
     }
 
-    if (existing.sessionAtStart === cur) {
+    if (
+      existing.sessionAtStart === cur &&
+      existing.identityEpoch === port.getIdentityEpoch?.()
+    ) {
       // Same identity as the in-flight lane — join it.
       return existing.promise;
     }
@@ -93,10 +101,14 @@ export async function refreshAccessToken(): Promise<string | null> {
 async function runRefresh(
   port: AuthStatePort,
   sessionAtStart: AuthSession | null,
+  identityEpoch: number | undefined,
 ): Promise<string | null> {
   const newToken = await requestRefresh();
 
-  if (port.getSession() !== sessionAtStart) {
+  if (
+    port.getSession() !== sessionAtStart ||
+    port.getIdentityEpoch?.() !== identityEpoch
+  ) {
     // Identity changed while the transport call was in flight — logout,
     // logout-then-relogin (ABA), or the session was replaced by some other
     // source. Never commit and never invalidate someone else's session;

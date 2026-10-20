@@ -14,6 +14,7 @@ import {
   projectToPath,
   shortestAngleLerp,
 } from "@/lib/geo";
+import { remainingOutdoorDistanceToArrival } from "@/lib/indoor/arrivalTransition";
 import { requestForegroundLocationFix } from "@/lib/navigation/foregroundLocation";
 import {
   isVehicleLegType,
@@ -158,6 +159,7 @@ export default function useNavigation() {
     (s) => s.activeNavigationRoute ?? s.selectRoute?.route ?? null,
   );
   const userLocation = useMapStore((s) => s.userLocation);
+  const indoorExploring = useMapStore((s) => s.indoorExploring);
   const compassPermission = useNavStore((s) => s.compassPermission);
   const navigationSource = useNavStore((s) => s.navigationSource);
   const navigationMode = useNavStore((s) => s.navigationMode);
@@ -208,9 +210,9 @@ export default function useNavigation() {
       nav.setRerouteIdle();
     }
 
-    const { map, userLocation: loc } = useMapStore.getState();
+    const { map, userLocation: loc, indoorExploring } = useMapStore.getState();
     const target = geometryRef.current.waypoints[nextIndex]?.coord ?? loc;
-    if (!map || !target) return;
+    if (!map || !target || indoorExploring) return;
     cameraHoldUntilRef.current = Date.now() + HANDOFF_EASE_MS;
     map.easeTo({
       center: [target.lng, target.lat],
@@ -230,13 +232,13 @@ export default function useNavigation() {
   useEffect(() => {
     if (!route) return;
     const id = requestAnimationFrame(() => {
-      const { map, userLocation } = useMapStore.getState();
+      const { map, userLocation, indoorExploring } = useMapStore.getState();
       const cp = buildCumulativePath(route.legs);
       geometryRef.current.path = cp;
       const anchor = gpsNearRoute(userLocation, cp)
         ? userLocation
         : (cp.path[0] ?? userLocation);
-      if (!map || !anchor) return;
+      if (!map || !anchor || indoorExploring) return;
       introUntilRef.current = Date.now() + INTRO_EASE_MS;
       camRef.current = null;
       map.flyTo({
@@ -518,14 +520,57 @@ export default function useNavigation() {
     const finalThresholds = navThresholdsFor(
       resolveActiveLegType(nav.instructions, nav.instructions.length - 1),
     );
-    if (
+    const journey = useMapStore.getState().venueJourney;
+    const outdoor =
+      journey?.guidance.status === "outdoor" ? journey.outdoor : undefined;
+    const primaryToken =
+      outdoor?.routes[outdoor.navigationIndex ?? outdoor.selectedIndex]
+        ?.routeToken;
+    const hasApproach = Boolean(
+      primaryToken && outdoor?.approachRoutes?.[primaryToken],
+    );
+    const finalLeg = route?.legs.filter((leg) => leg.polyline?.length).at(-1);
+    const walkingHandoff = Boolean(
+      outdoor &&
+        outdoor.phase !== "approach" &&
+        hasApproach &&
+        finalLeg?.type === "WALK",
+    );
+    const needsGateArrival = Boolean(
+      outdoor && (outdoor.phase === "approach" || finalLeg?.type === "WALK"),
+    );
+    const endpoint = finalLeg?.polyline.at(-1);
+    const arrivalTarget = walkingHandoff
+      ? endpoint
+        ? { lng: endpoint[0], lat: endpoint[1] }
+        : null
+      : (outdoor?.arrival.position ?? null);
+    const arrivalRadius = walkingHandoff ? 2 : 8;
+    const gateRemaining = needsGateArrival
+      ? remainingOutdoorDistanceToArrival(route, userLocation, arrivalTarget)
+      : null;
+    // The ordinary radius may reach across a wall or a walking detour. Venue
+    // walking arrival requires progress along the actual selected gate route;
+    // the vehicle primary still ends at its own drop-off point as before.
+    const reached =
       !guarded.waitingGate &&
-      finalWp?.coord &&
-      haversineMeters(userLocation, finalWp.coord) <
-        finalThresholds.finalArriveM
-    ) {
-      if (!nav.arrived) nav.setArrived(true);
-    }
+      (needsGateArrival
+        ? Boolean(
+            outdoor &&
+              arrivalTarget &&
+              resolveActiveLegType(nav.instructions, displayIdx) === "WALK" &&
+              gateRemaining !== null &&
+              gateRemaining <= arrivalRadius &&
+              haversineMeters(userLocation, arrivalTarget) <= arrivalRadius,
+          )
+        : Boolean(
+            finalWp?.coord &&
+              haversineMeters(userLocation, finalWp.coord) <
+                finalThresholds.finalArriveM,
+          ));
+    if (needsGateArrival) {
+      if (nav.arrived !== reached) nav.setArrived(reached);
+    } else if (reached && !nav.arrived) nav.setArrived(true);
   }, [
     userLocation,
     navigationSource,
@@ -650,7 +695,7 @@ export default function useNavigation() {
     useNavStore.getState().setStepCoord(wp?.coord ?? null);
     if (!wp?.coord) return;
     const { map, userLocation } = useMapStore.getState();
-    if (!map) return;
+    if (!map || indoorExploring) return;
     if (
       useNavStore.getState().navigationMode === "live" &&
       gpsNearRoute(userLocation, geometryRef.current.path)
@@ -670,7 +715,7 @@ export default function useNavigation() {
         : map.getBearing(),
       duration: PREVIEW_EASE_MS,
     });
-  }, [currentStepIndex, instructions]);
+  }, [currentStepIndex, instructions, indoorExploring]);
 
   // ---- Foreground return: the geolocation watch is suspended while the app
   // is backgrounded, so the stored fix can be minutes old the moment the user
@@ -730,8 +775,8 @@ export default function useNavigation() {
     // The mount run (and StrictMode's re-run) lands inside the intro window —
     // skipping it keeps this effect from cancelling the intro animation.
     if (Date.now() < introUntilRef.current) return;
-    const map = useMapStore.getState().map;
-    if (!map) return;
+    const { map, indoorExploring } = useMapStore.getState();
+    if (!map || indoorExploring) return;
     map.easeTo({ pitch: viewMode === "2d" ? 0 : NAV_PITCH, duration: 500 });
   }, [viewMode]);
 
@@ -775,7 +820,10 @@ export default function useNavigation() {
   useEffect(() => {
     const map = useMapStore.getState().map;
     if (!map) return;
-    const pause = () => useNavStore.getState().setFollowPaused(true);
+    const pause = () => {
+      if (!useMapStore.getState().indoorExploring)
+        useNavStore.getState().setFollowPaused(true);
+    };
     map.on("dragstart", pause);
     return () => {
       map.off("dragstart", pause);
@@ -863,6 +911,15 @@ export default function useNavigation() {
           .setUserHeading(Math.round(smoothed * 10) / 10, source);
         lastHeadingTs = now;
       };
+
+      // Indoor inspection owns the same map camera. Keep heading and the
+      // navigation engine live, without changing the user's follow choice.
+      // Read the store every frame so a queued callback cannot steal focus.
+      if (useMapStore.getState().indoorExploring) {
+        writeHeading();
+        camRef.current = null;
+        return;
+      }
 
       // Let the user inspect the map freely after a drag; the resume
       // button (NavigationController) re-enables follow.

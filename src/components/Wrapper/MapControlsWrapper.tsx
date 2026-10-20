@@ -164,6 +164,9 @@ export default function MapControlsWrapper() {
       })),
     );
 
+  const indoorExploring = useMapStore((s) => s.indoorExploring);
+  const outdoorNavigation = isNavigating && !indoorExploring;
+  const openAssistant = () => setChatOpen(true);
   const isDesktop = useIsDesktop();
   const [moreControlsOpen, setMoreControlsOpen] = useState(false);
   const moreToggleRef = useRef<HTMLButtonElement>(null);
@@ -253,6 +256,7 @@ export default function MapControlsWrapper() {
 
   // --- Voice / Recenter Navigation mode controls ---
   const setFollowPaused = useNavStore((s) => s.setFollowPaused);
+  const stepListOpen = useNavStore((s) => s.stepListOpen);
   const { isAudioActive, toggleAudio } = useNavigationAudio();
 
   const toggleVoice = useCallback(() => {
@@ -281,7 +285,8 @@ export default function MapControlsWrapper() {
   const air = envData?.airQuality.status === "ok" ? envData.airQuality : null;
   const weather = envData?.weather.status === "ok" ? envData.weather : null;
   const showAirPill =
-    !isNavigating &&
+    !outdoorNavigation &&
+    !indoorExploring &&
     (envLoading || air || (weather && weather.temperature != null));
 
   const envConfig = LEVEL_CONFIG[normalizeQuality(air?.quality)];
@@ -403,12 +408,14 @@ export default function MapControlsWrapper() {
         <div
           className={cn(
             "absolute right-3 pointer-events-auto flex flex-col gap-2 items-end z-(--z-floating-controls)",
-            isNavigating ? NAV_BOTTOM_OFFSET : MOBILE_BOTTOM_OFFSET,
+            isNavigating && !stepListOpen
+              ? NAV_BOTTOM_OFFSET
+              : MOBILE_BOTTOM_OFFSET,
             "lg:bottom-8",
           )}
           style={{ transition: "bottom 0.3s ease" }}
         >
-          {isNavigating ? (
+          {outdoorNavigation ? (
             // Navigation Mode Controls
             <div className="flex flex-col gap-2">
               <Button
@@ -480,7 +487,7 @@ export default function MapControlsWrapper() {
                 {!chatOpen && (
                   <Button
                     data-coach="ai"
-                    onClick={() => setChatOpen(true)}
+                    onClick={openAssistant}
                     variant="default"
                     size="icon"
                     className="rounded-full h-11 w-11 shadow-lg bg-primary hover:shadow-xl transition-all text-primary-foreground"
@@ -605,7 +612,7 @@ export default function MapControlsWrapper() {
                 {!chatOpen && (
                   <Button
                     data-coach="ai"
-                    onClick={() => setChatOpen(true)}
+                    onClick={openAssistant}
                     variant="default"
                     size="icon"
                     aria-hidden={!isDesktop}

@@ -13,14 +13,14 @@ import { legSourceName } from "@/lib/route/sourceNames";
 import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
-import { BusLegStops } from "./BusLegStops";
+import { BusLegDetails } from "./BusLegDetails";
 import { DriveIncidentNotice } from "./DriveIncidentNotice";
 import { DriveStepsList } from "./DriveStepsList";
 import { TransitStops } from "./TransitStops";
 import type { PointLabelContext } from "./utils";
 import { getPointLabel, shouldAppendExitNumber } from "./utils";
 import { WalkA11ySummary } from "./WalkA11ySummary";
-import { WalkStepsList } from "./WalkStepsList";
+import { type WalkingContinuation, WalkStepsList } from "./WalkStepsList";
 
 export function LegIcon({ leg }: { leg: RouteLeg }) {
   const color = getLegColor(leg);
@@ -81,6 +81,7 @@ export function LegDetail({
   routeToken,
   routeIndex = 0,
   legIndex = 0,
+  walkingContinuation,
 }: {
   leg: RouteLeg;
   isFirst: boolean;
@@ -91,6 +92,7 @@ export function LegDetail({
   routeToken?: string;
   routeIndex?: number;
   legIndex?: number;
+  walkingContinuation?: WalkingContinuation;
 }) {
   const { t } = useAppTranslation();
   switch (leg.type) {
@@ -98,11 +100,18 @@ export function LegDetail({
       return (
         <div className="space-y-1">
           <p className="text-sm font-medium">
-            {t("walk")} {formatDistance(leg.distanceM)}
+            {walkingContinuation
+              ? t("walkToDestination", {
+                  destination: walkingContinuation.destinationName,
+                })
+              : `${t("walk")} ${formatDistance(leg.distanceM)}`}
           </p>
           <p className="text-xs text-muted-foreground">
+            {walkingContinuation &&
+              `${t("routeOutdoorSection")} ${formatDistance(leg.distanceM)} · `}
             {t("approxTime", { time: formatDuration(leg.minutesEst) })}
           </p>
+          {walkingContinuation?.summary}
           {leg.exitInfo && (
             <p className="text-xs text-blue-600 dark:text-blue-400">
               <span aria-hidden>🛗</span> {leg.exitInfo.exitName} (
@@ -131,6 +140,7 @@ export function LegDetail({
               steps={leg.steps}
               stepStreetNames={leg.stepStreetNames}
               displayLanguage={leg.displayLanguage}
+              continuation={walkingContinuation?.steps}
             />
           )}
         </div>
@@ -138,22 +148,23 @@ export function LegDetail({
     case "BUS":
       return (
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div
-              className="px-2 py-0.5 rounded text-xs font-bold text-white"
-              style={{ backgroundColor: getLegColor(leg) }}
-            >
-              {legSourceName(leg, "route", leg.routeName, getAppLanguage())}
-            </div>
-            <WaitBadge waitInfo={leg.waitInfo} />
-          </div>
-          <BusLegStops
+          <BusLegDetails
             leg={leg}
             routeToken={routeToken}
             routeIndex={routeIndex}
             legIndex={legIndex}
             isSelected={isSelected}
-          />
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="px-2 py-0.5 rounded text-xs font-bold text-white"
+                style={{ backgroundColor: getLegColor(leg) }}
+              >
+                {legSourceName(leg, "route", leg.routeName, getAppLanguage())}
+              </div>
+              <WaitBadge waitInfo={leg.waitInfo} />
+            </div>
+          </BusLegDetails>
           {leg.nearestBus && (
             <p className="text-xs text-green-600 dark:text-green-400">
               <span aria-hidden>🚌</span>{" "}

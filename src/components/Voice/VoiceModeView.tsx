@@ -32,6 +32,7 @@ export default function VoiceModeView() {
   const activeTool = useVoiceStore((s) => s.activeTool);
   const micLevel = useVoiceStore((s) => s.micLevel);
   const endSession = useVoiceStore((s) => s.endSession);
+  const setStatus = useVoiceStore((s) => s.setStatus);
   const resumePlayback = useVoiceStore((s) => s.resumePlayback);
   const setViewMode = useVoiceStore((s) => s.setViewMode);
   const reducedMotion = useReducedMotion();
@@ -47,10 +48,13 @@ export default function VoiceModeView() {
   const label = getVoiceStatusLabel(status, t);
   const active = isVoiceSessionActive(status.status);
   const listening = status.status === "listening" || status.status === "ready";
+  const ending =
+    status.status === "assistant-ending" ||
+    status.status === "draining-playback";
   const dot = recordingDotPresentation(micLevel, status.status, reducedMotion);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="h-full min-h-0 flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/40 text-xs shrink-0">
         <span className="relative flex h-2.5 w-2.5 shrink-0">
           <span
@@ -83,13 +87,17 @@ export default function VoiceModeView() {
               aria-label={
                 listening
                   ? t("chatbot.voice.listeningHint", "請開始說話")
-                  : t("chatbot.voice.connectingHint", "連線中，請稍候…")
+                  : ending
+                    ? label
+                    : t("chatbot.voice.connectingHint", "連線中，請稍候…")
               }
             />
             <p className="text-xs text-muted-foreground text-center">
               {listening
                 ? t("chatbot.voice.listeningHint", "請開始說話")
-                : t("chatbot.voice.connectingHint", "連線中，請稍候…")}
+                : ending
+                  ? label
+                  : t("chatbot.voice.connectingHint", "連線中，請稍候…")}
             </p>
           </div>
         )}
@@ -147,7 +155,8 @@ export default function VoiceModeView() {
         <div ref={bottomRef} />
       </div>
 
-      {status.status === "playback-blocked" && (
+      {(status.status === "playback-blocked" ||
+        (ending && status.code === "PLAYBACK_BLOCKED")) && (
         <div className="px-4 py-2 border-t bg-card shrink-0">
           <Button
             type="button"
@@ -174,7 +183,14 @@ export default function VoiceModeView() {
         </Button>
         <Button
           type="button"
-          onClick={endSession}
+          onClick={() => {
+            if (status.status === "needs-login" || status.status === "error") {
+              setStatus({ status: "idle" });
+            } else {
+              endSession();
+            }
+          }}
+          disabled={ending}
           size="sm"
           variant="destructive"
           className="flex-1"

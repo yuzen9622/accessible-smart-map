@@ -5,6 +5,7 @@ import {
   searchBusStops,
 } from "@/lib/api/transit";
 import { END_POINT } from "@/lib/config";
+import { departureCandidates } from "@/lib/transit/__tests__/fixtures/departureCandidates";
 
 function jsonResponse(
   body: unknown,
@@ -185,6 +186,8 @@ it("sends only the route capability and full leg index for a planned bus", async
     jsonResponse({
       ok: true,
       data: {
+        departureCandidates,
+        candidateSearchComplete: false,
         directions: [
           {
             direction: 0,
@@ -213,4 +216,6 @@ it("sends only the route capability and full leg index for a planned bus", async
     `${END_POINT}/api/v1/a11y/accessible-route/bus-arrivals?routeToken=plan-token&legIndex=2`,
   );
   expect(res.data?.directions[0].stops[0].plateNumb).toBe("BUS-10");
+  expect(res.data?.departureCandidates).toEqual(departureCandidates);
+  expect(res.data?.candidateSearchComplete).toBe(false);
 });

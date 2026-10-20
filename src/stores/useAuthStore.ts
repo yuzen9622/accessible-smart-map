@@ -162,10 +162,16 @@ const useAuthStore = create<AuthStore>((set, get) => ({
   },
 }));
 
+let identityEpoch = 0;
+useAuthStore.subscribe((state, previous) => {
+  if (state.user?._id !== previous.user?._id) identityEpoch += 1;
+});
+
 // Register this store as the auth-state port for the shared single-flight
 // refresh coordinator (plan §4 authRefresh.ts row) right after creation.
 configureAuthState({
   getSession: () => useAuthStore.getState().session,
+  getIdentityEpoch: () => identityEpoch,
   setSession: (session) => useAuthStore.getState().setSession(session),
   setUser: (user) => useAuthStore.getState().setUser(user),
 });

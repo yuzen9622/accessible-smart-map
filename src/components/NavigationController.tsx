@@ -4,7 +4,10 @@ import { LocateFixed } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import useNavigation from "@/hook/useNavigation";
 import { useAppTranslation } from "@/i18n/client";
+import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
+import VenueArrivalTransition from "./Indoor/VenueArrivalTransition";
+import VenueTourHUD from "./Indoor/VenueTourHUD";
 import NavigationHUD from "./Navigation/NavigationHUD";
 
 /**
@@ -13,13 +16,21 @@ import NavigationHUD from "./Navigation/NavigationHUD";
  * while navigation is active, so mount = nav start and unmount = nav end.
  */
 export default function NavigationController() {
+  const venueStatus = useMapStore((s) => s.venueJourney?.guidance.status);
+  if (venueStatus === "touring") return <VenueTourHUD />;
+  if (venueStatus && venueStatus !== "outdoor") return null;
+  return <OutdoorNavigationController />;
+}
+
+function OutdoorNavigationController() {
   useNavigation();
   const { t } = useAppTranslation();
   const followPaused = useNavStore((s) => s.followPaused);
   const setFollowPaused = useNavStore((s) => s.setFollowPaused);
 
   return (
-    <>
+    <div>
+      <VenueArrivalTransition />
       <NavigationHUD />
       <AnimatePresence>
         {followPaused && (
@@ -36,6 +47,6 @@ export default function NavigationController() {
           </motion.button>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }

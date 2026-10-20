@@ -109,7 +109,7 @@ export function TransitStops({
         <span className="font-medium">{boardName}</span>
         <EndpointTime
           scheduledTime={boardTime}
-          liveEtaMinutes={isStopsOpen ? liveEtaMinutes : undefined}
+          liveEtaMinutes={liveEtaMinutes}
           t={t}
         />
       </div>

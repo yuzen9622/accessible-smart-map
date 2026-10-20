@@ -57,6 +57,10 @@ export function getVoiceStatusLabel(
       return t("chatbot.voice.statusListening", "聆聽中…");
     case "model-speaking":
       return t("chatbot.voice.statusModelSpeaking", "回覆中…");
+    case "assistant-ending":
+      return t("chatbot.voice.statusAssistantEnding", "正在播放道別…");
+    case "draining-playback":
+      return t("chatbot.voice.statusDrainingPlayback", "正在播完道別…");
     case "reconnecting":
       return t("chatbot.voice.statusReconnecting", "連線中斷，重連中");
     case "playback-blocked":
@@ -163,6 +167,10 @@ export default function VoiceFloatingIndicator() {
         <Button
           type="button"
           onClick={handleEnd}
+          disabled={
+            status.status === "assistant-ending" ||
+            status.status === "draining-playback"
+          }
           size="sm"
           variant="ghost"
           className="h-6 w-6 p-0 rounded-full shrink-0"

@@ -36,6 +36,32 @@ interface SessionStartMessage extends Partial<RouteConversationInput> {
   userLocation?: { latitude: number; longitude: number };
 }
 
+// The gateway's 8 KiB control-frame limit includes the entire session.start JSON.
+const CONTROL_FRAME_MAX_BYTES = 8 * 1024;
+
+function encodeSessionStart(message: SessionStartMessage): string | null {
+  const encoder = new TextEncoder();
+  const original = JSON.stringify(message);
+  if (encoder.encode(original).byteLength <= CONTROL_FRAME_MAX_BYTES)
+    return original;
+
+  const { history = [], ...required } = message;
+  let payload = JSON.stringify(required);
+  if (encoder.encode(payload).byteLength > CONTROL_FRAME_MAX_BYTES) return null;
+
+  const retained: NonNullable<SessionStartMessage["history"]> = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const candidate = JSON.stringify({
+      ...required,
+      history: [history[i], ...retained],
+    });
+    if (encoder.encode(candidate).byteLength > CONTROL_FRAME_MAX_BYTES) break;
+    retained.unshift(history[i]);
+    payload = candidate;
+  }
+  return payload;
+}
+
 /** Client -> server: graceful end, server acks with close(1000, "client-end"). */
 interface SessionEndMessage {
   type: "session.end";
@@ -289,7 +315,9 @@ export function isVoiceSpeechChannelLive(status: VoiceStatusName): boolean {
     status === "ready" ||
     status === "listening" ||
     status === "model-speaking" ||
-    status === "playback-blocked"
+    status === "playback-blocked" ||
+    status === "assistant-ending" ||
+    status === "draining-playback"
   );
 }
 
@@ -362,6 +390,25 @@ const CLOSE_ABNORMAL = 1006;
 const CLOSE_NAV_TURN_TIMEOUT = 4410;
 
 const REASON_LIVE_SESSION_ENDED = "live-session-ended";
+const ASSISTANT_END = "assistant-end";
+/** Bound a missing peer close and a stalled audio queue independently. */
+const ENDING_TIMEOUT_MS = 15000;
+const PLAYBACK_DRAIN_TIMEOUT_MS = 15000;
+
+/** Expiry is only a preflight hint, never a substitute for server auth. */
+function isUsableToken(token: string | undefined): token is string {
+  if (!token?.trim()) return false;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return true; // opaque tokens remain server-validated
+    const decoded = JSON.parse(
+      atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+    );
+    return typeof decoded.exp !== "number" || decoded.exp * 1000 > Date.now();
+  } catch {
+    return true;
+  }
+}
 
 /** Initial reconnect backoff (ms). Doubles each 1006 retry, capped at 30s. */
 const RECONNECT_INITIAL_DELAY_MS = 1000;
@@ -411,6 +458,8 @@ export type VoiceStatusName =
   | "model-speaking"
   | "reconnecting"
   | "playback-blocked"
+  | "assistant-ending"
+  | "draining-playback"
   | "needs-login"
   | "ended"
   | "error";
@@ -504,8 +553,14 @@ export class VoiceSessionController {
   /** Identity captured at start(); re-checked before every socket build. */
   private identityAtStart: string | null = null;
 
-  /** Per-session (not per-generation) refresh budget — §5.8. */
+  /** One refresh until a current-generation ready reopens the budget. */
   private hasRefreshed = false;
+  private refreshPending: {
+    generation: number;
+    promise: Promise<string | null>;
+  } | null = null;
+  private endingTimer: ReturnType<typeof setTimeout> | null = null;
+  private drainTimer: ReturnType<typeof setTimeout> | null = null;
 
   private socket: VoiceSocket | null = null;
   private capture: VoiceCapture | null = null;
@@ -540,7 +595,7 @@ export class VoiceSessionController {
   private completedCalls = new Set<string>();
 
   syncRouteContext(options: { deferUntilIdle?: boolean } = {}): void {
-    if (!this.sessionActive) return;
+    if (!this.sessionActive || this.isEnding()) return;
     if (
       options.deferUntilIdle &&
       !this.contextBlocked &&
@@ -609,19 +664,55 @@ export class VoiceSessionController {
     this.muted = false;
     this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
 
-    this.playback = this.deps.createPlayback();
-    this.playback.onIdle?.(() => this.flushDeferredContext());
-    this.playback.onBlocked(() => {
-      if (!this.sessionActive) return;
-      this.setStatus({ status: "playback-blocked" });
+    const playback = this.deps.createPlayback();
+    this.playback = playback;
+    playback.onIdle?.(() => {
+      if (!this.sessionActive || this.playback !== playback) return;
+      if (this.status.status === "draining-playback")
+        this.finishAssistantEnd(playback);
+      else if (!this.isEnding()) this.flushDeferredContext();
+    });
+    playback.onBlocked(() => {
+      if (!this.sessionActive || this.playback !== playback) return;
+      this.setStatus(
+        this.isEnding()
+          ? { ...this.status, code: "PLAYBACK_BLOCKED" }
+          : { status: "playback-blocked" },
+      );
     });
 
     this.setStatus({ status: "connecting" });
     this.connect();
   }
 
-  end(): void {
+  isActive(): boolean {
+    return this.sessionActive;
+  }
+
+  /** Store notifications during refresh failure must not race needs-login into ended. */
+  handleAuthChange(): void {
     if (!this.sessionActive) return;
+    if (this.deps.getAuthIdentity() !== this.identityAtStart) {
+      this.terminate(
+        { status: this.refreshPending ? "needs-login" : "ended" },
+        true,
+      );
+    } else if (!this.deps.getToken() && !this.refreshPending) {
+      this.end();
+    }
+  }
+
+  private isEnding(): boolean {
+    return (
+      this.status.status === "assistant-ending" ||
+      this.status.status === "draining-playback"
+    );
+  }
+
+  end(): void {
+    // Repeated UI commands and unmount cleanup cannot truncate an accepted farewell.
+    // The peer-close/drain deadlines still release every resource after unmount.
+    if (!this.sessionActive || this.isEnding()) return;
     this.terminate({ status: "ended" }, /* sendEndMessage */ true);
   }
 
@@ -629,6 +720,7 @@ export class VoiceSessionController {
   reconnectForLanguageChange(): void {
     if (
       !this.sessionActive ||
+      this.isEnding() ||
       this.deps.getLanguage?.() === this.sessionLanguage
     )
       return;
@@ -640,6 +732,7 @@ export class VoiceSessionController {
   }
 
   setMuted(muted: boolean): void {
+    if (this.isEnding()) return;
     this.muted = muted;
     this.playback?.setMuted?.(muted);
     this.flushDeferredContext();
@@ -648,10 +741,20 @@ export class VoiceSessionController {
   resumePlayback(): void {
     const playback = this.playback;
     if (!playback) return;
+    const gen = this.generation;
     playback.resume().then((ok) => {
-      if (!this.sessionActive) return; // ended meanwhile — discard
+      if (
+        !this.sessionActive ||
+        this.playback !== playback ||
+        gen !== this.generation
+      )
+        return;
       if (ok) {
-        this.setStatus({ status: "listening" });
+        this.setStatus(
+          this.isEnding()
+            ? { status: this.status.status }
+            : { status: "listening" },
+        );
       }
       // ok === false: remain in playback-blocked, nothing to do.
     });
@@ -715,6 +818,94 @@ export class VoiceSessionController {
     capture?.stop();
   }
 
+  private clearEndingTimers(): void {
+    if (this.endingTimer !== null) clearTimeout(this.endingTimer);
+    if (this.drainTimer !== null) clearTimeout(this.drainTimer);
+    this.endingTimer = this.drainTimer = null;
+  }
+
+  private detachSocket(): void {
+    const socket = this.socket;
+    this.socket = null;
+    if (!socket) return;
+    socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
+    socket.close();
+  }
+
+  private beginAssistantEnding(): void {
+    if (!this.sessionActive || this.isEnding()) return;
+    this.clearReconnectTimer();
+    if (this.contextTimer) clearTimeout(this.contextTimer);
+    this.pendingContext = null;
+    this.contextBlocked = false;
+    this.deferredContext = false;
+    this.stopCapture();
+    this.setStatus({
+      status: "assistant-ending",
+      ...(this.status.status === "playback-blocked"
+        ? { code: "PLAYBACK_BLOCKED" }
+        : {}),
+    });
+    const playback = this.playback;
+    const gen = this.generation;
+    this.endingTimer = setTimeout(() => {
+      if (
+        !this.sessionActive ||
+        gen !== this.generation ||
+        this.playback !== playback
+      )
+        return;
+      this.detachSocket();
+      this.beginPlaybackDrain();
+    }, ENDING_TIMEOUT_MS);
+  }
+
+  private beginPlaybackDrain(): void {
+    if (this.status.status === "draining-playback") return;
+    this.generation += 1; // the transport is closed; only this player's completion remains valid
+    if (this.endingTimer !== null) clearTimeout(this.endingTimer);
+    this.endingTimer = null;
+    const playback = this.playback;
+    this.setStatus({
+      status: "draining-playback",
+      ...(this.status.code === "PLAYBACK_BLOCKED"
+        ? { code: "PLAYBACK_BLOCKED" }
+        : {}),
+    });
+    if (!playback) {
+      this.finishAssistantEnd(null);
+      return;
+    }
+    if (playback.isIdle?.() === true) {
+      this.finishAssistantEnd(playback);
+      return;
+    }
+    const gen = this.generation;
+    this.drainTimer = setTimeout(() => {
+      if (gen === this.generation) this.finishAssistantEnd(playback);
+    }, PLAYBACK_DRAIN_TIMEOUT_MS);
+  }
+
+  private finishAssistantEnd(playback: VoicePlayback | null): void {
+    if (
+      !this.sessionActive ||
+      this.playback !== playback ||
+      this.status.status !== "draining-playback"
+    )
+      return;
+    this.generation += 1;
+    this.sessionActive = false;
+    this.clearEndingTimers();
+    this.clearReconnectTimer();
+    this.stopCapture();
+    this.detachSocket();
+    this.playback = null;
+    playback?.dispose();
+    this.toolCalls.clear();
+    this.muted = false;
+    this.setStatus({ status: "ended", code: ASSISTANT_END });
+  }
+
   /**
    * Full teardown shared by every terminal transition: end(), the
    * non-1006 close branches, mic-permission failure, identity/token
@@ -726,6 +917,8 @@ export class VoiceSessionController {
     this.deferredContext = false;
     this.modelTurnActive = false;
     this.generation += 1;
+    this.refreshPending = null;
+    this.clearEndingTimers();
     if (this.contextTimer) clearTimeout(this.contextTimer);
     this.pendingContext = null;
     this.toolCalls.clear();
@@ -764,8 +957,11 @@ export class VoiceSessionController {
    * awaits between reading them and sending `session.start` in onopen
    * (§6 boundary: "onopen 同步送出，不等待任何非同步取值").
    */
-  private connect(): void {
-    if (!this.sessionActive) return;
+  private connect(refreshedToken?: string): void {
+    if (!this.sessionActive || this.isEnding()) return;
+    const pending = this.refreshPending;
+    if (pending?.generation === this.generation) return;
+    const gen = ++this.generation;
 
     if (this.deps.getAuthIdentity() !== this.identityAtStart) {
       // §5.7 rev13: identity changed since start — never build a socket
@@ -774,9 +970,9 @@ export class VoiceSessionController {
       return;
     }
 
-    const token = this.deps.getToken();
-    if (!token) {
-      this.terminate({ status: "needs-login" });
+    const token = refreshedToken ?? this.deps.getToken();
+    if (!isUsableToken(token)) {
+      this.refreshForConnection(gen);
       return;
     }
 
@@ -797,8 +993,6 @@ export class VoiceSessionController {
 
     this.deferredContext = false;
     this.modelTurnActive = false;
-    this.generation += 1;
-    const gen = this.generation;
     this.contextSupported = false;
     this.contextBlocked = false;
     this.selectionVersion = 0;
@@ -823,7 +1017,12 @@ export class VoiceSessionController {
         ...(this.deps.getHistory ? { history: this.deps.getHistory() } : {}),
       };
       if (location) message.userLocation = location;
-      socket.send(JSON.stringify(message));
+      const payload = encodeSessionStart(message);
+      if (payload === null) {
+        this.terminate({ status: "error", code: "SESSION_START_TOO_LARGE" });
+        return;
+      }
+      socket.send(payload);
     };
     socket.onmessage = (event) => this.handleMessage(gen, event.data);
     socket.onclose = (event) => this.handleClose(gen, event.code, event.reason);
@@ -833,7 +1032,7 @@ export class VoiceSessionController {
     if (gen !== this.generation) return; // stale socket
 
     if (data instanceof ArrayBuffer) {
-      if (this.contextBlocked) return;
+      if (this.contextBlocked && !this.isEnding()) return;
       this.modelTurnActive = true;
       // Downlink audio: never JSON-parsed, forwarded to playback in
       // arrival order (§5.9).
@@ -871,7 +1070,14 @@ export class VoiceSessionController {
 
   private dispatchEvent(gen: number, message: ServerEventMessage): void {
     switch (message.type) {
+      case "session.ending": {
+        if ((message as { reason?: string }).reason === ASSISTANT_END)
+          this.beginAssistantEnding();
+        return;
+      }
       case "session.ready": {
+        if (this.isEnding()) return;
+        this.hasRefreshed = false;
         const capabilities = (message as SessionReadyMessage).capabilities;
         this.contextSupported =
           capabilities?.aiRouteContractVersion === 1 &&
@@ -922,7 +1128,7 @@ export class VoiceSessionController {
         return;
       }
       case "transcript": {
-        if (this.contextBlocked) return;
+        if (this.contextBlocked && !this.isEnding()) return;
         const m = message as TranscriptMessage;
         this.modelTurnActive = true;
         this.deps.onTranscript({
@@ -934,7 +1140,6 @@ export class VoiceSessionController {
         return;
       }
       case "transcript.correction": {
-        if (this.contextBlocked) return;
         const m = message as TranscriptCorrectionMessage;
         this.deps.onTranscriptCorrection?.({
           role: m.role ?? "user",
@@ -1004,6 +1209,7 @@ export class VoiceSessionController {
         return;
       }
       case "interrupted": {
+        if (this.isEnding()) return;
         this.modelTurnActive = false;
         // §5.10: interrupted always clears playback immediately.
         this.playback?.clear();
@@ -1018,10 +1224,10 @@ export class VoiceSessionController {
         return;
       }
       case "turn.complete": {
-        if (this.contextBlocked) return;
+        if (this.contextBlocked && !this.isEnding()) return;
         this.modelTurnActive = false;
         this.deps.onTurnComplete?.();
-        this.flushDeferredContext();
+        if (!this.isEnding()) this.flushDeferredContext();
         if (this.status.status === "model-speaking") {
           this.setStatus({ status: "listening" });
         }
@@ -1088,7 +1294,7 @@ export class VoiceSessionController {
     this.deps
       .createCapture((frame) => this.sendAudio(gen, frame))
       .then((capture) => {
-        if (gen !== this.generation) {
+        if (gen !== this.generation || !this.sessionActive || this.isEnding()) {
           // end() happened, or a reconnect superseded this generation,
           // while getUserMedia/setup was in flight — never (re)activate
           // the mic for a stale generation.
@@ -1099,7 +1305,7 @@ export class VoiceSessionController {
         this.setStatus({ status: "listening" });
       })
       .catch((error) => {
-        if (gen !== this.generation) return; // stale, discard
+        if (gen !== this.generation || this.isEnding()) return;
         console.warn("[voiceSession] Microphone capture failed", error);
         // §6 boundary: mic permission denied (or any capture setup
         // failure) → clear error, end the session, notify server.
@@ -1123,6 +1329,13 @@ export class VoiceSessionController {
   private handleClose(gen: number, code: number, reason: string): void {
     if (gen !== this.generation) return; // stale socket's close — no-op
 
+    if (code === CLOSE_NORMAL && reason === ASSISTANT_END) {
+      this.beginAssistantEnding();
+      this.detachSocket();
+      this.beginPlaybackDrain();
+      return;
+    }
+    this.generation += 1; // close itself invalidates saved socket/capture callbacks
     if (this.contextTimer) clearTimeout(this.contextTimer);
     this.pendingContext = null;
     this.contextBlocked = true;
@@ -1165,38 +1378,46 @@ export class VoiceSessionController {
     }
   }
 
-  /** §5.8: 4401 — refresh once per session, controller never commits/invalidates. */
   private handleAuthExpired(): void {
+    this.setStatus({ status: "reconnecting" });
+    this.refreshForConnection(this.generation);
+  }
+
+  private refreshForConnection(gen: number): void {
+    if (this.refreshPending?.generation === gen) return;
     if (this.hasRefreshed) {
-      // Second 4401 in this session: end only, never touch global auth.
       this.terminate({ status: "needs-login" });
       return;
     }
     this.hasRefreshed = true;
-
-    const genAtRefreshStart = this.generation;
-    this.setStatus({ status: "reconnecting" });
-
-    this.deps.refreshAuth().then((token) => {
-      if (this.generation !== genAtRefreshStart || !this.sessionActive) return; // stale — discard, don't reconnect
-
-      if (this.deps.getAuthIdentity() !== this.identityAtStart) {
-        // Identity changed while refreshing — never reconnect with a
-        // different identity's token.
+    let promise: Promise<string | null>;
+    try {
+      promise = this.deps.refreshAuth();
+    } catch {
+      promise = Promise.resolve(null);
+    }
+    const lane = { generation: gen, promise };
+    this.refreshPending = lane;
+    const complete = (token: string | null) => {
+      if (
+        this.refreshPending !== lane ||
+        gen !== this.generation ||
+        !this.sessionActive ||
+        this.isEnding()
+      )
+        return;
+      this.refreshPending = null;
+      if (
+        this.deps.getAuthIdentity() !== this.identityAtStart ||
+        !isUsableToken(token ?? undefined)
+      ) {
         this.terminate({ status: "needs-login" });
         return;
       }
-
-      if (token === null) {
-        this.terminate({ status: "needs-login" });
-        return;
-      }
-
-      // Reconnect exactly once, using the store's current token via
-      // getToken() (connect() re-reads it) — new generation.
       this.setStatus({ status: "connecting" });
-      this.connect();
-    });
+      this.connect(token ?? undefined);
+    };
+    void promise.then(complete, () => complete(null));
   }
 
   private scheduleReconnect(): void {

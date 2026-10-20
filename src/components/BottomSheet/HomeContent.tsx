@@ -9,9 +9,11 @@ import { useShallow } from "zustand/react/shallow";
 import WelcomeCard from "@/components/Onboarding/WelcomeCard";
 import PlaceInput from "@/components/shared/PlaceInput";
 import { useAppTranslation } from "@/i18n/client";
+import { refreshVenuePlace } from "@/lib/indoor/catalog";
 import { QUICK_ACTION_DEFS } from "@/lib/quickActions";
 import { cn } from "@/lib/utils";
 import useAuthStore from "@/stores/useAuthStore";
+import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore, { placeKey } from "@/stores/useMapStore";
 import useQuickActionsStore from "@/stores/useQuickActionsStore";
 import useVoiceStore from "@/stores/useVoiceStore";
@@ -79,6 +81,20 @@ export default function HomeContent() {
 
   const handlePlaceChange = useCallback(
     (placeDetail: PlaceDetail) => {
+      if (placeDetail.kind === "venue-place") {
+        const catalog = useIndoorCatalog.getState();
+        const current = refreshVenuePlace(catalog.models, placeDetail);
+        if (!current) {
+          toast.error("這個校園地點的資料已更新或尚未載入，請重新搜尋選取。");
+          return;
+        }
+        setSearchPlace(current);
+        setInput(current.name);
+        setInfoShow({ ...current, isOpen: true });
+        catalog.previewPlace(current);
+        setSheetMode("place");
+        return;
+      }
       setSearchPlace(placeDetail);
       if (placeDetail.kind === "place") {
         const [lng, lat] = placeDetail.place.location.coordinates;
@@ -284,7 +300,9 @@ export default function HomeContent() {
               const name =
                 item.kind === "place"
                   ? item.place.name || item.place.fullAddress
-                  : item.address;
+                  : item.kind === "venue-place"
+                    ? item.name
+                    : item.address;
               return (
                 <button
                   key={placeKey(item)}
@@ -293,7 +311,16 @@ export default function HomeContent() {
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/60 transition-colors text-left"
                 >
                   <BookmarkIcon size={16} className="text-primary shrink-0" />
-                  <span className="text-sm truncate">{name}</span>
+                  <span className="min-w-0 text-sm">
+                    <span className="block truncate">{name}</span>
+                    {item.kind === "venue-place" && (
+                      <span className="block text-xs text-muted-foreground truncate">
+                        {[item.buildingName, item.levelRef]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}
@@ -313,7 +340,9 @@ export default function HomeContent() {
               const name =
                 item.kind === "place"
                   ? item.place.name || item.place.fullAddress
-                  : item.address;
+                  : item.kind === "venue-place"
+                    ? item.name
+                    : item.address;
               return (
                 <button
                   key={placeKey(item)}
@@ -325,7 +354,16 @@ export default function HomeContent() {
                     size={16}
                     className="text-muted-foreground/50 shrink-0"
                   />
-                  <span className="text-sm truncate">{name}</span>
+                  <span className="min-w-0 text-sm">
+                    <span className="block truncate">{name}</span>
+                    {item.kind === "venue-place" && (
+                      <span className="block text-xs text-muted-foreground truncate">
+                        {[item.buildingName, item.levelRef]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    )}
+                  </span>
                 </button>
               );
             })}

@@ -73,6 +73,14 @@ export default function BottomSheet() {
       setMobileSheetSnap: s.setMobileSheetSnap,
     })),
   );
+  // The route tour shares the outdoor HUD; only manual step guidance still
+  // lives in the sheet.
+  const venueSheetGuidance = useMapStore(
+    (s) =>
+      s.venueJourney?.guidance.status === "guiding" ||
+      s.venueJourney?.guidance.status === "arrived",
+  );
+  const mapFirstNavigation = isNavigating && !venueSheetGuidance;
   const isDesktop = useIsDesktop();
   const coachMarksActive = useOnboardingStore((s) => s.coachMarksActive);
   const stepListOpen = useNavStore((s) => s.stepListOpen);
@@ -143,7 +151,7 @@ export default function BottomSheet() {
 
   // The AI assistant is sheet content, not a floating card — the nav HUD
   // owns the screen mid-navigation so it never competes with that.
-  const showAssistant = chatOpen && !isNavigating;
+  const showAssistant = chatOpen && !mapFirstNavigation;
 
   // Whether the content panel (Layer 2) is open on desktop
   const modePanelActive = MODE_PANELS.has(sheetMode);
@@ -156,6 +164,7 @@ export default function BottomSheet() {
   // scrollTop the previous content happened to be left at (which otherwise
   // makes the new content look like it's missing its top half).
   const activeContentKey = modePanelActive ? sheetMode : activeRailPanel;
+  const activeScrollKey = activeContentKey;
 
   // A rail *sub-panel* (無障礙設施 / 公車 / …) is showing rather than the search
   // home view. Mobile has no rail to render an active indicator on, so this is
@@ -167,7 +176,7 @@ export default function BottomSheet() {
 
   // Map-first navigation: the HUD owns the screen; the sheet/panel only
   // reappears as the step list when requested from the HUD.
-  const navHidesChrome = isNavigating && !stepListOpen;
+  const navHidesChrome = mapFirstNavigation && !stepListOpen;
 
   // Publish the sheet's live height as a CSS variable so floating map
   // controls (SOS, recenter, …) can ride just above the sheet instead of
@@ -192,10 +201,10 @@ export default function BottomSheet() {
         setMobileSheetSnap("half");
         break;
       case "navigation":
-        setMobileSheetSnap("peek");
+        setMobileSheetSnap(venueSheetGuidance ? "half" : "peek");
         break;
     }
-  }, [sheetMode, setMobileSheetSnap]);
+  }, [sheetMode, venueSheetGuidance, setMobileSheetSnap]);
 
   // When sheetMode goes to a mode panel, collapse rail panel
   useEffect(() => {
@@ -227,11 +236,11 @@ export default function BottomSheet() {
   // the scrollable container itself doesn't remount (only the animated
   // child inside it does), so without this a leftover scrollTop from the
   // previous panel silently carries over onto the new one.
-  // biome-ignore lint/correctness/useExhaustiveDependencies(activeContentKey): trigger-only dependency, not read in the body
+  // biome-ignore lint/correctness/useExhaustiveDependencies(activeScrollKey): trigger-only dependency, not read in the body
   useEffect(() => {
     mobileContentScrollRef.current?.scrollTo({ top: 0 });
     desktopContentScrollRef.current?.scrollTo({ top: 0 });
-  }, [activeContentKey]);
+  }, [activeScrollKey]);
 
   // Opening the step list mid-navigation lifts the mobile sheet to half.
   useEffect(() => {
@@ -362,7 +371,10 @@ export default function BottomSheet() {
 
   const handlePanelClose = useCallback(() => {
     if (isNavigating) {
-      setStepListOpen(false);
+      if (venueSheetGuidance) {
+        setCollapsed(true);
+        setMobileSheetSnap("peek");
+      } else setStepListOpen(false);
       return;
     }
     if (showAssistant) {
@@ -405,7 +417,10 @@ export default function BottomSheet() {
     setInfoShow,
     setSearchPlace,
     isNavigating,
+    venueSheetGuidance,
     setStepListOpen,
+    setCollapsed,
+    setMobileSheetSnap,
   ]);
 
   return (
@@ -584,7 +599,7 @@ export default function BottomSheet() {
           aria-label={t("quickActions")}
           className={cn(
             "pointer-events-auto fixed left-3 top-3 bottom-3 w-[56px] bg-background/95 backdrop-blur-md rounded-2xl shadow-xl border border-border/50 flex flex-col items-center py-3 gap-1 z-(--z-drawer-rail)",
-            isNavigating && "hidden",
+            mapFirstNavigation && "hidden",
           )}
         >
           {/* Logo — the real app icon (public/logo.png: pin + wheelchair on
@@ -718,7 +733,7 @@ export default function BottomSheet() {
             below, a prop change on an already-mounted element rather than a
             removal, so collapsing never costs the chat its history again. */}
         <AnimatePresence>
-          {(isNavigating ? stepListOpen : panelOpen) && (
+          {(mapFirstNavigation ? stepListOpen : panelOpen) && (
             <motion.div
               key="desktop-panel"
               role="region"
@@ -727,18 +742,18 @@ export default function BottomSheet() {
                 "pointer-events-auto fixed bottom-3 w-[380px] bg-background/95 backdrop-blur-md rounded-2xl shadow-2xl border border-border/50 flex flex-col overflow-hidden z-(--z-drawer-panel)",
                 // The rail is hidden mid-navigation and the HUD banner owns
                 // the top strip, so the step list hugs the left edge below it.
-                isNavigating ? "left-3 top-[140px]" : "left-[68px] top-3",
+                mapFirstNavigation ? "left-3 top-[140px]" : "left-[68px] top-3",
               )}
               initial={{ x: -400, opacity: 0 }}
               animate={
-                collapsed && !isNavigating
+                !panelOpen || (collapsed && !mapFirstNavigation)
                   ? { x: -400, opacity: 0 }
                   : { x: 0, opacity: 1 }
               }
               exit={{ x: -400, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              inert={collapsed && !isNavigating}
-              aria-hidden={collapsed && !isNavigating}
+              inert={!panelOpen || (collapsed && !mapFirstNavigation)}
+              aria-hidden={!panelOpen || (collapsed && !mapFirstNavigation)}
             >
               {/* Panel header — suppressed when the content below already
                   renders its own (see MODE_PANELS_WITH_OWN_HEADER), otherwise
@@ -822,7 +837,7 @@ export default function BottomSheet() {
         </AnimatePresence>
 
         {/* --- Collapse/Expand toggle: hides the content panel, icons stay --- */}
-        {panelOpen && !isNavigating && (
+        {panelOpen && !mapFirstNavigation && (
           <button
             type="button"
             aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}

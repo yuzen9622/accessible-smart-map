@@ -11,3 +11,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Product Naming
 
 The product is **無障礙智慧地圖** (**Accessible Smart Map**). Use these names in user-facing copy, emails, and documentation; do not infer the brand from the repository name. Keep repository identifiers, paths, and geographic references to Taipei unchanged.
+
+
+
+## UI Design
+
+Using taste skill like taste-skill, gpt-tasteskskill or soft-skill for design UIUX.

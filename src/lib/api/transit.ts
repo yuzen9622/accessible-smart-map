@@ -1,6 +1,10 @@
 import type { LatLng } from "@/types";
 import type { ApiResponse } from "@/types/response";
-import type { BusPlanContext, LiveBusPositionsData } from "@/types/route";
+import type {
+  BusCandidateMetadata,
+  BusPlanContext,
+  LiveBusPositionsData,
+} from "@/types/route";
 import type {
   BusDirection,
   BusRealtimeNearbyStop,
@@ -12,6 +16,7 @@ import { END_POINT } from "../config";
 import { fetchRequest } from "../fetch";
 import {
   parseBusArrivals,
+  parseBusCandidateMetadata,
   parseBusRouteDirections,
   parseBusTimetable,
   parseLiveBusPositions,
@@ -270,14 +275,17 @@ export async function getBusRouteDetail(
   const data = (await timedBusRequest(
     `${END_POINT}${endpoint}`,
     signal,
-  )) as ApiResponse<{
-    routeDisplayName?: string;
-    directions: RouteDetailDirection[];
-  }>;
+  )) as ApiResponse<
+    BusCandidateMetadata & {
+      routeDisplayName?: string;
+      directions: RouteDetailDirection[];
+    }
+  >;
   if (data.data)
     data.data = {
       ...data.data,
       directions: parseBusRouteDirections(data.data),
+      ...parseBusCandidateMetadata(data.data),
     };
   return data;
 }
