@@ -235,6 +235,7 @@
   "assistFirstMessage": "你好！我是無障礙智慧地圖的 AI 助理，有什麼我能幫你的嗎？附近無障礙設施或者是問題回饋？請隨時提出！",
   "assistThinking": " AI 助理思考中",
   "chatbot": {
+    "open": "開啟聊天助理",
     "recommendation1": "附近無障礙設施",
     "recommendation2": "目前位置到最近車站",
     "recommendation3": "附近餐廳",
@@ -565,7 +566,7 @@
   "nextStep": "下一步",
   "prevStep": "上一步",
   "stepOf": "第 {{current}} 步 / 共 {{total}} 步",
-  "recenter": "重新置中",
+  "recenter": "我的位置",
   "toggleViewMode": "切換 2D/3D 視角",
   "voiceOn": "開啟語音導航",
   "voiceOff": "關閉語音導航",

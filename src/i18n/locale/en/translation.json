@@ -183,6 +183,7 @@
   "assistFirstMessage": "Hello! I'm the Accessible Smart Map AI Assistant. How can I help you? Looking for nearby accessible facilities or have some feedback? Feel free to ask!",
   "assistThinking": "AI Assistant is thinking",
   "chatbot": {
+    "open": "Open chat assistant",
     "recommendation1": "Nearby accessible facilities",
     "recommendation2": "Directions to the nearest station",
     "recommendation3": "Nearby restaurants",
@@ -572,7 +573,7 @@
   "nextStep": "Next",
   "prevStep": "Previous",
   "stepOf": "Step {{current}} of {{total}}",
-  "recenter": "Recenter",
+  "recenter": "My location",
   "toggleViewMode": "Toggle 2D/3D view",
   "voiceOn": "Enable voice navigation",
   "voiceOff": "Disable voice navigation",
