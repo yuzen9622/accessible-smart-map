@@ -121,6 +121,8 @@ const primary: AccessibleRoute = {
   routeToken: "bus-token",
   navigationId: "bus-navigation",
   routeVersion: 1,
+  departureTime: "2026-10-21T21:05:00+08:00",
+  arrivalTime: "2026-10-21T21:28:00+08:00",
   totalMinutes: 23,
   transferCount: 0,
   accessibilityHighlights: [],
@@ -159,6 +161,8 @@ const alternate: AccessibleRoute = {
   ...primary,
   routeId: "second-route",
   routeName: "Second candidate",
+  departureTime: "2026-10-21T21:15:00+08:00",
+  arrivalTime: "2026-10-21T21:38:00+08:00",
   routeToken: "second-token",
   navigationId: "second-navigation",
 };
@@ -256,7 +260,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("venue journeys retain the existing route-results interface", () => {
-  it("renders the real bus RouteCard with schedule, walk detail and original actions", () => {
+  it("renders the real bus RouteCard with journey times, schedule, walk detail and original actions", () => {
     const { markup } = render();
     for (const text of [
       "routeResultsTitle",
@@ -264,8 +268,8 @@ describe("venue journeys retain the existing route-results interface", () => {
       "aiExplanation",
       "environment",
       "reportHazard",
-      "Bus candidate",
-      "Second candidate",
+      "routeJourneyDeparture",
+      "routeJourneyArrival",
       "Synthetic 99",
       "21:08",
       "Stop Start",
@@ -275,6 +279,16 @@ describe("venue journeys retain the existing route-results interface", () => {
       "Room Alpha",
     ])
       expect(markup).toContain(text);
+    const clocks = Array.from(
+      markup.matchAll(/<time\b[^>]*dateTime="([^"]+)"[^>]*>([^<]+)<\/time>/g),
+      ([, instant, clock]) => [instant, clock],
+    );
+    expect(clocks).toEqual([
+      ["2026-10-21T21:05:00+08:00", "21:05"],
+      ["2026-10-21T21:28:00+08:00", "21:28"],
+      ["2026-10-21T21:15:00+08:00", "21:15"],
+      ["2026-10-21T21:38:00+08:00", "21:38"],
+    ]);
     expect(markup).not.toContain("legacy-venue-result");
     expect(markup.match(/<h1/g)).toHaveLength(1);
     expect(h.cards).toHaveLength(2);
