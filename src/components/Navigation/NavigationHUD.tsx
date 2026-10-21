@@ -40,6 +40,10 @@ import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinato
 import { shouldSpeakLocally } from "@/lib/navigation/navigationAudio";
 import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
 import {
+  selectProgressReminder,
+  spokenDistance,
+} from "@/lib/navigation/progressReminder";
+import {
   navigationCopyDefault,
   transitDetail,
   transitHeadline,
@@ -52,6 +56,7 @@ import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
 import {
   formatDistance,
+  type NavInstruction,
   type SafetyHazardReport,
   type SlimOsmA11y,
 } from "@/types/route";
@@ -306,6 +311,73 @@ export default function NavigationHUD() {
     preview,
     navigationSource,
     arrived,
+    t,
+  ]);
+
+  // Long straight stretches arrive as one step; remind "continue straight N"
+  // as the distance to the next maneuver crosses each mark.
+  const progressReminder = useRef<{
+    scope: string | null;
+    instructions: NavInstruction[];
+    step: number;
+    startDistanceM: number | null;
+    spoken: Set<number>;
+  } | null>(null);
+  useEffect(() => {
+    const step = instructions[currentStep];
+    if (
+      !speechScope ||
+      preview ||
+      arrived ||
+      transitGuide ||
+      navigationSource !== "local" ||
+      !step ||
+      distanceToNextM == null
+    )
+      return;
+    let state = progressReminder.current;
+    if (
+      !state ||
+      state.scope !== speechScope ||
+      state.instructions !== instructions ||
+      state.step !== currentStep
+    ) {
+      state = {
+        scope: speechScope,
+        instructions,
+        step: currentStep,
+        startDistanceM: distanceToNextM,
+        spoken: new Set(),
+      };
+      progressReminder.current = state;
+    }
+    const mark = selectProgressReminder(
+      distanceToNextM,
+      step.legType,
+      state.spoken,
+      state.startDistanceM,
+    );
+    if (mark == null) return;
+    state.spoken.add(mark);
+    const spoken = spokenDistance(mark);
+    speak(
+      t("navSpeakContinue", {
+        distance: t(
+          spoken.unit === "km" ? "navSpeakKilometers" : "navSpeakMeters",
+          { value: spoken.value },
+        ),
+      }),
+    );
+  }, [
+    speechScope,
+    preview,
+    arrived,
+    transitGuide,
+    navigationSource,
+    instructions,
+    currentStep,
+    distanceToNextM,
+    speak,
     t,
   ]);
 
