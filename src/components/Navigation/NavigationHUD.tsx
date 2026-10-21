@@ -27,7 +27,10 @@ import { useAppTranslation } from "@/i18n/client";
 import { getSafetyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
 import { selectAdvisoryAnnouncement } from "@/lib/navigation/advisorySpeech";
-import { navigationInstructionText } from "@/lib/navigation/instructionPresentation";
+import {
+  navigationInstructionText,
+  navigationRoadLabel,
+} from "@/lib/navigation/instructionPresentation";
 import {
   findLegHandoffIndex,
   isVehicleLegType,
@@ -592,15 +595,31 @@ export default function NavigationHUD() {
                     />
                   </p>
                 )}
-                <p
-                  aria-live="assertive"
-                  aria-atomic="true"
-                  className="text-[15px] sm:text-base font-medium leading-snug text-white/90 line-clamp-2"
-                >
-                  {transitGuide
-                    ? transitInstruction(navT, transitGuide)
-                    : navigationInstructionText(step, arrived, t)}
-                </p>
+                {transitGuide ? (
+                  <p
+                    aria-live="assertive"
+                    aria-atomic="true"
+                    className="text-[15px] sm:text-base font-medium leading-snug text-white/90 line-clamp-2"
+                  >
+                    {transitInstruction(navT, transitGuide)}
+                  </p>
+                ) : (
+                  <>
+                    <p
+                      aria-hidden="true"
+                      className="text-lg sm:text-xl font-bold leading-snug text-white truncate"
+                    >
+                      {navigationRoadLabel(step, arrived, t)}
+                    </p>
+                    <p
+                      aria-live="assertive"
+                      aria-atomic="true"
+                      className="sr-only"
+                    >
+                      {navigationInstructionText(step, arrived, t)}
+                    </p>
+                  </>
+                )}
                 {transitGuide && (
                   <p className="text-sm text-white/70 mt-1">
                     {transitDetail(navT, transitGuide)}
@@ -637,39 +656,23 @@ export default function NavigationHUD() {
                       {navT("navBusBoardedConfirm")}
                     </button>
                   )}
-                <div className="flex sm:hidden items-center gap-2 mt-1.5">
-                  {isVehicleLeg && (
+                {isVehicleLeg && (
+                  <div className="flex sm:hidden items-center gap-2 mt-1.5">
                     <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
                       <ModeIcon className="h-3.5 w-3.5 shrink-0" />
                       {modeLabel}
                     </span>
-                  )}
-                  {instructions.length > 0 && (
-                    <span className="text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
-                      {t("stepOf", {
-                        current: currentStep + 1,
-                        total: instructions.length,
-                      })}
-                    </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-              <div className="hidden sm:flex shrink-0 flex-col items-end gap-1.5">
-                {isVehicleLeg && (
+              {isVehicleLeg && (
+                <div className="hidden sm:flex shrink-0 flex-col items-end gap-1.5">
                   <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
                     <ModeIcon className="h-3.5 w-3.5 shrink-0" />
                     {modeLabel}
                   </span>
-                )}
-                {instructions.length > 0 && (
-                  <span className="text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
-                    {t("stepOf", {
-                      current: currentStep + 1,
-                      total: instructions.length,
-                    })}
-                  </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
             {nextStep && !transitGuide && (
               <div className="flex items-center gap-2.5 bg-white/5 border-t border-white/10 px-6 py-3">
@@ -678,7 +681,7 @@ export default function NavigationHUD() {
                 </span>
                 <NextIcon className="h-4.5 w-4.5 shrink-0 text-white/60" />
                 <span className="text-sm text-white/70 truncate">
-                  {navigationInstructionText(nextStep, false, t)}
+                  {navigationRoadLabel(nextStep, false, t)}
                 </span>
               </div>
             )}
@@ -914,7 +917,7 @@ export default function NavigationHUD() {
             <div className="hidden lg:flex flex-1 items-center gap-2 min-w-0 px-3 py-2 rounded-xl bg-muted/50">
               <NextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="text-sm text-muted-foreground truncate">
-                {navigationInstructionText(nextStep, false, t)}
+                {navigationRoadLabel(nextStep, false, t)}
               </span>
             </div>
           )}
