@@ -31,13 +31,14 @@ export function RouteClock({
     <span className="inline-flex items-baseline gap-0.5 whitespace-nowrap tabular-nums">
       {label && <span className="sr-only">{label}</span>}
       <time
+        className="text-xl"
         dateTime={instant}
         title={formatRouteInstant(instant, language) ?? undefined}
       >
         {clock}
       </time>
       {offset !== null && offset !== 0 && (
-        <span className="text-[10px] font-normal text-muted-foreground">
+        <span className="text-sm font-normal text-muted-foreground">
           {t("routeDayOffset", { days: `${offset > 0 ? "+" : ""}${offset}` })}
         </span>
       )}

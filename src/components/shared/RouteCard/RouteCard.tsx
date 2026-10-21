@@ -175,16 +175,13 @@ export const RouteCard = memo(function RouteCard({
         },
       })}
     >
-      {/* ── Level 1: Scan layer (always visible) ── */}
       <CardHeader className="grid-cols-1">
         <CardTitle className="flex justify-between items-center gap-2">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <h2
-              className="text-lg font-bold truncate min-w-0"
-              title={route.routeName}
-            >
-              {route.routeName}
-            </h2>
+            <RouteJourneyTime
+              departureTime={route.departureTime}
+              arrivalTime={route.arrivalTime}
+            />
             {alertsCount > 0 && (
               <span
                 className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 px-2 py-0.5 text-xs font-semibold shrink-0"
@@ -208,10 +205,6 @@ export const RouteCard = memo(function RouteCard({
           </div>
         </CardTitle>
 
-        <RouteJourneyTime
-          departureTime={route.departureTime}
-          arrivalTime={route.arrivalTime}
-        />
         {routeSummary.length > 0 && (
           <p
             className="text-xs text-muted-foreground truncate min-w-0 [&:has([data-bus-candidates])]:whitespace-normal [&:has([data-bus-candidates])]:overflow-visible"
@@ -322,7 +315,6 @@ export const RouteCard = memo(function RouteCard({
             </div>
           )}
 
-          {/* Leg overview */}
           <div className="relative space-y-2">
             {route.legs.map((leg, index) => {
               const color = getLegColor(leg);
