@@ -125,10 +125,13 @@ beforeEach(() => {
   h.confirmArrival.mockClear();
   h.synth.cancel.mockClear();
   h.synth.speak.mockClear();
+  const events = new EventTarget();
   vi.stubGlobal("window", {
     speechSynthesis: h.synth,
     setTimeout,
     clearTimeout,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
   });
   vi.stubGlobal(
     "SpeechSynthesisUtterance",

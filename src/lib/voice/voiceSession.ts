@@ -4,6 +4,7 @@ import type {
   NavInstruction,
   RouteMessageDetail,
 } from "@/types/route";
+import { toolResultFailure } from "./voiceTools";
 
 /**
  * VoiceSessionController — pure TS state machine for the realtime voice
@@ -204,6 +205,9 @@ export interface VoiceNavAdvisory {
 export type VoiceNavigationEvent =
   | {
       type: "nav.start";
+      /** Frontend-only identity captured from the armed route on an explicit start tool call. */
+      armedRouteToken?: string;
+      selectionGeneration?: number;
       steps: VoiceNavStep[];
       currentStepIndex: number;
       totalSteps: number;
@@ -590,14 +594,31 @@ export class VoiceSessionController {
   private initializedContext: string | null = null;
   private toolCalls = new Map<
     string,
-    { turnId?: string; generation: number }
+    { name: string; turnId?: string; generation: number }
   >();
   private completedCalls = new Set<string>();
+  private pendingStartRoute: {
+    routeToken: string | null;
+    generation: number;
+  } | null = null;
+  private ignoreNavigation = false;
+
+  private isPendingStartStale(): boolean {
+    return (
+      this.pendingStartRoute !== null &&
+      (this.pendingStartRoute.generation !==
+        (this.deps.getRouteGeneration?.() ?? 0) ||
+        this.pendingStartRoute.routeToken !== this.routeToken)
+    );
+  }
 
   syncRouteContext(options: { deferUntilIdle?: boolean } = {}): void {
     if (!this.sessionActive || this.isEnding()) return;
+    const supersededStart = this.isPendingStartStale();
+    if (supersededStart) this.cancelNavigation();
     if (
       options.deferUntilIdle &&
+      !supersededStart &&
       !this.contextBlocked &&
       (this.modelTurnActive || this.playback?.isIdle?.() === false)
     ) {
@@ -772,6 +793,7 @@ export class VoiceSessionController {
   }
 
   cancelNavigation(): void {
+    this.ignoreNavigation = true;
     this.sendControl({ type: "nav.cancel" });
   }
 
@@ -1000,6 +1022,8 @@ export class VoiceSessionController {
     if (this.contextTimer) clearTimeout(this.contextTimer);
     this.toolCalls.clear();
     this.completedCalls.clear();
+    this.pendingStartRoute = null;
+    this.ignoreNavigation = false;
 
     const socket = this.deps.createSocket(this.deps.wsUrl);
     this.socket = socket;
@@ -1070,6 +1094,11 @@ export class VoiceSessionController {
 
   private dispatchEvent(gen: number, message: ServerEventMessage): void {
     switch (message.type) {
+      case "location.request": {
+        const location = this.deps.getUserLocation();
+        if (location) this.sendNavigationPosition(location);
+        return;
+      }
       case "session.ending": {
         if ((message as { reason?: string }).reason === ASSISTANT_END)
           this.beginAssistantEnding();
@@ -1152,8 +1181,19 @@ export class VoiceSessionController {
         const m = message as ToolCallMessage;
         if (this.contextBlocked) return;
         this.modelTurnActive = true;
-        if (m.callId && !this.completedCalls.has(m.callId))
+        if (
+          m.callId &&
+          (this.completedCalls.has(m.callId) || this.toolCalls.has(m.callId))
+        )
+          return;
+        if (m.name === "startNavigation")
+          this.pendingStartRoute = {
+            routeToken: this.routeToken,
+            generation: this.deps.getRouteGeneration?.() ?? 0,
+          };
+        if (m.callId)
           this.toolCalls.set(m.callId, {
+            name: m.name,
             turnId: m.turnId,
             generation: this.deps.getRouteGeneration?.() ?? 0,
           });
@@ -1170,10 +1210,22 @@ export class VoiceSessionController {
         if (this.contextBlocked) return;
         const call = m.callId ? this.toolCalls.get(m.callId) : undefined;
         if (m.callId && this.completedCalls.has(m.callId)) return;
+        if (
+          m.callId &&
+          (!call ||
+            call.name !== m.name ||
+            (call.turnId && call.turnId !== m.turnId))
+        )
+          return;
+        if (m.name === "startNavigation" && this.isPendingStartStale()) {
+          this.syncRouteContext();
+          return;
+        }
         const routeTool =
           m.name === "planAccessibleRoute" || m.name === "plan_route";
         if (
           routeTool &&
+          !toolResultFailure({ ...m, type: "result" }) &&
           (!this.contextSupported ||
             !m.callId ||
             !m.turnId ||
@@ -1187,7 +1239,15 @@ export class VoiceSessionController {
           );
           return;
         }
-        if (m.callId) this.completedCalls.add(m.callId);
+        if (m.name === "startNavigation") this.pendingStartRoute = null;
+        if (routeTool && !toolResultFailure({ ...m, type: "result" })) {
+          this.pendingStartRoute = null;
+          this.ignoreNavigation = false;
+        }
+        if (m.callId) {
+          this.completedCalls.add(m.callId);
+          this.toolCalls.delete(m.callId);
+        }
         try {
           this.deps.onToolEvent({
             type: "result",
@@ -1211,6 +1271,9 @@ export class VoiceSessionController {
       case "interrupted": {
         if (this.isEnding()) return;
         this.modelTurnActive = false;
+        this.toolCalls.clear();
+        if (this.pendingStartRoute) this.cancelNavigation();
+        this.pendingStartRoute = null;
         // §5.10: interrupted always clears playback immediately.
         this.playback?.clear();
         this.deps.onInterrupted?.();
@@ -1243,7 +1306,33 @@ export class VoiceSessionController {
         );
         return;
       }
-      case "nav.start":
+      case "nav.start": {
+        const event = message as Extract<
+          VoiceNavigationEvent,
+          { type: "nav.start" }
+        >;
+        if (this.ignoreNavigation && !this.pendingStartRoute) return;
+        if (this.contextBlocked) {
+          this.cancelNavigation();
+          return;
+        }
+        if (this.isPendingStartStale()) {
+          this.syncRouteContext();
+          return;
+        }
+        this.ignoreNavigation = false;
+        this.deps.onNavigationEvent({
+          ...event,
+          selectionGeneration:
+            this.pendingStartRoute?.generation ??
+            this.deps.getRouteGeneration?.() ??
+            0,
+          ...(this.pendingStartRoute?.routeToken
+            ? { armedRouteToken: this.pendingStartRoute.routeToken }
+            : {}),
+        });
+        return;
+      }
       case "nav.step":
       case "nav.progress":
       case "nav.transit":
@@ -1257,6 +1346,7 @@ export class VoiceSessionController {
       case "nav.resume_ok":
       case "nav.resume_failed":
       case "nav.error": {
+        if (this.ignoreNavigation) return;
         this.deps.onNavigationEvent(message as VoiceNavigationEvent);
         return;
       }

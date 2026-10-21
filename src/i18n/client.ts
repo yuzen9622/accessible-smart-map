@@ -16,10 +16,10 @@ const resources = {
   en: { translation: en },
   "zh-TW": { translation: zhTW },
 };
-const reactOptions: ReactOptions = {
+const reactOptions = {
   useSuspense: false,
   bindI18nStore: "added removed",
-};
+} satisfies ReactOptions;
 
 function containsTranslations(current: unknown, bundled: unknown): boolean {
   if (current === bundled) return true;

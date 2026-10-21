@@ -829,7 +829,11 @@ describe("VoiceSessionController", () => {
     }
 
     expect(h.onNavigationEvent.mock.calls.map((call) => call[0])).toEqual(
-      events,
+      events.map((event) =>
+        event.type === "nav.start"
+          ? { ...event, selectionGeneration: 0 }
+          : event,
+      ),
     );
   });
 
@@ -1319,6 +1323,124 @@ describe("route context v1", () => {
     socket.triggerMessage(new ArrayBuffer(8));
     expect(h.playback.play).not.toHaveBeenCalled();
   });
+});
+
+describe("explicit navigation start selection ownership", () => {
+  it("drops an interrupted start and its events, but accepts a new explicit start", () => {
+    const h = createHarness();
+    h.controller.setNavigationRoute("route-a");
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(JSON.stringify({ type: "session.ready" }));
+    const call = {
+      type: "tool_call",
+      name: "startNavigation",
+      callId: "old-start",
+      turnId: "old-turn",
+    };
+    const start = {
+      type: "nav.start",
+      steps: [],
+      currentStepIndex: 0,
+      totalSteps: 0,
+    };
+    socket.triggerMessage(JSON.stringify(call));
+    socket.triggerMessage(JSON.stringify({ type: "interrupted" }));
+    socket.triggerMessage(JSON.stringify(start));
+    socket.triggerMessage(
+      JSON.stringify({ type: "nav.stop", reason: "cancelled" }),
+    );
+    expect(h.onNavigationEvent).not.toHaveBeenCalled();
+    socket.triggerMessage(
+      JSON.stringify({ ...call, callId: "new-start", turnId: "new-turn" }),
+    );
+    socket.triggerMessage(JSON.stringify(start));
+    expect(h.onNavigationEvent).toHaveBeenCalledExactlyOnceWith({
+      ...start,
+      armedRouteToken: "route-a",
+      selectionGeneration: 0,
+    });
+    h.controller.end();
+  });
+
+  it.each(["nav.start", "tool_result"])(
+    "rejects a superseded %s and cancels backend navigation",
+    (first) => {
+      let generation = 1;
+      let token = "route-a";
+      const h = createHarness({
+        deps: {
+          getRouteGeneration: () => generation,
+          getConversationInput: () => ({
+            routeContractVersion: 1,
+            routeContext: { routeToken: token },
+          }),
+        },
+      });
+      h.controller.setNavigationRoute(token);
+      h.controller.start();
+      const socket = h.sockets[0];
+      socket.triggerOpen();
+      socket.triggerMessage(
+        JSON.stringify({
+          type: "session.ready",
+          capabilities: { aiRouteContractVersion: 1, routeContextSync: true },
+        }),
+      );
+      const call = {
+        type: "tool_call",
+        name: "startNavigation",
+        callId: "start-a",
+        turnId: "turn-a",
+      };
+      socket.triggerMessage(JSON.stringify(call));
+      token = "route-b";
+      generation++;
+      h.controller.setNavigationRoute(token);
+      h.controller.syncRouteContext({ deferUntilIdle: true });
+      const start = {
+        type: "nav.start",
+        steps: [],
+        currentStepIndex: 0,
+        totalSteps: 0,
+      };
+      const result = {
+        ...call,
+        type: "tool_result",
+        ok: true,
+        result: { ok: true },
+      };
+      socket.triggerMessage(
+        JSON.stringify(first === "nav.start" ? start : result),
+      );
+      expect(h.onNavigationEvent).not.toHaveBeenCalled();
+      expect(h.onToolEvent).toHaveBeenCalledTimes(1);
+      const sent = socket.sent
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => JSON.parse(value));
+      expect(sent).toContainEqual({ type: "nav.cancel" });
+      const sync = sent.findLast((value) => value.type === "route.context.set");
+      expect(sync.routeContext).toEqual({ routeToken: "route-b" });
+      socket.triggerMessage(
+        JSON.stringify({ ...sync, type: "route.context.ack", ok: true }),
+      );
+      socket.triggerMessage(JSON.stringify(start));
+      socket.triggerMessage(
+        JSON.stringify({
+          type: "nav.step",
+          currentStepIndex: 0,
+          instruction: "stale",
+          remainingM: 0,
+        }),
+      );
+      socket.triggerMessage(JSON.stringify(result));
+      expect(h.onNavigationEvent).not.toHaveBeenCalled();
+      expect(h.onToolEvent).toHaveBeenCalledTimes(1);
+      expect(h.controller.isActive()).toBe(true);
+      h.controller.end();
+    },
+  );
 });
 
 describe("preview selection preserves the current spoken explanation", () => {

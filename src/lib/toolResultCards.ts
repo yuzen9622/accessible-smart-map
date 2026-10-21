@@ -132,7 +132,7 @@ function locationItems(
   },
 ): ToolResultItem[] {
   const out: ToolResultItem[] = [];
-  items.slice(0, MAX_ITEMS).forEach((it, i) => {
+  items.forEach((it, i) => {
     const position = getLatLng(it);
     if (opts.requirePosition && !position) return;
     const rawId =
@@ -183,6 +183,54 @@ export function getToolResultGroup(
     enumLabel(A11Y_CATEGORY_KEYS, "categories", value);
 
   switch (name) {
+    case "findNearbyBusStops": {
+      const items = locationItems(asArray(res.stops), t, {
+        prefix: "nearby_stop",
+        title: (s) => display(s.stopDisplayName) || localName(s.stopName, t),
+        subtitle: (s) =>
+          [
+            str(s.distance) ? `${s.distance} m` : undefined,
+            asArray(s.routes).join("、"),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+      });
+      return items.length
+        ? {
+            heading: t("toolResults.busStops", "附近公車站牌"),
+            icon: "bus",
+            items,
+          }
+        : null;
+    }
+
+    case "findCampusAccessibility":
+    case "getCampusAccessibilityDetails": {
+      let campuses = asArray(res.campuses);
+      if (name === "getCampusAccessibilityDetails") {
+        campuses = res.campus ? [res.campus] : [];
+      }
+      const items = locationItems(campuses, t, {
+        prefix: "campus",
+        id: (c) => str(c.campusId),
+        title: (c) =>
+          [
+            display(c.displaySchoolName) || str(c.schoolName),
+            display(c.displayBranchName) || str(c.branchName),
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        subtitle: (c) => display(c.displayAddress) || str(c.address),
+      });
+      return items.length
+        ? {
+            heading: t("toolResults.campuses", "校園無障礙資訊"),
+            icon: "a11y",
+            items,
+          }
+        : null;
+    }
+
     case "findGooglePlaces": {
       const items = markersToItems(googlePlacesToMarkers(result, t));
       return items.length
@@ -267,10 +315,15 @@ export function getToolResultGroup(
 
     // HazardReport[]: { hazardType, reportedLocation.coordinates, description, status, aiAnalysis.summary }
     case "getNearbyHazards": {
-      const reports = asArray(res.data?.reports ?? res.reports ?? res.data);
+      const reports = [
+        ...asArray(res.data?.reports ?? res.reports ?? res.data),
+        ...asArray(res.data?.roadEvents ?? res.roadEvents),
+      ];
       const items = locationItems(reports, t, {
         prefix: "hazard",
         title: (r) =>
+          str(r.title) ||
+          str(r.eventName) ||
           enumLabel(HAZARD_TYPE_KEYS, "hazardTypes", r.hazardType) ||
           str(r.hazardType) ||
           str(r.type) ||

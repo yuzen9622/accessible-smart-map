@@ -134,6 +134,7 @@ export default function NavigationHUD() {
   const navigationSource = useNavStore((s) => s.navigationSource);
   const navigationMode = useNavStore((s) => s.navigationMode);
   const transitGuide = useNavStore((s) => s.transitGuide);
+  const voiceTransit = useNavStore((s) => s.voiceTransit);
   const rideKey = useNavStore((s) => s.transitRide?.key);
   const navigationId = useNavStore((s) => s.navigationId);
   const routeVersion = useNavStore((s) => s.routeVersion);
@@ -603,6 +604,26 @@ export default function NavigationHUD() {
                 {transitGuide && (
                   <p className="text-sm text-white/70 mt-1">
                     {transitDetail(navT, transitGuide)}
+                  </p>
+                )}
+                {navigationSource === "voice" && voiceTransit?.onVehicle && (
+                  <p aria-live="polite" className="text-sm text-white/80 mt-1">
+                    {voiceTransit.leg
+                      ? t("voiceTransitLeg", {
+                          defaultValue: i18n.language.startsWith("en")
+                            ? "On {{mode}} {{route}}, {{from}} to {{to}}"
+                            : "搭乘 {{mode}} {{route}}，{{from}} 至 {{to}}",
+                          mode: voiceTransit.leg.mode,
+                          route: voiceTransit.leg.routeName ?? "",
+                          from: voiceTransit.leg.from,
+                          to: voiceTransit.leg.to,
+                        })
+                      : t(
+                          "voiceOnVehicle",
+                          i18n.language.startsWith("en")
+                            ? "On board"
+                            : "乘車中",
+                        )}
                   </p>
                 )}
                 {transitGuide?.phase === "waiting" &&

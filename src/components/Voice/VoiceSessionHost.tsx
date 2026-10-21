@@ -12,6 +12,7 @@ import {
 } from "@/lib/navigation/navigationLifecycle";
 import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
 import { toNavProgressUpdate } from "@/lib/voice/navProgress";
+import { resumedTransit } from "@/lib/voice/navTransit";
 import { handleNavigationExit } from "@/lib/voice/voiceNavigationExit";
 import {
   shouldAcceptAdvisoryEvent,
@@ -70,6 +71,7 @@ export default function VoiceSessionHost() {
     status,
     transcripts,
     activeTool,
+    toolActivities,
     navigationEvents,
     startSession,
     endSession,
@@ -125,6 +127,10 @@ export default function VoiceSessionHost() {
   useEffect(() => {
     useVoiceStore.getState().setActiveTool(activeTool);
   }, [activeTool]);
+
+  useEffect(() => {
+    useVoiceStore.getState().setToolActivities(toolActivities);
+  }, [toolActivities]);
 
   // Keep the selected HTTP route armed. The controller queues the latest
   // token until session.ready and re-sends it after a 1006/4410 reconnect.
@@ -223,15 +229,35 @@ export default function VoiceSessionHost() {
 
       switch (navigationEvent.type) {
         case "nav.start": {
-          const candidate = map.computeRoutes?.[0] ?? map.selectRoute?.route;
+          if (
+            navigationEvent.selectionGeneration !== undefined &&
+            navigationEvent.selectionGeneration !== map.routeGeneration
+          ) {
+            cancelNavigation();
+            break;
+          }
+          const candidate = navigationEvent.armedRouteToken
+            ? [
+                map.activeNavigationRoute,
+                ...(map.computeRoutes ?? []),
+                map.selectRoute?.route,
+              ].find(
+                (route) =>
+                  route?.routeToken === navigationEvent.armedRouteToken,
+              )
+            : (map.computeRoutes?.[0] ?? map.selectRoute?.route);
           if (
             !candidate?.routeToken ||
             map.invalidRouteTokens.includes(candidate.routeToken)
           )
             break;
           // Preserve backend order, independently of any manual preview selection.
+          const candidateIndex = Math.max(
+            0,
+            map.computeRoutes?.indexOf(candidate) ?? 0,
+          );
           useMapStore.setState({
-            selectRoute: { index: 0, route: candidate },
+            selectRoute: { index: candidateIndex, route: candidate },
             selectedRouteId: candidate.routeId,
             ...(map.selectRoute?.route !== candidate
               ? { routeGeneration: map.routeGeneration + 1 }
@@ -296,6 +322,15 @@ export default function VoiceSessionHost() {
           break;
         }
         case "nav.transit": {
+          if (
+            !map.isNavigating ||
+            nav.navigationSource !== "voice" ||
+            nav.arrived
+          )
+            break;
+          useNavStore.setState({
+            voiceTransit: { leg: navigationEvent.leg, onVehicle: true },
+          });
           const nextTransit = nav.instructions.findIndex(
             (step, index) =>
               index >= nav.currentStepIndex &&
@@ -366,7 +401,24 @@ export default function VoiceSessionHost() {
               ? { instructions: navigationEvent.steps.map(toNavInstruction) }
               : {}),
             currentStepIndex: navigationEvent.currentStepIndex,
+            voiceTransit: resumedTransit(
+              map.activeNavigationRoute,
+              navigationEvent.steps,
+              navigationEvent.currentStepIndex,
+              navigationEvent.onVehicle,
+            ),
+            distanceToNextM: null,
+            remainingM: null,
+            remainingDurationSec: null,
+            estimatedArrivalAt: null,
+            etaSource: null,
+            etaUpdatedAt: null,
           });
+          if (map.userLocation)
+            sendNavigationPosition({
+              latitude: map.userLocation.lat,
+              longitude: map.userLocation.lng,
+            });
           serverStoppedNavigationRef.current = false;
           // Nothing was forwarded while the socket was down; let the next fix
           // through regardless of how far the user moved.
@@ -432,7 +484,13 @@ export default function VoiceSessionHost() {
       }
     }
     consumeNavigationEvents(navigationEvents.length);
-  }, [navigationEvents, consumeNavigationEvents, sendNavigationPosition, t]);
+  }, [
+    navigationEvents,
+    consumeNavigationEvents,
+    sendNavigationPosition,
+    cancelNavigation,
+    t,
+  ]);
 
   // Leaving the map page (this host unmounting) is a terminal path too.
   useEffect(() => {
