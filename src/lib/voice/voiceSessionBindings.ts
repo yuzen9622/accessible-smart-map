@@ -28,6 +28,11 @@ import type {
   VoiceStatusName,
   VoiceToolEvent,
 } from "./voiceSession";
+import {
+  isUserVisibleVoiceTool,
+  toolResultFailure,
+  type VoiceToolActivity,
+} from "./voiceTools";
 
 export interface BindingSinks {
   /** Bind to the hook's `setTranscripts` (React state). */
@@ -35,7 +40,8 @@ export interface BindingSinks {
   /** Bind to the hook's `setStatusState` (and its `statusRef` update). */
   publishStatus(status: VoiceStatus): void;
   /** Bind to the hook's `setActiveTool`. */
-  publishTool(event: VoiceToolEvent): void;
+  publishTool(event: VoiceToolEvent | null): void;
+  publishToolActivities?(activities: VoiceToolActivity[]): void;
   /** Bind to `useVoiceStore.getState().setMicLevel`. */
   setMicLevel(level: number): void;
   persistTurn?(
@@ -76,6 +82,18 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   let summaries: ToolSummary[] = [];
   let persisted = 0;
   const utteranceMessages = new Map<string, string>();
+  let activities: VoiceToolActivity[] = [];
+  let nextToolId = 0;
+
+  function settlePendingTools(): void {
+    activities = activities.map((activity) =>
+      activity.state === "pending"
+        ? { ...activity, state: "cancelled" }
+        : activity,
+    );
+    sinks.publishToolActivities?.(activities);
+    sinks.publishTool(null);
+  }
 
   function onTranscript(transcript: TranscriptFragment): void {
     agg = appendFragment(agg, transcript);
@@ -95,6 +113,7 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   }
 
   function onTurnComplete(): void {
+    settlePendingTools();
     agg = sealRole(agg, "model");
     sinks.publishTranscripts(agg.entries);
     const entries = agg.entries.slice(persisted);
@@ -110,6 +129,7 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   }
 
   function onInterrupted(): void {
+    settlePendingTools();
     agg = sealRole(agg, "model");
     agg = sealRole(agg, "user");
     sinks.publishTranscripts(agg.entries);
@@ -126,6 +146,7 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
         "needs-login",
       ].includes(status.status)
     ) {
+      settlePendingTools();
       utteranceMessages.clear();
       sinks.clearPersistedMappings?.();
       // A rebuilt transport may reuse u1. Keep the displayed history, not its wire identity.
@@ -147,9 +168,37 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
   }
 
   function onToolEvent(event: VoiceToolEvent): void {
+    if (!isUserVisibleVoiceTool(event.name)) return;
     sinks.publishTool(event);
 
-    if (event.type === "result" && event.result != null) {
+    const existing = event.callId
+      ? activities.findIndex(
+          (activity) => activity.event.callId === event.callId,
+        )
+      : -1;
+    const activity: VoiceToolActivity = {
+      id: existing >= 0 ? activities[existing].id : `tool-${nextToolId++}`,
+      event,
+      state:
+        event.type === "call"
+          ? "pending"
+          : toolResultFailure(event)
+            ? "failed"
+            : "done",
+    };
+    activities =
+      existing >= 0
+        ? activities.map((item, index) =>
+            index === existing ? activity : item,
+          )
+        : [...activities, activity];
+    sinks.publishToolActivities?.(activities);
+
+    if (
+      event.type === "result" &&
+      event.result != null &&
+      !toolResultFailure(event)
+    ) {
       const summary = toolSummary(event.name, event.summary);
       if (summary && summaries.length < 8) summaries.push(summary);
       const actions = mapToolToActions(event.name, event.result, event.args);
@@ -182,6 +231,10 @@ export function createVoiceBindings(sinks: BindingSinks): VoiceBindings {
 
   function reset(): void {
     agg = emptyAggState();
+    activities = [];
+    nextToolId = 0;
+    sinks.publishTool(null);
+    sinks.publishToolActivities?.([]);
     utteranceMessages.clear();
     sinks.clearPersistedMappings?.();
     summaries = [];

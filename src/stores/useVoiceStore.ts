@@ -6,6 +6,7 @@ import type {
   VoiceToolEvent,
   VoiceTranscript,
 } from "@/lib/voice/voiceSession";
+import type { VoiceToolActivity } from "@/lib/voice/voiceTools";
 
 /**
  * `"panel"` = the voice session's live UI is shown inside the AIChatBot
@@ -49,6 +50,7 @@ interface VoiceState {
   status: VoiceStatus;
   transcripts: VoiceTranscriptEntry[];
   activeTool: VoiceToolEvent | null;
+  toolActivities: VoiceToolActivity[];
   viewMode: VoiceViewMode;
   /**
    * Live microphone RMS level in [0, 1], written at capture-frame rate by
@@ -68,6 +70,7 @@ interface VoiceActions {
   setStatus: (status: VoiceStatus) => void;
   setTranscripts: (transcripts: VoiceTranscriptEntry[]) => void;
   setActiveTool: (tool: VoiceToolEvent | null) => void;
+  setToolActivities: (activities: VoiceToolActivity[]) => void;
   setViewMode: (mode: VoiceViewMode) => void;
   setMicLevel: (level: number) => void;
   setMuted: (muted: boolean) => void;
@@ -96,6 +99,7 @@ const useVoiceStore = create<VoiceStore>((set, get) => ({
   status: { status: "idle" },
   transcripts: [],
   activeTool: null,
+  toolActivities: [],
   viewMode: "panel",
   micLevel: 0,
   isMuted: false,
@@ -116,6 +120,7 @@ const useVoiceStore = create<VoiceStore>((set, get) => ({
   },
   setTranscripts: (transcripts) => set({ transcripts }),
   setActiveTool: (activeTool) => set({ activeTool }),
+  setToolActivities: (toolActivities) => set({ toolActivities }),
   setViewMode: (viewMode) => set({ viewMode }),
   setMicLevel: (micLevel) => set({ micLevel }),
   setMuted: (isMuted) => {

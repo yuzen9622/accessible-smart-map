@@ -24,6 +24,37 @@ describe("voiceSessionBindings", () => {
     bindings = createVoiceBindings(sinks);
   });
 
+  it("keeps internal end-session results out of presentation and persisted tool summaries", () => {
+    const publishToolActivities = vi.fn();
+    const local = createVoiceBindings({ ...sinks, publishToolActivities });
+    local.onToolEvent({ type: "call", name: "endVoiceSession", callId: "end" });
+    local.onToolEvent({
+      type: "result",
+      name: "endVoiceSession",
+      callId: "end",
+      ok: true,
+      result: { ok: true },
+      summary: "internal farewell instruction",
+    });
+    expect(sinks.publishTool).not.toHaveBeenCalled();
+    expect(publishToolActivities).not.toHaveBeenCalled();
+    local.onTurnComplete();
+    expect(sinks.persistTurn).toHaveBeenCalledWith([], []);
+    sinks.publishTool.mockClear();
+    local.onToolEvent({
+      type: "result",
+      name: "webSearch",
+      ok: true,
+      result: { ok: false, error: "來源暫時不可用" },
+    });
+    expect(sinks.publishTool).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "webSearch" }),
+    );
+    expect(publishToolActivities).toHaveBeenLastCalledWith([
+      expect.objectContaining({ state: "failed" }),
+    ]);
+  });
+
   it("case 15: consecutive same-role onTranscript fragments publish a single merged entry", () => {
     bindings.onTranscript({ role: "user", text: "你" });
     bindings.onTranscript({ role: "user", text: "好" });

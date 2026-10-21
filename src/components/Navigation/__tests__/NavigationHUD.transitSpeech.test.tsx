@@ -125,10 +125,13 @@ beforeEach(() => {
   h.confirmArrival.mockClear();
   h.synth.cancel.mockClear();
   h.synth.speak.mockClear();
+  const events = new EventTarget();
   vi.stubGlobal("window", {
     speechSynthesis: h.synth,
     setTimeout,
     clearTimeout,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
   });
   vi.stubGlobal(
     "SpeechSynthesisUtterance",
@@ -278,6 +281,34 @@ describe("an upcoming arrival maneuver is not a completed arrival", () => {
     expect(renderToStaticMarkup(<NavigationContent />)).toContain(
       "arrivedDesc",
     );
+  });
+});
+
+describe("long straight walking stretch", () => {
+  it("reminds continue-straight once per 500 m mark, after the step's own announcement", () => {
+    const nav = useNavStore.getState();
+    nav.setInstructions([
+      { type: "depart", legType: "WALK", legIndex: 0, text: "DEPART" },
+      { type: "turn", legType: "WALK", legIndex: 0, text: "TURN LEFT" },
+      { type: "arrive", legType: "WALK", legIndex: 0, text: "ARRIVE" },
+    ] as NavInstruction[]);
+    nav.setTransitRide(null, null);
+    nav.setCurrentStepIndex(1);
+    nav.setDistanceToNextM(1200);
+    frame();
+    const spoken = () =>
+      h.synth.speak.mock.calls.map(([utter]) => utter.text as string);
+    expect(spoken()).toEqual(["TURN LEFT"]);
+
+    for (const distance of [1060, 990, 960, 700, 485, 440]) {
+      nav.setDistanceToNextM(distance);
+      frame();
+    }
+    expect(spoken()).toEqual([
+      "TURN LEFT",
+      "navSpeakContinue",
+      "navSpeakContinue",
+    ]);
   });
 });
 

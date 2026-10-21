@@ -7,7 +7,6 @@ import { ThinkingOrb } from "thinking-orbs";
 import { Button } from "@/components/ui/button";
 import useReducedMotion from "@/hook/useReducedMotion";
 import { useAppTranslation } from "@/i18n/client";
-import { toolToOrbState } from "@/lib/ai/orbState";
 import { cn } from "@/lib/utils";
 import { recordingDotPresentation } from "@/lib/voice/audioLevel";
 import useVoiceStore from "@/stores/useVoiceStore";
@@ -15,6 +14,7 @@ import {
   getVoiceStatusLabel,
   isVoiceSessionActive,
 } from "./VoiceFloatingIndicator";
+import VoiceToolResults from "./VoiceToolResults";
 
 /**
  * Voice mode view rendered as `AIChatBot`'s panel body while a voice
@@ -29,7 +29,7 @@ export default function VoiceModeView() {
   const { t } = useAppTranslation();
   const status = useVoiceStore((s) => s.status);
   const transcripts = useVoiceStore((s) => s.transcripts);
-  const activeTool = useVoiceStore((s) => s.activeTool);
+  const toolActivities = useVoiceStore((s) => s.toolActivities);
   const micLevel = useVoiceStore((s) => s.micLevel);
   const endSession = useVoiceStore((s) => s.endSession);
   const setStatus = useVoiceStore((s) => s.setStatus);
@@ -40,10 +40,10 @@ export default function VoiceModeView() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (transcripts.length > 0 || activeTool) {
+    if (transcripts.length > 0 || toolActivities.length > 0) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [transcripts, activeTool]);
+  }, [transcripts, toolActivities]);
 
   const label = getVoiceStatusLabel(status, t);
   const active = isVoiceSessionActive(status.status);
@@ -128,29 +128,7 @@ export default function VoiceModeView() {
           </div>
         ))}
 
-        {activeTool && (
-          <div className="flex items-center gap-2 text-[13px] text-muted-foreground py-1.5 px-1">
-            {activeTool.type === "call" ? (
-              <>
-                <ThinkingOrb
-                  state={toolToOrbState(activeTool.name)}
-                  size={20}
-                  role="img"
-                  aria-label={t("chatbot.voice.toolQuerying", "查詢中…")}
-                  className="shrink-0"
-                />
-                <span className="animate-pulse">
-                  {t("chatbot.voice.toolQuerying", "查詢中…")}（
-                  {activeTool.name}）
-                </span>
-              </>
-            ) : (
-              <span>
-                {t("chatbot.voice.toolDone", "完成")}（{activeTool.name}）
-              </span>
-            )}
-          </div>
-        )}
+        <VoiceToolResults activities={toolActivities} />
 
         <div ref={bottomRef} />
       </div>

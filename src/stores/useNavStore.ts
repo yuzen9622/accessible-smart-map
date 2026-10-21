@@ -5,6 +5,7 @@ import {
   confirmBoarded,
   type TransitRideRuntime,
 } from "@/lib/navigation/transitRideRuntime";
+import type { VoiceTransitState } from "@/lib/voice/navTransit";
 import type {
   VoiceNavAdvisory,
   VoiceRerouteReason,
@@ -49,6 +50,7 @@ interface NavState {
   navigationMode: "preview" | "live";
   transitRide: TransitRideRuntime | null;
   transitGuide: TransitGuide | null;
+  voiceTransit: VoiceTransitState | null;
   navigationId: string | null;
   routeVersion: number;
   instructions: NavInstruction[];
@@ -153,6 +155,7 @@ const initialState: NavState = {
   navigationMode: "preview",
   transitRide: null,
   transitGuide: null,
+  voiceTransit: null,
   navigationId: null,
   routeVersion: 0,
   instructions: [],
@@ -192,6 +195,7 @@ const navState: StateCreator<NavStore> = (set) => ({
         ? {}
         : {
             navigationSource,
+            voiceTransit: null,
             navigationMode:
               navigationSource === "voice" || state.navigationSource === "voice"
                 ? "live"
@@ -234,6 +238,7 @@ const navState: StateCreator<NavStore> = (set) => ({
         ? {
             transitRide: null,
             transitGuide: null,
+            voiceTransit: null,
             lastManualTs: 0,
             currentStepIndex: 0,
             arrived: false,
@@ -247,6 +252,7 @@ const navState: StateCreator<NavStore> = (set) => ({
     set({
       instructions,
       warnings,
+      voiceTransit: null,
       transitRide: null,
       transitGuide: null,
       lastManualTs: 0,
@@ -270,6 +276,13 @@ const navState: StateCreator<NavStore> = (set) => ({
         index === currentStepIndex ? { ...step, text: instruction } : step,
       ),
       currentStepIndex,
+      voiceTransit:
+        state.instructions[currentStepIndex]?.type === "transit_alight" ||
+        ["WALK", "DRIVE", "MOTORCYCLE"].includes(
+          state.instructions[currentStepIndex]?.legType,
+        )
+          ? null
+          : state.voiceTransit,
       distanceToNextM: remainingM,
       remainingM,
       isOffRoute: false,
@@ -329,6 +342,7 @@ const navState: StateCreator<NavStore> = (set) => ({
       ...(arrived
         ? {
             advisories: [],
+            voiceTransit: null,
             remainingM: 0,
             distanceToNextM: 0,
             remainingDurationSec: 0,

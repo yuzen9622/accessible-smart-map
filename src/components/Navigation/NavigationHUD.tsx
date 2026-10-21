@@ -27,7 +27,10 @@ import { useAppTranslation } from "@/i18n/client";
 import { getSafetyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
 import { selectAdvisoryAnnouncement } from "@/lib/navigation/advisorySpeech";
-import { navigationInstructionText } from "@/lib/navigation/instructionPresentation";
+import {
+  navigationInstructionText,
+  navigationRoadLabel,
+} from "@/lib/navigation/instructionPresentation";
 import {
   findLegHandoffIndex,
   isVehicleLegType,
@@ -36,6 +39,10 @@ import {
 import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
 import { shouldSpeakLocally } from "@/lib/navigation/navigationAudio";
 import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
+import {
+  selectProgressReminder,
+  spokenDistance,
+} from "@/lib/navigation/progressReminder";
 import {
   navigationCopyDefault,
   transitDetail,
@@ -49,6 +56,7 @@ import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
 import {
   formatDistance,
+  type NavInstruction,
   type SafetyHazardReport,
   type SlimOsmA11y,
 } from "@/types/route";
@@ -134,6 +142,7 @@ export default function NavigationHUD() {
   const navigationSource = useNavStore((s) => s.navigationSource);
   const navigationMode = useNavStore((s) => s.navigationMode);
   const transitGuide = useNavStore((s) => s.transitGuide);
+  const voiceTransit = useNavStore((s) => s.voiceTransit);
   const rideKey = useNavStore((s) => s.transitRide?.key);
   const navigationId = useNavStore((s) => s.navigationId);
   const routeVersion = useNavStore((s) => s.routeVersion);
@@ -302,6 +311,73 @@ export default function NavigationHUD() {
     preview,
     navigationSource,
     arrived,
+    t,
+  ]);
+
+  // Long straight stretches arrive as one step; remind "continue straight N"
+  // as the distance to the next maneuver crosses each mark.
+  const progressReminder = useRef<{
+    scope: string | null;
+    instructions: NavInstruction[];
+    step: number;
+    startDistanceM: number | null;
+    spoken: Set<number>;
+  } | null>(null);
+  useEffect(() => {
+    const step = instructions[currentStep];
+    if (
+      !speechScope ||
+      preview ||
+      arrived ||
+      transitGuide ||
+      navigationSource !== "local" ||
+      !step ||
+      distanceToNextM == null
+    )
+      return;
+    let state = progressReminder.current;
+    if (
+      !state ||
+      state.scope !== speechScope ||
+      state.instructions !== instructions ||
+      state.step !== currentStep
+    ) {
+      state = {
+        scope: speechScope,
+        instructions,
+        step: currentStep,
+        startDistanceM: distanceToNextM,
+        spoken: new Set(),
+      };
+      progressReminder.current = state;
+    }
+    const mark = selectProgressReminder(
+      distanceToNextM,
+      step.legType,
+      state.spoken,
+      state.startDistanceM,
+    );
+    if (mark == null) return;
+    state.spoken.add(mark);
+    const spoken = spokenDistance(mark);
+    speak(
+      t("navSpeakContinue", {
+        distance: t(
+          spoken.unit === "km" ? "navSpeakKilometers" : "navSpeakMeters",
+          { value: spoken.value },
+        ),
+      }),
+    );
+  }, [
+    speechScope,
+    preview,
+    arrived,
+    transitGuide,
+    navigationSource,
+    instructions,
+    currentStep,
+    distanceToNextM,
+    speak,
     t,
   ]);
 
@@ -591,18 +667,54 @@ export default function NavigationHUD() {
                     />
                   </p>
                 )}
-                <p
-                  aria-live="assertive"
-                  aria-atomic="true"
-                  className="text-[15px] sm:text-base font-medium leading-snug text-white/90 line-clamp-2"
-                >
-                  {transitGuide
-                    ? transitInstruction(navT, transitGuide)
-                    : navigationInstructionText(step, arrived, t)}
-                </p>
+                {transitGuide ? (
+                  <p
+                    aria-live="assertive"
+                    aria-atomic="true"
+                    className="text-[15px] sm:text-base font-medium leading-snug text-white/90 line-clamp-2"
+                  >
+                    {transitInstruction(navT, transitGuide)}
+                  </p>
+                ) : (
+                  <>
+                    <p
+                      aria-hidden="true"
+                      className="text-lg sm:text-xl font-bold leading-snug text-white truncate"
+                    >
+                      {navigationRoadLabel(step, arrived, t)}
+                    </p>
+                    <p
+                      aria-live="assertive"
+                      aria-atomic="true"
+                      className="sr-only"
+                    >
+                      {navigationInstructionText(step, arrived, t)}
+                    </p>
+                  </>
+                )}
                 {transitGuide && (
                   <p className="text-sm text-white/70 mt-1">
                     {transitDetail(navT, transitGuide)}
+                  </p>
+                )}
+                {navigationSource === "voice" && voiceTransit?.onVehicle && (
+                  <p aria-live="polite" className="text-sm text-white/80 mt-1">
+                    {voiceTransit.leg
+                      ? t("voiceTransitLeg", {
+                          defaultValue: i18n.language.startsWith("en")
+                            ? "On {{mode}} {{route}}, {{from}} to {{to}}"
+                            : "搭乘 {{mode}} {{route}}，{{from}} 至 {{to}}",
+                          mode: voiceTransit.leg.mode,
+                          route: voiceTransit.leg.routeName ?? "",
+                          from: voiceTransit.leg.from,
+                          to: voiceTransit.leg.to,
+                        })
+                      : t(
+                          "voiceOnVehicle",
+                          i18n.language.startsWith("en")
+                            ? "On board"
+                            : "乘車中",
+                        )}
                   </p>
                 )}
                 {transitGuide?.phase === "waiting" &&
@@ -616,39 +728,23 @@ export default function NavigationHUD() {
                       {navT("navBusBoardedConfirm")}
                     </button>
                   )}
-                <div className="flex sm:hidden items-center gap-2 mt-1.5">
-                  {isVehicleLeg && (
+                {isVehicleLeg && (
+                  <div className="flex sm:hidden items-center gap-2 mt-1.5">
                     <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
                       <ModeIcon className="h-3.5 w-3.5 shrink-0" />
                       {modeLabel}
                     </span>
-                  )}
-                  {instructions.length > 0 && (
-                    <span className="text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
-                      {t("stepOf", {
-                        current: currentStep + 1,
-                        total: instructions.length,
-                      })}
-                    </span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-              <div className="hidden sm:flex shrink-0 flex-col items-end gap-1.5">
-                {isVehicleLeg && (
+              {isVehicleLeg && (
+                <div className="hidden sm:flex shrink-0 flex-col items-end gap-1.5">
                   <span className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold">
                     <ModeIcon className="h-3.5 w-3.5 shrink-0" />
                     {modeLabel}
                   </span>
-                )}
-                {instructions.length > 0 && (
-                  <span className="text-xs bg-white/10 rounded-full px-3 py-1.5 text-white/60 tabular-nums">
-                    {t("stepOf", {
-                      current: currentStep + 1,
-                      total: instructions.length,
-                    })}
-                  </span>
-                )}
-              </div>
+                </div>
+              )}
             </div>
             {nextStep && !transitGuide && (
               <div className="flex items-center gap-2.5 bg-white/5 border-t border-white/10 px-6 py-3">
@@ -657,7 +753,7 @@ export default function NavigationHUD() {
                 </span>
                 <NextIcon className="h-4.5 w-4.5 shrink-0 text-white/60" />
                 <span className="text-sm text-white/70 truncate">
-                  {navigationInstructionText(nextStep, false, t)}
+                  {navigationRoadLabel(nextStep, false, t)}
                 </span>
               </div>
             )}
@@ -893,7 +989,7 @@ export default function NavigationHUD() {
             <div className="hidden lg:flex flex-1 items-center gap-2 min-w-0 px-3 py-2 rounded-xl bg-muted/50">
               <NextIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="text-sm text-muted-foreground truncate">
-                {navigationInstructionText(nextStep, false, t)}
+                {navigationRoadLabel(nextStep, false, t)}
               </span>
             </div>
           )}

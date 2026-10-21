@@ -6,23 +6,15 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
-    "build:mobile": "CAP_BUILD=1 next build --turbopack",
     "start": "next start",
     "lint": "biome check",
     "format": "biome format --write",
-    "mobile:sync": "rm -rf out && npm run build:mobile && cap sync",
-    "android": "npm run mobile:sync && cap open android",
-    "ios": "npm run mobile:sync && cap open ios",
     "test": "vitest run",
     "check:cycles": "madge --circular --extensions ts,tsx src",
     "indoor:dev": "node scripts/indoor-dev.mjs"
   },
   "dependencies": {
     "@animateicons/react": "^0.3.5",
-    "@capacitor/android": "^8.4.2",
-    "@capacitor/cli": "^8.4.2",
-    "@capacitor/core": "^8.4.2",
-    "@capacitor/ios": "^8.5.0",
     "@lucide/lab": "^0.1.2",
     "@mapbox/vector-tile": "2.0.5",
     "@maplibre/vt-pbf": "4.3.2",

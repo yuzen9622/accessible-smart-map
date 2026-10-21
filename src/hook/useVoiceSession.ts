@@ -24,6 +24,7 @@ import {
   type VoiceToolEvent,
 } from "@/lib/voice/voiceSession";
 import { createVoiceBindings } from "@/lib/voice/voiceSessionBindings";
+import type { VoiceToolActivity } from "@/lib/voice/voiceTools";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -134,6 +135,7 @@ export interface UseVoiceSessionResult {
   status: VoiceStatus;
   transcripts: VoiceTranscriptEntry[];
   activeTool: VoiceToolEvent | null;
+  toolActivities: VoiceToolActivity[];
   navigationEvents: VoiceNavigationEvent[];
   startSession: () => void;
   endSession: () => void;
@@ -156,6 +158,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
   const [status, setStatusState] = useState<VoiceStatus>({ status: "idle" });
   const [transcripts, setTranscripts] = useState<VoiceTranscriptEntry[]>([]);
   const [activeTool, setActiveTool] = useState<VoiceToolEvent | null>(null);
+  const [toolActivities, setToolActivities] = useState<VoiceToolActivity[]>([]);
   const [navigationEvents, setNavigationEvents] = useState<
     VoiceNavigationEvent[]
   >([]);
@@ -187,6 +190,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
         setStatusState(next);
       },
       publishTool: (event) => setActiveTool(event),
+      publishToolActivities: setToolActivities,
       setMicLevel: (level) =>
         useVoiceStore
           .getState()
@@ -215,6 +219,12 @@ export default function useVoiceSession(): UseVoiceSessionResult {
         if (contextInputPausedRef.current)
           useVoiceStore.getState().setMicLevel(0);
         if (status === "deferred") return;
+        if (
+          status === "pending" ||
+          status === "failed" ||
+          status === "unsupported"
+        )
+          bindings.onInterrupted();
         if (status === "pending")
           toast.loading("正在同步選中路線，請稍候再提問。", {
             id: "voice-route-context",
@@ -268,7 +278,10 @@ export default function useVoiceSession(): UseVoiceSessionResult {
           state.isNavigating &&
           (!previous.isNavigating ||
             state.activeNavigationRoute !== previous.activeNavigationRoute);
-        if (startingNavigation) controllerRef.current?.syncRouteContext();
+        if (startingNavigation)
+          controllerRef.current?.syncRouteContext({
+            deferUntilIdle: useNavStore.getState().navigationSource === "voice",
+          });
         else if (state.routeGeneration !== previous.routeGeneration) {
           controllerRef.current?.syncRouteContext({
             deferUntilIdle:
@@ -361,6 +374,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
     status,
     transcripts,
     activeTool,
+    toolActivities,
     navigationEvents,
     startSession,
     endSession,

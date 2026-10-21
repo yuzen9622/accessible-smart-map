@@ -200,6 +200,7 @@ export function applyRouteReplacement(replacement: RouteReplacement): boolean {
       instructions: replacement.instructions,
       warnings: replacement.warnings,
       currentStepIndex: 0,
+      voiceTransit: null,
       transitRide: null,
       transitGuide: null,
       lastManualTs: 0,
