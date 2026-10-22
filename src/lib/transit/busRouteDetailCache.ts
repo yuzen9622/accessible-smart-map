@@ -34,7 +34,7 @@ export interface RouteDetailSnapshot extends BusCandidateMetadata {
 
 interface Entry {
   promise: Promise<RouteDetailSnapshot | null>;
-  /** Set once the response arrives, so `peekRouteDetail` can read it. */
+  /** Last successful response, still readable while its replacement is pending. */
   snapshot?: RouteDetailSnapshot;
   settled: boolean;
 }
@@ -101,7 +101,7 @@ export function peekRouteDetailSnapshot(
   const entry = cache.get(
     routeDetailKey(routeName, city, subRouteUid, planContext, lang),
   );
-  if (!entry?.settled || !entry.snapshot) return null;
+  if (!entry?.snapshot) return null;
   if (Date.now() >= entry.snapshot.expiresAt) return null;
   return entry.snapshot;
 }
@@ -148,8 +148,8 @@ function untilAborted<T>(
  * *this* caller from waiting (it resolves null), because another leg may still
  * need the same response.
  *
- * Never rejects: a failed lookup resolves to null *and* drops its own entry
- * (never a newer one), so a transient error is retried on the next call.
+ * A failed refresh keeps its previous response only until the original expiry.
+ * Without a fresh response it resolves to null and drops only its own entry.
  */
 export function fetchRouteDetailSnapshot(
   routeName: string,
@@ -179,14 +179,18 @@ export function fetchRouteDetailSnapshot(
 
   const entry: Entry = {
     settled: false,
+    snapshot: existing?.snapshot,
     promise: Promise.resolve(null),
   };
 
-  const drop = () => {
-    if (cache.get(key) === entry) {
-      cache.delete(key);
-      notify(key);
-    }
+  const failed = () => {
+    entry.settled = true;
+    if (cache.get(key) !== entry) return null;
+    if (entry.snapshot && Date.now() < entry.snapshot.expiresAt)
+      return entry.snapshot;
+    cache.delete(key);
+    notify(key);
+    return null;
   };
 
   entry.promise = (async () => {
@@ -200,10 +204,7 @@ export function fetchRouteDetailSnapshot(
         lang,
       );
       const directions = res.ok ? res.data?.directions : undefined;
-      if (!directions) {
-        drop();
-        return null;
-      }
+      if (!directions) return failed();
       const receivedAt = Date.now();
       entry.snapshot = {
         directions,
@@ -221,8 +222,7 @@ export function fetchRouteDetailSnapshot(
       if (cache.get(key) === entry) notify(key);
       return entry.snapshot;
     } catch {
-      drop();
-      return null;
+      return failed();
     }
   })();
 
