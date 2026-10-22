@@ -11,6 +11,7 @@ import type { IBathroom, metroA11yData } from "@/types";
 import type { ApiResponse } from "@/types/response";
 import type {
   A11yFacility,
+  AccessibleRoute,
   AccessibleRouteData,
   AccessibleRouteRequest,
   AccessibleRouteRerouteData,
@@ -25,6 +26,7 @@ import type {
   SafetyHazardReport,
   WelfareInstitution,
 } from "@/types/route";
+import { parseDepartureCandidate } from "./busParsers";
 
 export async function getAllA11yFacilities(lang?: string) {
   const response = await fetchRequest<ApiResponse<null>>(
@@ -100,6 +102,43 @@ export async function rerouteAccessibleRoute(
       result.data.route,
       result.data.replayed ? undefined : request.language,
     );
+  }
+  return result;
+}
+
+export async function selectBusDeparture(
+  request: { routeToken: string; legIndex: number; candidateId: string },
+  signal?: AbortSignal,
+): Promise<ApiResponse<{ route: AccessibleRoute }>> {
+  const result = (await fetchRequest(
+    `${END_POINT}/api/v1/a11y/accessible-route/bus-selection`,
+    { method: "POST", body: request, signal },
+  )) as ApiResponse<{ route: AccessibleRoute }>;
+  if (result.ok) {
+    const route = result.data?.route;
+    const leg = route?.legs?.[request.legIndex];
+    if (
+      !route?.routeToken ||
+      route.routeToken === request.routeToken ||
+      !route.navigationId ||
+      !Number.isInteger(route.routeVersion) ||
+      (route.routeVersion ?? 0) < 1 ||
+      leg?.type !== "BUS" ||
+      !leg.selectedDeparture ||
+      !Array.isArray(leg.polyline) ||
+      leg.polyline.length < 2 ||
+      !leg.polyline.every(
+        (point) =>
+          Array.isArray(point) &&
+          point.length === 2 &&
+          point.every(Number.isFinite),
+      )
+    )
+      throw new TypeError("Invalid selected bus route");
+    leg.selectedDeparture = parseDepartureCandidate(leg.selectedDeparture);
+    if (!leg.selectedDeparture.selected)
+      throw new TypeError("Invalid selected bus route");
+    result.data = { route: withRouteNameLanguage(route) };
   }
   return result;
 }

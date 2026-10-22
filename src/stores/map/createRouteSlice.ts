@@ -4,12 +4,14 @@ import { isVenueTourAllowed } from "@/lib/indoor/tour";
 import type { MapSliceCreator, MapStore, RouteSlice } from "./types";
 
 export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
+  busSelection: null,
   venueJourney: null,
   setVenueJourney: (journey) => {
     const outdoor = journey?.outdoor;
     const selected = outdoor?.routes[outdoor.selectedIndex];
     set({
       venueJourney: journey,
+      busSelection: null,
       routeGeneration: get().routeGeneration + 1,
       activeNavigationRoute: null,
       isNavigating: false,
@@ -148,6 +150,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
     );
     if (index < 0) return;
     set({
+      busSelection: null,
       venueJourney: null,
       ...(get().venueJourney
         ? { isNavigating: false, activeNavigationRoute: null }
@@ -201,6 +204,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
       (route) => route === state.selectRoute?.route,
     );
     set({
+      busSelection: null,
       venueJourney: null,
       ...(state.venueJourney
         ? { isNavigating: false, activeNavigationRoute: null }
@@ -224,6 +228,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   setRouteSelect: (route) => {
     if (!route) {
       set({
+        busSelection: null,
         selectRoute: null,
         selectedRouteId: null,
         routeGeneration: get().routeGeneration + 1,
@@ -239,6 +244,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
     const journey = get().venueJourney;
     const journeyIndex = journey?.outdoor?.routes.indexOf(selected) ?? -1;
     const next = {
+      ...(selected === prev?.route ? {} : { busSelection: null }),
       ...(journey
         ? {
             venueJourney:
@@ -291,6 +297,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   // place view clear those themselves.
   endRouteSession: () =>
     set({
+      busSelection: null,
       venueJourney: null,
       ...(get().venueJourney
         ? { isNavigating: false, activeNavigationRoute: null }

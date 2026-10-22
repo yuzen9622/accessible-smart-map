@@ -213,7 +213,8 @@ export interface BusCandidateMetadata {
 }
 
 export interface BusLeg extends RouteSourceNames, BusCandidateMetadata {
-  geometrySource?: "route_stops";
+  geometrySource?: "route_stops" | "route_shape";
+  selectedDeparture?: BusDepartureCandidate;
   /** Client-side request context, supplied by the containing planned route. */
   planContext?: BusPlanContext;
   scheduledTrip?: {

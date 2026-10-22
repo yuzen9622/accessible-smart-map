@@ -86,6 +86,12 @@ export interface MapInstanceSlice {
 }
 
 export interface RouteSlice {
+  busSelection: {
+    status: "pending" | "error";
+    routeToken: string;
+    legIndex: number;
+    candidateId: string;
+  } | null;
   venueJourney: VenueJourney | null;
   setVenueJourney: (journey: VenueJourney | null) => void;
   setVenueJourneyPreview: (preview: Partial<VenueJourney["preview"]>) => void;

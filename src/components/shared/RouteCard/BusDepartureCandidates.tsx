@@ -38,12 +38,16 @@ export function BusDepartureCandidates({
   viewedCandidateId,
   onViewCandidate,
   onOpenChange,
+  disabled = false,
+  selecting = false,
   color = ROUTE_COLORS.BUS,
 }: {
   candidates: BusDepartureCandidate[];
   viewedCandidateId?: string;
   onViewCandidate: (id: string) => void;
   onOpenChange?: (open: boolean) => void;
+  disabled?: boolean;
+  selecting?: boolean;
   color?: string;
 }) {
   const { t } = useAppTranslation();
@@ -65,12 +69,14 @@ export function BusDepartureCandidates({
       className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
       aria-label={t("busCandidateInformation")}
       data-candidate-id={candidate?.candidateId}
+      aria-busy={selecting}
     >
       {canChoose ? (
         <Select
           value={candidate?.candidateId ?? ""}
           onValueChange={onViewCandidate}
           onOpenChange={onOpenChange}
+          disabled={disabled}
         >
           <SelectTrigger
             aria-label={t("busCandidateChoose")}
@@ -101,7 +107,8 @@ export function BusDepartureCandidates({
                     {item.routeName}
                   </Badge>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {candidateWait(item, language, t) ?? "—"}
+                    {candidateWait(item, language, t) ??
+                      t("busCandidateTimeUnknown")}
                   </span>
                 </span>
               </SelectItem>

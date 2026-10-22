@@ -65,6 +65,7 @@ const vehicle = (overrides: Record<string, unknown> = {}) => ({
   subRouteUid: "BRANCH",
   lat: 25,
   lng: 121,
+  gpsTime: new Date(Date.now()).toISOString(),
   ...overrides,
 });
 const positions = (...buses: ReturnType<typeof vehicle>[]) => ({
@@ -79,6 +80,20 @@ beforeEach(() => {
 });
 
 describe("planned bus tracking", () => {
+  it("never substitutes a feed plate for the explicitly selected departure", async () => {
+    expect(
+      await fetchLeg(
+        {
+          ...leg,
+          selectedDeparture: {
+            plateNumb: "CHOSEN",
+          } as BusLeg["selectedDeparture"],
+        },
+        signal,
+      ),
+    ).toEqual([]);
+    expect(mockApi.getLiveBusPositions).not.toHaveBeenCalled();
+  });
   it("uses the server-matched vehicle and ETA without querying the next arrival", async () => {
     const buses = await fetchLeg(leg, signal);
     expect(buses).toHaveLength(1);
@@ -111,6 +126,9 @@ describe("planned bus tracking", () => {
     { subRouteUid: "OTHER" },
     { subRouteUid: undefined },
     { lat: 25.1, lng: 121.1 },
+    { gpsTime: "" },
+    { gpsTime: "2000-01-01T00:00:00Z" },
+    { gpsTime: "2099-01-01T00:00:00Z" },
   ])(
     "rejects an unrelated or already-passed vehicle (%j)",
     async (overrides) => {

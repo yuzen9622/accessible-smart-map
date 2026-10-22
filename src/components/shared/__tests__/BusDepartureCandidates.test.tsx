@@ -100,7 +100,7 @@ describe("compact shadcn candidate view", () => {
       />,
     );
     expect(html).not.toContain("data-candidate-id=");
-    expect(visible(html)).toContain("查看班次");
+    expect(visible(html)).toContain("選擇搭乘班次");
     expect(visible(html)).not.toContain("23:58");
   });
   it("keeps boarding and alighting times on the stop rows", () => {

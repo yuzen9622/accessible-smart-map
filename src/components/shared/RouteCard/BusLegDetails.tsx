@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
 import { busLegKey } from "@/lib/transit/busLegStops";
 import {
@@ -6,6 +7,7 @@ import {
   formatRouteClock,
   resolveViewedCandidate,
 } from "@/lib/transit/departureCandidates";
+import { adoptBusDeparture } from "@/lib/transit/selectDeparture";
 import useMapStore from "@/stores/useMapStore";
 import {
   type BusDepartureCandidate,
@@ -37,7 +39,6 @@ function viewedLeg(leg: BusLeg, viewed: BusDepartureCandidate): BusLeg {
   };
 }
 
-/** A local information view; never writes a candidate into the planned leg/store. */
 export function BusLegDetails({
   leg: rawLeg,
   routeToken,
@@ -53,7 +54,14 @@ export function BusLegDetails({
   isSelected: boolean;
   children: ReactNode;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const { t } = useAppTranslation();
+  const selection = useMapStore((state) => state.busSelection);
+  const isNavigating = useMapStore((state) => state.isNavigating);
+  const pending = selection?.status === "pending";
+  const selectionForLeg =
+    selection?.routeToken === routeToken && selection?.legIndex === legIndex
+      ? selection
+      : null;
   const activeKey = useMapStore((state) => state.activeBusLeg?.key);
   const key = busLegKey(`${routeIndex}:${legIndex}`, {
     ...rawLeg,
@@ -70,7 +78,7 @@ export function BusLegDetails({
     isSelected,
     // The stop list already polls this key when open. Share its snapshot
     // instead of creating a second forced polling loop for the same leg.
-    isSelected && (expanded || view?.key === key) && activeKey !== key,
+    isSelected && activeKey !== key,
   );
   const candidates = refresh.departureCandidates ?? rawLeg.departureCandidates;
 
@@ -102,12 +110,39 @@ export function BusLegDetails({
           candidates={candidates}
           color={getLegColor(rawLeg)}
           viewedCandidateId={followed?.candidateId}
+          disabled={!isSelected || !routeToken || pending || isNavigating}
+          selecting={selectionForLeg?.status === "pending"}
           onViewCandidate={(id) => {
             const candidate = candidates.find((c) => c.candidateId === id);
-            if (candidate) setView({ key, candidate });
+            if (candidate && routeToken) {
+              setView({ key, candidate });
+              void adoptBusDeparture(routeToken, legIndex, id);
+            }
           }}
-          onOpenChange={setExpanded}
         />
+      )}
+      {selectionForLeg?.status === "error" && routeToken && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+          role="alert"
+        >
+          <span className="text-destructive">
+            {t("busCandidateSelectionFailed")}
+          </span>
+          <button
+            type="button"
+            className="min-h-9 px-1 font-medium text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+            onClick={() =>
+              void adoptBusDeparture(
+                routeToken,
+                legIndex,
+                selectionForLeg.candidateId,
+              )
+            }
+          >
+            {t("retry")}
+          </button>
+        </div>
       )}
       <BusLegStops
         leg={viewingAdopted ? rawLeg : viewedLeg(rawLeg, viewed)}

@@ -72,6 +72,7 @@ export default function RouteContent() {
   const { t } = useAppTranslation();
   const preferences = useMapStore((s) => s.effectivePreferences);
   const invalidTokens = useMapStore((s) => s.invalidRouteTokens);
+  const busSelection = useMapStore((s) => s.busSelection);
   const venueJourney = useMapStore((s) => s.venueJourney);
   const {
     computeRoutes,
@@ -208,7 +209,9 @@ export default function RouteContent() {
           onClick={handleStartNav}
           disabled={
             !indoorOnly &&
-            (!selectedToken || invalidTokens.includes(selectedToken))
+            (!selectedToken ||
+              invalidTokens.includes(selectedToken) ||
+              busSelection?.routeToken === selectedToken)
           }
           className="w-full rounded-xl h-12 text-base gap-2"
         >
