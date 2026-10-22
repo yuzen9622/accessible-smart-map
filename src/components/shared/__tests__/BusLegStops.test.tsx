@@ -118,6 +118,39 @@ const text = (props: Partial<Parameters<typeof BusLegStops>[0]> = {}) =>
   ).replace(/<[^>]+>/g, "");
 
 describe("another departure read from the public feed", () => {
+  it("offers the collapsed stop list from fetched stops when the planned leg omits intermediates", () => {
+    const html = renderToStaticMarkup(
+      <BusLegStops
+        leg={leg}
+        routeIndex={0}
+        legIndex={0}
+        isSelected
+        publicFeed
+      />,
+    );
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("經過 1 個站點");
+    expect(html).toContain("M");
+  });
+
+  it("offers the collapsed stop list from the selected timetable before a feed is available", () => {
+    const scheduled: BusLeg = {
+      ...leg,
+      tdxCity: undefined,
+      scheduledTrip: {
+        tripId: "trip-with-stops",
+        boardingReadyAt: Date.now(),
+        stops: [{ name: "A" }, { name: "時刻表中間站" }, { name: "B" }],
+      },
+    };
+    const html = renderToStaticMarkup(
+      <BusLegStops leg={scheduled} routeIndex={0} legIndex={0} isSelected />,
+    );
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("經過 1 個站點");
+    expect(html).toContain("時刻表中間站");
+  });
+
   it("does not take the line's next bus as the viewed departure's live time", () => {
     const html = text();
     expect(html).toContain("18:16");

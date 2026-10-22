@@ -122,8 +122,6 @@ export function BusLegStops({
   }, [isOpen, ride, liveBusPositions, publicFeed, viewedPlate]);
 
   const rows = useMemo(() => {
-    if (!isOpen) return undefined;
-
     if (ride && ride.stops.length > 0) {
       const currentSeq = resolveCurrentStopSeq(ride.stops, targetBus);
       return withPlannedStopNames(
@@ -143,7 +141,7 @@ export function BusLegStops({
     return hidePlannedTimes
       ? fallback.map((row) => ({ ...row, statusLabel: "" }))
       : fallback;
-  }, [isOpen, ride, leg, targetBus, status, language, hidePlannedTimes]);
+  }, [ride, leg, targetBus, status, language, hidePlannedTimes]);
 
   const currentStop = rows?.find((r) => r.state === "current");
   const currentStopName =

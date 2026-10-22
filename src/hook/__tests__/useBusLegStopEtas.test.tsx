@@ -76,6 +76,43 @@ describe("useBusLegStopEtas render guard", () => {
     expect(probe(legOf("A"))).toEqual({ directions, status: "ready" });
   });
 
+  it("keeps fresh metadata when opening a consumer during a pending refresh or failed poll", async () => {
+    getBusRouteDetail.mockResolvedValueOnce({
+      ok: true,
+      data: { directions, departureCandidates },
+    });
+    const options = {
+      lang: "zh-TW" as const,
+      subRouteUid: "A",
+      planContext: { routeToken: "plan", legIndex: 1 },
+      force: true,
+    };
+    await fetchRouteDetailCached("99", "Taichung", options);
+    vi.advanceTimersByTime(10_000);
+    let finish!: (value: unknown) => void;
+    getBusRouteDetail.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const refresh = fetchRouteDetailCached("99", "Taichung", options);
+    expect(probe(legOf("A"), true, true)).toMatchObject({
+      directions,
+      departureCandidates,
+      status: "ready",
+    });
+    finish({ ok: false });
+    await refresh;
+    expect(probe(legOf("A"), true, true)).toMatchObject({
+      directions,
+      departureCandidates,
+      status: "ready",
+    });
+    expect(probe(legOf("B"))).not.toHaveProperty("departureCandidates");
+    vi.advanceTimersByTime(5_000);
+    expect(probe(legOf("A"))).not.toHaveProperty("departureCandidates");
+  });
+
   it("never exposes another branch's data", () => {
     expect(probe(legOf("B")).directions).toBeNull();
   });

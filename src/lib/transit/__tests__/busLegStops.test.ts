@@ -293,6 +293,69 @@ describe("fallbackStopRows", () => {
     const rows = fallbackStopRows({ ...leg, intermediateStops: undefined });
     expect(rows).toHaveLength(2);
   });
+
+  it.each([false, true])(
+    "keeps every planned stop when a sparse timetable includes a middle stop: %s",
+    (includeMiddle) => {
+      const at = Date.parse("2030-01-01T10:00:00+08:00");
+      const rows = fallbackStopRows({
+        ...leg,
+        departureStop: "A",
+        departureStopId: "A",
+        arrivalStop: "D",
+        arrivalStopId: "D",
+        intermediateStops: [
+          { name: "B", stationUid: "B" },
+          { name: "C", stationUid: "C" },
+        ],
+        scheduledTrip: {
+          tripId: "sparse",
+          boardingReadyAt: at,
+          stops: [
+            { name: "A", stopUid: "A", departureAt: at },
+            ...(includeMiddle
+              ? [{ name: "C", stopUid: "C", arrivalAt: at + 600_000 }]
+              : []),
+            { name: "D", stopUid: "D", arrivalAt: at + 1_200_000 },
+          ],
+        },
+      });
+      expect(rows.map((row) => [row.name, row.kind, row.statusLabel])).toEqual([
+        ["A", "board", "10:00"],
+        ["B", "intermediate", ""],
+        ["C", "intermediate", includeMiddle ? "10:10" : ""],
+        ["D", "alight", "10:20"],
+      ]);
+    },
+  );
+
+  it("does not attach sparse timetable times by name, index, or repeated UID", () => {
+    const rows = fallbackStopRows({
+      ...leg,
+      intermediateStops: [
+        { name: "同名", stationUid: "first" },
+        { name: "同名", stationUid: "repeat" },
+        { name: "同名", stationUid: "repeat" },
+      ],
+      scheduledTrip: {
+        tripId: "sparse",
+        boardingReadyAt: 0,
+        stops: [
+          { name: "板橋" },
+          { name: "同名", stopUid: "repeat", arrivalAt: 0 },
+          { name: "台北車站" },
+        ],
+      },
+    });
+    expect(rows.map((row) => row.name)).toEqual([
+      "板橋",
+      "同名",
+      "同名",
+      "同名",
+      "台北車站",
+    ]);
+    expect(rows.every((row) => row.statusLabel === "")).toBe(true);
+  });
 });
 
 describe("parseStatusLabel", () => {
@@ -531,6 +594,25 @@ describe("sliceLegStops name matching", () => {
     // "板橋國中" contains "板橋", so a containment-first pass would board at 0.
     const sliced = sliceLegStops(stops, "板橋國中", "終點");
     expect(sliced?.map((s) => s.seq)).toEqual([1, 2, 3]);
+  });
+
+  it("keeps distinct platform names before trying normalized names", () => {
+    const stops = [
+      stop(0, "起點"),
+      stop(1, "臺中車站(民族路口)"),
+      stop(2, "臺中車站(C月台)"),
+    ];
+    expect(
+      sliceLegStops(stops, "起點", "臺中車站(C月台)")?.map((s) => s.seq),
+    ).toEqual([0, 1, 2]);
+    expect(sliceLegStops(stops, "起點", "臺中車站")).toBeNull();
+    expect(
+      sliceLegStops(
+        [...stops, stop(3, "臺中車站(C月台)")],
+        "起點",
+        "臺中車站(C月台)",
+      ),
+    ).toBeNull();
   });
 });
 
