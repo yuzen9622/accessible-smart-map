@@ -688,6 +688,8 @@ export interface AccessibleRouteRerouteRequest {
     accuracy?: number;
   };
   previousRouteVersion: number;
+  /** Last completed leg from navigation instructions, never inferred from GPS. */
+  completedLegIndex?: number;
   reason: RerouteReason;
   clientRequestId: string;
 }

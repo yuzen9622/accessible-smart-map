@@ -6,6 +6,8 @@ import { Marker } from "react-map-gl/maplibre";
 import { type AnimatedBus, useAnimatedBuses } from "@/hook/useAnimatedBuses";
 import { useLiveBusPositions } from "@/hook/useLiveBusPositions";
 import { resolveActiveBusLegOrdinal } from "@/lib/navigation/legMode";
+import { matchesProgressIdentity } from "@/lib/navigation/navigationProgress";
+import { matchesBoardedVehicle } from "@/lib/navigation/transitRideRuntime";
 import { busLegKey } from "@/lib/transit/busLegStops";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -164,6 +166,10 @@ export default function LiveBusWrapper() {
   const navigationId = useNavStore((s) => s.navigationId);
   const version = useNavStore((s) => s.routeVersion);
   const ride = useNavStore((s) => s.transitRide);
+  const progress = useNavStore((s) => s.routeProgress);
+  const route = useMapStore(
+    (s) => s.activeNavigationRoute ?? s.selectRoute?.route,
+  );
   // A boarded but unidentified vehicle stays unidentified: never select the next bus.
   useLiveBusPositions({
     enabled: !isNavigating || (mode === "live" && source === "local"),
@@ -176,6 +182,30 @@ export default function LiveBusWrapper() {
   // The store already guarantees at most one vehicle; find() is the guard.
   const bus = buses.find((b) => b.isTarget);
   if (!bus) return null;
+  if (
+    isNavigating &&
+    mode === "live" &&
+    source === "local" &&
+    route &&
+    progress &&
+    matchesProgressIdentity(progress, {
+      routeToken: route.routeToken ?? route.routeId,
+      navigationId,
+      routeVersion: version,
+    }) &&
+    route.legs[progress.legIndex]?.type === "BUS" &&
+    ride?.boarded &&
+    ride.vehicle &&
+    ride.key ===
+      JSON.stringify([
+        route.routeToken,
+        route.navigationId,
+        route.routeVersion,
+        progress.legIndex,
+      ]) &&
+    matchesBoardedVehicle(ride.vehicle, bus)
+  )
+    return null;
 
   return <TargetBusMarker bus={bus} />;
 }

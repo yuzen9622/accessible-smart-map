@@ -141,6 +141,13 @@ export function stopsAhead(
 
 /** 規劃的乘車分鐘數：`rideMinutes`，沒有就由上下車時刻（HH:mm，可跨午夜）推算。 */
 export function plannedRideMinutes(leg: BusLeg): number | null {
+  const selected = leg.selectedDeparture;
+  if (selected?.boardingTime && selected.alightingTime) {
+    const duration =
+      (Date.parse(selected.alightingTime) - Date.parse(selected.boardingTime)) /
+      60_000;
+    if (Number.isFinite(duration) && duration > 0) return duration;
+  }
   const parse = (time?: string) => {
     const match = time ? /^(\d{1,2}):(\d{2})$/.exec(time) : null;
     return match ? Number(match[1]) * 60 + Number(match[2]) : null;

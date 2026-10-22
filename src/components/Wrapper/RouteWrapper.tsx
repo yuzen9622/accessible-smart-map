@@ -13,8 +13,19 @@ import {
 import { Fragment, type JSX, useMemo } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { useShallow } from "zustand/react/shallow";
-import { filterIncidentsAlongRoute } from "@/lib/geo";
+import {
+  buildCumulativePath,
+  type CumulativePath,
+  filterIncidentsAlongRoute,
+} from "@/lib/geo";
+import {
+  matchesProgressIdentity,
+  type NavigationProgress,
+  poseAtAlong,
+  splitLegAtProgress,
+} from "@/lib/navigation/navigationProgress";
 import useMapStore from "@/stores/useMapStore";
+import useNavStore from "@/stores/useNavStore";
 import type {
   DriveLeg,
   DriveTrafficSegment,
@@ -35,7 +46,48 @@ function polylineToPath(
   return polyline.map(([lng, lat]) => ({ lat, lng }));
 }
 
-function A11ySegmentOverlay({ leg, legKey }: { leg: WalkLeg; legKey: string }) {
+interface LegProgress {
+  path: CumulativePath;
+  legIndex: number;
+  progress: NavigationProgress | null;
+}
+
+// Slice by original indices so loops and overlapping legs keep their own progress.
+function remainingSegment(
+  polyline: [number, number][],
+  start: number,
+  end: number,
+  cut: LegProgress,
+): [number, number][] {
+  const { path, legIndex, progress } = cut;
+  if (!progress || legIndex > progress.legIndex)
+    return polyline.slice(start, end + 1);
+  if (legIndex < progress.legIndex) return [];
+  const range = path.legRanges[legIndex];
+  if (!range) return polyline.slice(start, end + 1);
+  if (progress.alongM >= path.cumM[range.start + end]) return [];
+  if (progress.alongM <= path.cumM[range.start + start])
+    return polyline.slice(start, end + 1);
+  const pose = poseAtAlong(path, legIndex, progress.alongM);
+  if (!pose) return polyline.slice(start, end + 1);
+  let next = start + 1;
+  while (next <= end && path.cumM[range.start + next] <= progress.alongM)
+    next++;
+  return [
+    [pose.location.lng, pose.location.lat],
+    ...polyline.slice(next, end + 1),
+  ];
+}
+
+function A11ySegmentOverlay({
+  leg,
+  legKey,
+  cut,
+}: {
+  leg: WalkLeg;
+  legKey: string;
+  cut: LegProgress;
+}) {
   if (!leg.a11ySegments?.length) return null;
 
   return (
@@ -47,7 +99,12 @@ function A11ySegmentOverlay({ leg, legKey }: { leg: WalkLeg; legKey: string }) {
         // An elevator's two ends share one ground coordinate, so the slice is
         // a single point and cannot be drawn as a line.
         if (segment.startIndex === segment.endIndex) {
-          const point = leg.polyline[segment.startIndex];
+          const point = remainingSegment(
+            leg.polyline,
+            segment.startIndex,
+            segment.endIndex,
+            cut,
+          )[0];
           if (!point) return null;
           return (
             <Marker
@@ -65,7 +122,12 @@ function A11ySegmentOverlay({ leg, legKey }: { leg: WalkLeg; legKey: string }) {
         }
 
         const path = polylineToPath(
-          leg.polyline.slice(segment.startIndex, segment.endIndex + 1),
+          remainingSegment(
+            leg.polyline,
+            segment.startIndex,
+            segment.endIndex,
+            cut,
+          ),
         );
         if (path.length < 2) return null;
 
@@ -93,10 +155,12 @@ function DriveTrafficSegmentOverlay({
   leg,
   legKey,
   segments,
+  cut,
 }: {
   leg: DriveLeg;
   legKey: string;
   segments: DriveTrafficSegment[];
+  cut: LegProgress;
 }) {
   if (!segments.length) return null;
 
@@ -109,7 +173,12 @@ function DriveTrafficSegmentOverlay({
         const id = `${legKey}-traffic-${segment.trafficLevel}-${segment.fromIndex}-${segment.toIndex}-${idx}`;
 
         const path = polylineToPath(
-          leg.polyline.slice(segment.fromIndex, segment.toIndex + 1),
+          remainingSegment(
+            leg.polyline,
+            segment.fromIndex,
+            segment.toIndex,
+            cut,
+          ),
         );
         if (path.length < 2) return null;
 
@@ -223,6 +292,30 @@ export default function RouteLine() {
     isNavigating && activeNavigationRoute
       ? activeNavigationRoute
       : selectRoute?.route;
+  const { routeProgress, navigationMode, navigationId, routeVersion } =
+    useNavStore(
+      useShallow((s) => ({
+        routeProgress: s.routeProgress,
+        navigationMode: s.navigationMode,
+        navigationId: s.navigationId,
+        routeVersion: s.routeVersion,
+      })),
+    );
+  const cumulativePath = useMemo(
+    () => buildCumulativePath(displayedRoute?.legs ?? []),
+    [displayedRoute],
+  );
+  const progress =
+    isNavigating &&
+    navigationMode === "live" &&
+    displayedRoute &&
+    matchesProgressIdentity(routeProgress, {
+      routeToken: displayedRoute.routeToken ?? displayedRoute.routeId,
+      navigationId,
+      routeVersion,
+    })
+      ? routeProgress
+      : null;
   const selectedToken = selectRoute?.route.routeToken;
   const approachOverview =
     !isNavigating && venueJourney?.guidance.status === "idle" && selectedToken
@@ -304,7 +397,7 @@ export default function RouteLine() {
       </>
     );
 
-    const stepLines = allLegs.map((leg) => {
+    const stepLines = allLegs.map((leg, legIndex) => {
       if (!leg.polyline?.length) return null;
 
       const path = polylineToPath(leg.polyline);
@@ -320,6 +413,27 @@ export default function RouteLine() {
       const isWalking = leg.type === "WALK";
       const isDriving = leg.type === "DRIVE" || leg.type === "MOTORCYCLE";
       const legId = `route-leg-${legKey}`;
+      const cut = { path: cumulativePath, legIndex, progress };
+      const split = splitLegAtProgress(
+        leg.polyline,
+        legIndex,
+        cumulativePath,
+        progress,
+      );
+      const remainingPath = polylineToPath(split.remaining);
+      const completedLine =
+        split.completed.length >= 2 ? (
+          <Polyline
+            id={`${legId}-completed`}
+            path={polylineToPath(split.completed)}
+            strokeColor="#94a3b8"
+            strokeOpacity={0.8}
+            strokeWeight={isWalking ? 6 : 8}
+            dashArray={isWalking ? [2, 4] : undefined}
+            lineCap="round"
+            lineJoin="round"
+          />
+        ) : null;
 
       if (lastLegType !== null && lastLegType !== leg.type && path[0]) {
         markers.push(
@@ -346,10 +460,11 @@ export default function RouteLine() {
       if (isWalking) {
         return (
           <Fragment key={`leg-${legKey}`}>
+            {completedLine}
             <Polyline
               key={legId}
               id={legId}
-              path={path}
+              path={remainingPath}
               strokeColor={color}
               strokeOpacity={0.8}
               strokeWeight={6}
@@ -357,7 +472,7 @@ export default function RouteLine() {
               lineCap="round"
               lineJoin="round"
             />
-            <A11ySegmentOverlay leg={leg} legKey={legId} />
+            <A11ySegmentOverlay leg={leg} legKey={legId} cut={cut} />
           </Fragment>
         );
       }
@@ -372,10 +487,11 @@ export default function RouteLine() {
         // coloured segments so they paint on top of it.
         return (
           <Fragment key={`leg-${legKey}`}>
+            {completedLine}
             <Polyline
               key={legId}
               id={legId}
-              path={path}
+              path={remainingPath}
               strokeColor={color}
               strokeOpacity={1}
               strokeWeight={8}
@@ -386,6 +502,7 @@ export default function RouteLine() {
               leg={leg}
               legKey={legId}
               segments={segments}
+              cut={cut}
             />
             <DriveIncidentOverlay leg={leg} legKey={legId} />
           </Fragment>
@@ -393,16 +510,18 @@ export default function RouteLine() {
       }
 
       return (
-        <Polyline
-          key={`leg-${legKey}`}
-          id={legId}
-          path={path}
-          strokeColor={color}
-          strokeOpacity={1}
-          strokeWeight={8}
-          lineCap="round"
-          lineJoin="round"
-        />
+        <Fragment key={`leg-${legKey}`}>
+          {completedLine}
+          <Polyline
+            id={legId}
+            path={remainingPath}
+            strokeColor={color}
+            strokeOpacity={1}
+            strokeWeight={8}
+            lineCap="round"
+            lineJoin="round"
+          />
+        </Fragment>
       );
     });
 
@@ -413,7 +532,7 @@ export default function RouteLine() {
         {startEndMarker}
       </div>
     );
-  }, [displayedRoute, sosNavActive]);
+  }, [displayedRoute, sosNavActive, cumulativePath, progress]);
 
   if (
     venueJourney?.guidance.status === "guiding" ||

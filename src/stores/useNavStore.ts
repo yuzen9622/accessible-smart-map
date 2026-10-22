@@ -1,5 +1,6 @@
 "use client";
 import { create, type StateCreator } from "zustand";
+import type { NavigationProgress } from "@/lib/navigation/navigationProgress";
 import type { TransitGuide } from "@/lib/navigation/transitRide";
 import {
   confirmBoarded,
@@ -48,6 +49,7 @@ interface NavState {
   /** Which state machine owns step advancement for the active navigation. */
   navigationSource: NavigationSource;
   navigationMode: "preview" | "live";
+  routeProgress: NavigationProgress | null;
   transitRide: TransitRideRuntime | null;
   transitGuide: TransitGuide | null;
   voiceTransit: VoiceTransitState | null;
@@ -99,6 +101,7 @@ interface NavState {
 }
 
 interface NavAction {
+  setRouteProgress: (progress: NavigationProgress | null) => void;
   promoteToLive: () => void;
   setTransitRide: (
     ride: TransitRideRuntime | null,
@@ -153,6 +156,7 @@ const ADVISORY_MAX = 3;
 const initialState: NavState = {
   navigationSource: "local",
   navigationMode: "preview",
+  routeProgress: null,
   transitRide: null,
   transitGuide: null,
   voiceTransit: null,
@@ -189,12 +193,14 @@ const initialState: NavState = {
 
 const navState: StateCreator<NavStore> = (set) => ({
   ...initialState,
+  setRouteProgress: (routeProgress) => set({ routeProgress }),
   setNavigationSource: (navigationSource) =>
     set((state) =>
       state.navigationSource === navigationSource
         ? {}
         : {
             navigationSource,
+            routeProgress: null,
             voiceTransit: null,
             navigationMode:
               navigationSource === "voice" || state.navigationSource === "voice"
@@ -236,6 +242,7 @@ const navState: StateCreator<NavStore> = (set) => ({
       ...(state.navigationId !== navigationId ||
       state.routeVersion !== routeVersion
         ? {
+            routeProgress: null,
             transitRide: null,
             transitGuide: null,
             voiceTransit: null,
@@ -252,6 +259,7 @@ const navState: StateCreator<NavStore> = (set) => ({
     set({
       instructions,
       warnings,
+      routeProgress: null,
       voiceTransit: null,
       transitRide: null,
       transitGuide: null,

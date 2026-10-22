@@ -11,9 +11,13 @@ vi.mock("@/stores/useMapStore", () => ({
   default: vi.fn(),
 }));
 
+vi.mock("@/stores/useNavStore", () => ({ default: vi.fn() }));
+
 import Polyline from "@/components/Polyline";
 import RouteLine from "@/components/Wrapper/RouteWrapper";
+import { buildCumulativePath } from "@/lib/geo";
 import useMapStore from "@/stores/useMapStore";
+import useNavStore from "@/stores/useNavStore";
 import type { AccessibleRoute, BusLeg, DriveLeg, WalkLeg } from "@/types/route";
 import { TRAFFIC_BASE_COLOR, TRAFFIC_LEVEL_COLORS } from "@/types/route";
 
@@ -56,6 +60,12 @@ vi.mock("react-map-gl/maplibre", () => ({
 }));
 
 beforeEach(() => {
+  vi.mocked(useNavStore).mockReturnValue({
+    routeProgress: null,
+    navigationMode: "preview",
+    navigationId: null,
+    routeVersion: 0,
+  });
   rendered.sources = [];
   rendered.colors = [];
 });
@@ -424,5 +434,141 @@ describe("RouteLine drive traffic overlay", () => {
   it("exposes both the dimmed base colour and the segment colours", () => {
     expect(TRAFFIC_BASE_COLOR).toBe("#475569");
     expect(TRAFFIC_LEVEL_COLORS.severe).not.toBe(TRAFFIC_LEVEL_COLORS.heavy);
+  });
+});
+
+describe("completed route rendering", () => {
+  const route: AccessibleRoute = {
+    routeId: "progress",
+    routeToken: "route-a",
+    routeName: "Progress",
+    totalMinutes: 5,
+    transferCount: 0,
+    accessibilityHighlights: [],
+    legs: [
+      {
+        type: "WALK",
+        from: "A",
+        to: "B",
+        distanceM: 100,
+        minutesEst: 1,
+        a11yFacilities: [],
+        polyline: [
+          [121, 25],
+          [121.001, 25],
+        ],
+        a11ySegments: [
+          {
+            feature: "ramp",
+            startIndex: 0,
+            endIndex: 1,
+            indoor: false,
+            distanceM: null,
+            maxSlopePercent: null,
+            minWidthCm: null,
+          },
+        ],
+      },
+      {
+        type: "DRIVE",
+        from: "B",
+        to: "C",
+        distanceM: 200,
+        durationMin: 1,
+        polyline: [
+          [121.001, 25],
+          [121.002, 25],
+          [121.002, 25.001],
+        ],
+        trafficSegments: [
+          {
+            fromIndex: 0,
+            toIndex: 2,
+            trafficLevel: "severe",
+            congestionLevel: 4,
+          },
+        ],
+      },
+    ],
+  };
+  function renderProgress(overrides: Record<string, unknown> = {}) {
+    const path = buildCumulativePath(route.legs);
+    mockUseMapStore.mockReturnValue({
+      isNavigating: true,
+      activeNavigationRoute: route,
+      routeWaypoints: [],
+      selectRoute: { index: 0, route },
+      sosNavActive: false,
+      venueJourney: null,
+    });
+    vi.mocked(useNavStore).mockReturnValue({
+      navigationMode: "live",
+      navigationId: "nav-a",
+      routeVersion: 1,
+      routeProgress: {
+        routeToken: "route-a",
+        navigationId: "nav-a",
+        routeVersion: 1,
+        legIndex: 1,
+        segmentIndex: 2,
+        alongM: (path.cumM[2] + path.cumM[3]) / 2,
+        observedAt: Date.now(),
+        source: "gps",
+      },
+      ...overrides,
+    });
+    return renderToStaticMarkup(<RouteLine />);
+  }
+  it("grays previous legs and clips traffic at the exact shared progress point", () => {
+    renderProgress();
+    const gray = rendered.sources.filter((s) => s.id.endsWith("-completed"));
+    expect(gray).toHaveLength(2);
+    expect(gray[0].coordinates).toEqual(route.legs[0].polyline);
+    expect(gray[1].coordinates.at(-1)?.[0]).toBeCloseTo(121.0015, 8);
+    const traffic = rendered.sources.find((s) => s.id.includes("-traffic-"));
+    expect(traffic?.coordinates[0]).toEqual(gray[1].coordinates.at(-1));
+    expect(traffic?.coordinates.at(-1)).toEqual([121.002, 25.001]);
+    expect(rendered.sources.some((s) => s.id.includes("-ramp-"))).toBe(false);
+    expect(
+      rendered.colors
+        .filter((s) => s.id.includes("-completed"))
+        .every((s) => s.color === "#94a3b8"),
+    ).toBe(true);
+  });
+  it("clips accessibility overlays at an interior point without changing future legs", () => {
+    const path = buildCumulativePath(route.legs);
+    renderProgress({
+      routeProgress: {
+        routeToken: "route-a",
+        navigationId: "nav-a",
+        routeVersion: 1,
+        legIndex: 0,
+        segmentIndex: 0,
+        alongM: path.cumM[1] / 2,
+        observedAt: Date.now(),
+        source: "gps",
+      },
+    });
+    const gray = rendered.sources.find((s) => s.id.endsWith("-completed"));
+    const ramp = rendered.sources.find((s) => s.id.includes("-ramp-"));
+    expect(ramp?.coordinates[0]).toEqual(gray?.coordinates.at(-1));
+    expect(ramp?.coordinates[0][0]).toBeCloseTo(121.0005, 8);
+    expect(
+      rendered.sources.find((s) => s.id.includes("-traffic-"))?.coordinates,
+    ).toEqual(route.legs[1].polyline);
+  });
+  it("retains full route and overlays in preview or a mismatched navigation session", () => {
+    renderProgress({ navigationId: "different-navigation" });
+    expect(rendered.sources.some((s) => s.id.endsWith("-completed"))).toBe(
+      false,
+    );
+    expect(
+      rendered.sources.find((s) => s.id.includes("-traffic-"))?.coordinates,
+    ).toEqual(route.legs[1].polyline);
+    rendered.sources = [];
+    renderProgress({ navigationMode: "preview" });
+    expect(rendered.sources.some((s) => s.id.endsWith("-completed"))).toBe(
+      false,
+    );
   });
 });

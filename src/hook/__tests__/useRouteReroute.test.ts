@@ -140,6 +140,7 @@ afterEach(() => {
   useNavStore.getState().reset();
   useMapStore.setState({
     userLocation: null,
+    activeNavigationRoute: null,
     selectRoute: null,
     computeRoutes: null,
   });
@@ -180,6 +181,31 @@ describe("reroute warning detail ownership", () => {
 });
 
 describe("LocalRerouteController", () => {
+  it.each([1, 0, undefined])(
+    "only reports completed legs from matching walking instructions (%s)",
+    async (legIndex) => {
+      seedOldRuntime();
+      const currentRoute = route(1, "token-v1");
+      currentRoute.legs.push({ ...currentRoute.legs[0] });
+      useMapStore.setState({ activeNavigationRoute: currentRoute });
+      useNavStore.setState({
+        instructions: [{ ...oldInstruction, legIndex }],
+        navigationMode: "live",
+      });
+      const post = vi.fn(async (_request: AccessibleRouteRerouteRequest) =>
+        successfulEnvelope(),
+      );
+      const reroute = new LocalRerouteCoordinator({ post, apply: () => true });
+      await reroute.confirmOffRouteEpisode();
+      expect(post).toHaveBeenCalledTimes(1);
+      const sent = post.mock.calls[0]?.[0] as
+        | AccessibleRouteRerouteRequest
+        | undefined;
+      expect(sent?.completedLegIndex).toBe(legIndex === 1 ? 0 : undefined);
+      useMapStore.setState({ activeNavigationRoute: null });
+    },
+  );
+
   it("sends exactly one local POST for a confirmed off-route episode", async () => {
     seedOldRuntime();
     const post = vi.fn(async () => ({

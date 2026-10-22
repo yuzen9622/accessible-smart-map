@@ -27,6 +27,7 @@ export interface LocalRerouteContext {
   routeToken: string | null;
   routeVersion: number;
   position: LatLng | null;
+  completedLegIndex?: number;
 }
 
 interface ActiveRerouteRequest {
@@ -61,6 +62,16 @@ function defaultReadContext(): LocalRerouteContext {
     routeNavigationId !== null &&
     nav.navigationId === routeNavigationId &&
     nav.routeVersion === routeVersion;
+  const step = nav.instructions[nav.currentStepIndex];
+  const currentLegIndex = step?.legIndex;
+  const completedLegIndex =
+    hasMatchingRuntimeIdentity &&
+    step?.legType === "WALK" &&
+    currentLegIndex !== undefined &&
+    currentLegIndex > 0 &&
+    route?.legs[currentLegIndex]?.type === "WALK"
+      ? currentLegIndex - 1
+      : undefined;
 
   return {
     navigationSource: nav.navigationSource,
@@ -73,6 +84,7 @@ function defaultReadContext(): LocalRerouteContext {
         : null,
     routeVersion: hasMatchingRuntimeIdentity ? routeVersion : 0,
     position: map.userLocation,
+    completedLegIndex,
   };
 }
 
@@ -331,6 +343,9 @@ export class LocalRerouteCoordinator {
             longitude: position.lng,
           },
           previousRouteVersion: context.routeVersion,
+          ...(context.completedLegIndex === undefined
+            ? {}
+            : { completedLegIndex: context.completedLegIndex }),
           reason,
           clientRequestId: requestId,
           language:
