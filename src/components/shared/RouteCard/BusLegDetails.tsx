@@ -127,6 +127,7 @@ export function BusLegDetails({
         }
         routeToken={viewingAdopted ? routeToken : undefined}
         publicFeed={!viewingAdopted}
+        viewedPlate={viewed?.plateNumb}
         routeIndex={routeIndex}
         legIndex={legIndex}
         isSelected={isSelected}
