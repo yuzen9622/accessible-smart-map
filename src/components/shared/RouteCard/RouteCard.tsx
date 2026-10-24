@@ -29,6 +29,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../ui/card";
 import RouteReasonSummary from "../RouteReasonSummary";
 import { BusRouteBadges } from "./BusRouteBadges";
 import { LegDetail, LegIcon } from "./LegDetail";
+import {
+  RouteElevationProfile,
+  RouteElevationSummary,
+} from "./RouteElevationProfile";
 import { RouteJourneyTime } from "./RouteJourneyTime";
 import { pairRouteMessages } from "./routeMessages";
 import { StarRating } from "./StarRating";
@@ -61,6 +65,7 @@ export const RouteCard = memo(function RouteCard({
   const {
     setRouteSelect,
     selectRoute,
+    routeTravelMode,
     map,
     origin,
     destination,
@@ -71,6 +76,7 @@ export const RouteCard = memo(function RouteCard({
     useShallow((s) => ({
       setRouteSelect: s.setRouteSelect,
       selectRoute: s.selectRoute,
+      routeTravelMode: s.routeTravelMode,
       map: s.map,
       origin: s.origin,
       destination: s.destination,
@@ -82,6 +88,12 @@ export const RouteCard = memo(function RouteCard({
   const { t } = useAppTranslation();
   const language = getAppLanguage();
   const isSelected = selectRoute?.index === idx;
+  const elevationProfile =
+    routeTravelMode === "walk" &&
+    route.legs.length > 0 &&
+    route.legs.every((leg) => leg.type === "WALK")
+      ? route.elevationProfile
+      : undefined;
   const [scoreOpen, setScoreOpen] = useState(false);
   const scoreDetailId = useId();
   const separateWalkingContinuation =
@@ -243,6 +255,9 @@ export const RouteCard = memo(function RouteCard({
             </span>
           </div>
         )}
+        {!isSelected && elevationProfile && (
+          <RouteElevationSummary profile={elevationProfile} />
+        )}
       </CardHeader>
 
       {/* ── Level 2: Decision layer (on select) ── */}
@@ -313,6 +328,10 @@ export const RouteCard = memo(function RouteCard({
                 </p>
               ))}
             </div>
+          )}
+
+          {elevationProfile && (
+            <RouteElevationProfile profile={elevationProfile} />
           )}
 
           <div className="relative space-y-2">

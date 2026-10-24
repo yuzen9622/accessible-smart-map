@@ -72,6 +72,24 @@ beforeEach(() => {
 });
 
 describe("AI route contract", () => {
+  it("adopts the resolved walking mode and preserves optional elevation", () => {
+    const fixture = planFixture();
+    const elevationProfile = { status: "unavailable", reason: "timeout" };
+    const plan = parseAiRoutePlan({
+      ...fixture,
+      effectivePreferences: {
+        ...fixture.effectivePreferences,
+        travelMode: "walk",
+      },
+      routes: fixture.routes.map((route) => ({ ...route, elevationProfile })),
+    });
+    useMapStore.getState().applyAiRoutePlan(plan);
+    expect(useMapStore.getState().routeTravelMode).toBe("walk");
+    expect(useMapStore.getState().selectRoute?.route.elevationProfile).toEqual(
+      elevationProfile,
+    );
+  });
+
   it("retains source/display sidecars and request provenance without changing WALK9 or token", () => {
     const fixture = planFixture();
     const step = {
@@ -148,6 +166,7 @@ describe("AI route contract", () => {
     expect(notify).toHaveBeenCalledTimes(1);
     const state = useMapStore.getState();
     expect(state.selectedRouteId).toBe("b");
+    expect(state.routeTravelMode).toBe("transit");
     expect(state.selectRoute?.index).toBe(1);
     expect(state.effectivePreferences).toEqual(
       planFixture().effectivePreferences,

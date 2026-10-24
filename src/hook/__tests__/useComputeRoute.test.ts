@@ -102,6 +102,20 @@ afterEach(() => {
 });
 
 describe("useComputeRoute language and request ownership", () => {
+  it("stores the resolved response mode rather than the requested mode", async () => {
+    h.post.mockResolvedValueOnce({
+      ok: true,
+      data: { routes: [route], travelMode: "walk" },
+    });
+    const hook = mount();
+    expect(
+      await hook.handleComputeRoute({ ...params, travelMode: "transit" }),
+    ).toBe(true);
+    expect(useMapStore.getState().routeTravelMode).toBe("walk");
+    useMapStore.getState().setComputeRoutes(null);
+    expect(useMapStore.getState().routeTravelMode).toBeNull();
+  });
+
   it.each(["en", "zh-TW"])(
     "sends the effective %s UI language",
     async (language) => {

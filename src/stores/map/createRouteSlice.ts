@@ -20,6 +20,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
       effectivePreferences: null,
       aiRouteMetadata: null,
       computeRoutes: outdoor?.routes ?? null,
+      routeTravelMode: null,
       selectRoute: selected
         ? { index: outdoor?.selectedIndex ?? 0, route: selected }
         : null,
@@ -176,6 +177,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
       originName: plan.origin.name,
       destinationName: plan.destination.name,
       computeRoutes: plan.routes,
+      routeTravelMode: plan.effectivePreferences.travelMode,
       selectRoute: { index, route: plan.routes[index] },
       metroAlerts: plan.metroAlerts ?? null,
       transitAlerts: plan.transitAlerts ?? null,
@@ -198,7 +200,8 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
   destinationName: "",
   setDestinationName: (name) => set({ destinationName: name }),
   computeRoutes: null,
-  setComputeRoutes: (routes) => {
+  routeTravelMode: null,
+  setComputeRoutes: (routes, travelMode) => {
     const state = get();
     const selected = routes?.find(
       (route) => route === state.selectRoute?.route,
@@ -211,6 +214,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
         : {}),
       routeGeneration: state.routeGeneration + 1,
       computeRoutes: routes,
+      routeTravelMode: routes ? (travelMode ?? null) : null,
       selectRoute:
         selected && routes
           ? { index: routes.indexOf(selected), route: selected }
@@ -313,6 +317,7 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
       destination: null,
       destinationName: "",
       computeRoutes: null,
+      routeTravelMode: null,
       selectRoute: null,
       routeWaypoints: [],
       routeInfoShow: false,

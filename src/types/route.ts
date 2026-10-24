@@ -1,3 +1,4 @@
+import type { ElevationProfile } from "./elevation";
 import type { BusDirection, ScheduledBusDirection } from "./transit";
 import type {
   MatchedAlert,
@@ -420,6 +421,7 @@ export interface RouteMessageDetail {
 
 // --- Single route ---
 export interface AccessibleRoute {
+  elevationProfile?: ElevationProfile;
   /** Full journey instants (ISO dates with timezone), not leg clock times. */
   departureTime?: string;
   arrivalTime?: string;
