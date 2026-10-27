@@ -212,8 +212,12 @@ export default function HomeContent() {
           <Navigation className="h-4 w-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">{t("planRoute")}</p>
-          <p className="text-xs text-muted-foreground">{t("planRouteDesc")}</p>
+          <p className="text-sm font-semibold leading-normal">
+            {t("planRoute")}
+          </p>
+          <p className="text-xs text-muted-foreground leading-normal">
+            {t("planRouteDesc")}
+          </p>
         </div>
       </button>
 
