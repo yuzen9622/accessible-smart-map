@@ -421,6 +421,13 @@ describe("RouteCard", () => {
     );
   });
 
+  it("exposes a native selection button without a focusable button wrapper", () => {
+    const html = renderRoute(route, 0, false);
+    expect(html).not.toMatch(/<div[^>]*role="button"/);
+    expect(html).toMatch(/<button[^>]*aria-label="選擇路線: [^"]*"/);
+    expect(html).not.toMatch(/<div[^>]*tabindex="0"/);
+  });
+
   it("hides selected-only enhancements when the card is not selected", () => {
     const html = renderRoute(route, 0, false);
     expect(html).not.toContain("查看步行細節");

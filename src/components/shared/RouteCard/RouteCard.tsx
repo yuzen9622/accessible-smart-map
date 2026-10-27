@@ -172,20 +172,8 @@ export const RouteCard = memo(function RouteCard({
     <Card
       className={cn(
         "transition-shadow",
-        isSelected ? "ring-2 ring-primary" : "cursor-pointer hover:shadow-md",
+        isSelected ? "ring-2 ring-primary" : "hover:shadow-md",
       )}
-      {...(!isSelected && {
-        role: "button",
-        tabIndex: 0,
-        "aria-label": `${t("selectRoute")}: ${route.routeName}`,
-        onClick: handleSelect,
-        onKeyDown: (e: React.KeyboardEvent) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleSelect();
-          }
-        },
-      })}
     >
       <CardHeader className="grid-cols-1">
         <CardTitle className="flex justify-between items-center gap-2">
@@ -552,10 +540,9 @@ export const RouteCard = memo(function RouteCard({
       {!isSelected && (
         <CardContent className="pt-0">
           <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleSelect();
-            }}
+            type="button"
+            aria-label={`${t("selectRoute")}: ${route.routeName}`}
+            onClick={handleSelect}
             variant="default"
             className="w-full"
           >
