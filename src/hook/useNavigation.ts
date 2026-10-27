@@ -26,10 +26,20 @@ import {
   selectNextStepIndex,
 } from "@/lib/navigation/legMode";
 import {
+  estimateNavigationEta,
+  selectedDepartureLiveMinutes,
+} from "@/lib/navigation/navigationEta";
+import {
   createNavigationGeometryRuntime,
   observeLocalNavigationGeometry,
   replaceNavigationGeometryRuntime,
 } from "@/lib/navigation/navigationGeometryRuntime";
+import {
+  matchesProgressIdentity,
+  poseAtAlong,
+  projectNavigationProgress,
+  resolveProgressLegIndex,
+} from "@/lib/navigation/navigationProgress";
 import {
   buildTransitGuide,
   findActiveBusRun,
@@ -41,6 +51,10 @@ import {
   newTransitRide,
   rememberVehicle,
 } from "@/lib/navigation/transitRideRuntime";
+import {
+  legRouteDetailRef,
+  peekRouteDetailSnapshot,
+} from "@/lib/transit/busRouteDetailCache";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type HeadingSource } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
@@ -159,6 +173,9 @@ export default function useNavigation() {
     (s) => s.activeNavigationRoute ?? s.selectRoute?.route ?? null,
   );
   const userLocation = useMapStore((s) => s.userLocation);
+  const userLocationFix = useMapStore((s) => s.userLocationFix);
+  const routeProgress = useNavStore((s) => s.routeProgress);
+  const voiceOnVehicle = useNavStore((s) => s.voiceTransit?.onVehicle ?? false);
   const indoorExploring = useMapStore((s) => s.indoorExploring);
   const compassPermission = useNavStore((s) => s.compassPermission);
   const navigationSource = useNavStore((s) => s.navigationSource);
@@ -183,11 +200,17 @@ export default function useNavigation() {
   const compassTsRef = useRef(0);
   const smoothRef = useRef<number | null>(null);
   const camRef = useRef<CameraState | null>(null);
+  const busCameraRef = useRef<{ key: string; alongM: number } | null>(null);
+  const visualPathRef = useRef<{
+    route: typeof route;
+    path: CumulativePath;
+  } | null>(null);
   const lastLegTypeRef = useRef<NavLegType | null>(null);
   const previousNavigationSourceRef = useRef(navigationSource);
   // Bumped whenever a takeover swaps the geometry (carried steps first, exact
   // instructions after), so projection re-runs without waiting for a GPS fix.
   const [geometryEpoch, setGeometryEpoch] = useState(0);
+  const [etaNow, setEtaNow] = useState(Date.now());
 
   useEffect(() => observeLocalNavigationGeometry(geometryRef.current), []);
 
@@ -455,13 +478,32 @@ export default function useNavigation() {
       clearOffRouteEpisode();
     }
 
+    const observedProgress =
+      route && userLocationFix
+        ? projectNavigationProgress({
+            route,
+            path: cp,
+            location: userLocation,
+            fix: userLocationFix,
+            previous: nav.routeProgress,
+            currentLegIndex:
+              resolveProgressLegIndex(
+                route,
+                nav.instructions,
+                nav.currentStepIndex,
+              ) ?? 0,
+            identity: nav,
+            now: Date.now(),
+          })
+        : null;
+    // A rejected GPS jump can still trigger off-route handling, but cannot
+    // skip instructions or erase a later portion of the route.
+    if (userLocationFix && !observedProgress) return;
+    const alongM = observedProgress?.alongM ?? proj.alongM;
+
     // Next maneuver = first waypoint still ahead of the user along the route,
     // each measured against its own leg's arrive radius.
-    const projectedIndex = selectNextStepIndex(
-      nav.instructions,
-      wps,
-      proj.alongM,
-    );
+    const projectedIndex = selectNextStepIndex(nav.instructions, wps, alongM);
     const guarded = route
       ? guardBusProgress({
           instructions: nav.instructions,
@@ -470,15 +512,27 @@ export default function useNavigation() {
           currentIndex: nav.currentStepIndex,
           nextIndex: projectedIndex,
           ride: nav.transitRide,
-          alongM: proj.alongM,
+          alongM,
           perpendicularM: proj.perpDistM,
-          at: Date.now(),
+          at: userLocationFix?.timestamp ?? Date.now(),
         })
       : { nextIndex: projectedIndex, ride: null, waitingGate: false };
     nav.setTransitRide(
       guarded.ride,
       guarded.ride?.key === nav.transitRide?.key ? nav.transitGuide : null,
     );
+    const committedProgress =
+      observedProgress &&
+      route?.legs[observedProgress.legIndex]?.type === "BUS" &&
+      !guarded.ride?.boarded
+        ? {
+            ...observedProgress,
+            alongM: cp.cumM[cp.legRanges[observedProgress.legIndex].start],
+            segmentIndex: cp.legRanges[observedProgress.legIndex].start,
+          }
+        : observedProgress;
+    if (committedProgress) nav.setRouteProgress(committedProgress);
+    const committedAlongM = committedProgress?.alongM ?? alongM;
     const nextIdx = guarded.nextIndex;
     // Live advancement is monotonic; manual controls cannot write here.
     const displayIdx = Math.max(nextIdx, nav.currentStepIndex);
@@ -497,7 +551,7 @@ export default function useNavigation() {
     lastLegTypeRef.current = activeLegType;
 
     const totalM = cp.cumM[cp.cumM.length - 1] ?? 0;
-    const remainingMeters = Math.max(0, totalM - proj.alongM);
+    const remainingMeters = Math.max(0, totalM - committedAlongM);
     const totalSec =
       route?.totalMinutes != null ? route.totalMinutes * 60 : null;
     const remainingSec =
@@ -506,12 +560,18 @@ export default function useNavigation() {
         : null;
     const target = wps[Math.min(displayIdx, wps.length - 1)];
     nav.setProgress({
-      distanceToNextM: target ? Math.max(0, target.alongM - proj.alongM) : null,
+      distanceToNextM: target
+        ? Math.max(0, target.alongM - committedAlongM)
+        : null,
       remainingM: remainingMeters,
-      remainingDurationSec: remainingSec,
-      estimatedArrivalAt:
-        remainingSec != null ? Date.now() + remainingSec * 1000 : null,
-      etaSource: "local",
+      ...(!route?.legs.some((leg) => leg.type === "BUS")
+        ? {
+            remainingDurationSec: remainingSec,
+            estimatedArrivalAt:
+              remainingSec != null ? Date.now() + remainingSec * 1000 : null,
+            etaSource: "local" as const,
+          }
+        : {}),
     });
 
     // Arrival: close to the final maneuver point, at the final leg's radius
@@ -573,6 +633,7 @@ export default function useNavigation() {
     } else if (reached && !nav.arrived) nav.setArrived(true);
   }, [
     userLocation,
+    userLocationFix,
     navigationSource,
     geometryEpoch,
     confirmOffRouteEpisode,
@@ -587,6 +648,8 @@ export default function useNavigation() {
   // Derive HUD data separately: a new ETA must never count as another GPS sample.
   useEffect(() => {
     void boarded;
+    void routeProgress;
+    void etaNow;
     const nav = useNavStore.getState();
     const cp = geometryRef.current.path;
     if (
@@ -603,6 +666,19 @@ export default function useNavigation() {
     const range = run ? legAlongRange(cp, run.legIndex) : null;
     if (!run || leg?.type !== "BUS" || !range) {
       if (nav.transitRide || nav.transitGuide) nav.setTransitRide(null, null);
+      if (route.legs.some((part) => part.type === "BUS"))
+        nav.setProgress(
+          estimateNavigationEta({
+            route,
+            path: cp,
+            progress: nav.routeProgress,
+            currentLegIndex:
+              resolveProgressLegIndex(route, instructions, currentStepIndex) ??
+              0,
+            boarded: false,
+            now: Date.now(),
+          }),
+        );
       return;
     }
     const key = JSON.stringify([
@@ -620,7 +696,17 @@ export default function useNavigation() {
         ? liveBuses.find((b) => b.isTarget)
         : undefined;
     const targetStop = ride.boarded ? leg.arrivalStop : leg.departureStop;
-    const minutes =
+    const ref = legRouteDetailRef(leg);
+    const snapshot = route.routeToken
+      ? peekRouteDetailSnapshot(
+          ref.routeName,
+          ref.city,
+          ref.subRouteUid,
+          { routeToken: route.routeToken, legIndex: run.legIndex },
+          lang,
+        )
+      : null;
+    const vehicleMinutes =
       bus?.etaStopName === targetStop &&
       (!ride.boarded ||
         (ride.vehicle?.plate === bus.plateNumb &&
@@ -628,6 +714,27 @@ export default function useNavigation() {
           (!ride.vehicle.branch || ride.vehicle.branch === bus.subRouteUid)))
         ? (bus.estimateTime ?? null)
         : null;
+    const minutes =
+      vehicleMinutes ??
+      selectedDepartureLiveMinutes(
+        leg,
+        snapshot?.departureCandidates,
+        ride.boarded,
+        Date.now(),
+      );
+    nav.setProgress(
+      estimateNavigationEta({
+        route,
+        path: cp,
+        progress: nav.routeProgress,
+        currentLegIndex:
+          resolveProgressLegIndex(route, instructions, currentStepIndex) ?? 0,
+        boarded: ride.boarded,
+        liveBusLegIndex: run.legIndex,
+        liveMinutes: minutes,
+        now: Date.now(),
+      }),
+    );
     nav.setTransitRide(
       ride,
       buildTransitGuide(
@@ -635,9 +742,11 @@ export default function useNavigation() {
           run,
           leg,
           boarded: ride.boarded,
-          alongM: userLocation
-            ? projectToPath(userLocation, cp.path, cp.cumM).alongM
-            : null,
+          alongM:
+            nav.routeProgress?.alongM ??
+            (userLocation
+              ? projectToPath(userLocation, cp.path, cp.cumM).alongM
+              : null),
           boardAlongM: range.startM,
           stops: rideStops(leg, cp, run.legIndex),
           legEndAlongM: range.endM,
@@ -646,6 +755,13 @@ export default function useNavigation() {
         currentStepIndex,
       ),
     );
+    if (snapshot) {
+      const expiry = setTimeout(
+        () => setEtaNow(Date.now()),
+        Math.max(1, snapshot.expiresAt - Date.now()),
+      );
+      return () => clearTimeout(expiry);
+    }
   }, [
     route,
     instructions,
@@ -655,6 +771,9 @@ export default function useNavigation() {
     userLocation,
     liveBuses,
     boarded,
+    routeProgress,
+    etaNow,
+    lang,
   ]);
 
   useEffect(() => {
@@ -876,7 +995,63 @@ export default function useNavigation() {
               ).alongM,
             )
           : resolveActiveLegType(nav.instructions, nav.currentStepIndex);
-      const isVehicle = isVehicleLegType(currentLeg);
+      const activeRoute =
+        useMapStore.getState().activeNavigationRoute ??
+        useMapStore.getState().selectRoute?.route;
+      const progress = nav.routeProgress;
+      const busKey =
+        activeRoute && progress
+          ? JSON.stringify([
+              activeRoute.routeToken,
+              activeRoute.navigationId,
+              activeRoute.routeVersion,
+              progress.legIndex,
+            ])
+          : null;
+      const onBus =
+        activeRoute &&
+        progress &&
+        nav.navigationMode === "live" &&
+        matchesProgressIdentity(progress, {
+          routeToken: activeRoute.routeToken ?? activeRoute.routeId,
+          navigationId: nav.navigationId,
+          routeVersion: nav.routeVersion,
+        }) &&
+        activeRoute.legs[progress.legIndex]?.type === "BUS" &&
+        (nav.navigationSource === "voice"
+          ? nav.voiceTransit?.onVehicle && nav.voiceTransit.leg?.mode === "BUS"
+          : nav.transitRide?.boarded && nav.transitRide.key === busKey);
+      if (onBus && visualPathRef.current?.route !== activeRoute)
+        visualPathRef.current = {
+          route: activeRoute,
+          path: buildCumulativePath(activeRoute.legs),
+        };
+      const busPath = onBus ? visualPathRef.current?.path : null;
+      let busPose = null;
+      if (onBus && progress && busPath) {
+        const key = JSON.stringify([
+          progress.routeToken,
+          progress.navigationId,
+          progress.routeVersion,
+          progress.legIndex,
+          progress.source,
+        ]);
+        const previousAlong =
+          busCameraRef.current?.key === key
+            ? busCameraRef.current.alongM
+            : progress.alongM;
+        const reducedMotion =
+          typeof window !== "undefined" &&
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        const alongM = reducedMotion
+          ? progress.alongM
+          : previousAlong +
+            (progress.alongM - previousAlong) *
+              smoothingFactor(dtMs, CENTER_TAU_MS);
+        busCameraRef.current = { key, alongM };
+        busPose = poseAtAlong(busPath, progress.legIndex, alongM);
+      } else busCameraRef.current = null;
+      const isVehicle = isVehicleLegType(currentLeg) || Boolean(onBus);
       const resolved = resolveNavHeading({
         isVehicle,
         compassHeading: compassRef.current,
@@ -886,8 +1061,10 @@ export default function useNavigation() {
         userHeading: nav.userHeading,
         headingSource: nav.headingSource,
       });
-      const raw: number | null = resolved?.heading ?? null;
-      const source: HeadingSource = resolved?.source ?? null;
+      const raw: number | null = busPose?.bearing ?? resolved?.heading ?? null;
+      const source: HeadingSource = busPose
+        ? "gps"
+        : (resolved?.source ?? null);
 
       let smoothed: number | null = smoothRef.current;
       if (raw != null) {
@@ -960,16 +1137,21 @@ export default function useNavigation() {
       const targetBearing = is3D ? (smoothed ?? currentCamera.bearing) : 0;
       const nextCamera: CameraState = {
         lng:
+          busPose?.location.lng ??
           currentCamera.lng +
-          (loc.lng - currentCamera.lng) * smoothingFactor(dtMs, CENTER_TAU_MS),
+            (loc.lng - currentCamera.lng) *
+              smoothingFactor(dtMs, CENTER_TAU_MS),
         lat:
+          busPose?.location.lat ??
           currentCamera.lat +
-          (loc.lat - currentCamera.lat) * smoothingFactor(dtMs, CENTER_TAU_MS),
+            (loc.lat - currentCamera.lat) *
+              smoothingFactor(dtMs, CENTER_TAU_MS),
         bearing: targetBearing,
       };
 
       if (
-        haversineMeters(currentCamera, loc) < CAMERA_DEAD_ZONE_M &&
+        haversineMeters(currentCamera, busPose?.location ?? loc) <
+          CAMERA_DEAD_ZONE_M &&
         angularDistanceDeg(currentCamera.bearing, targetBearing) <
           CAMERA_DEAD_ZONE_DEG
       ) {
@@ -989,4 +1171,66 @@ export default function useNavigation() {
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
   }, []);
+  // Voice retains ownership of steps and ETA; only map presentation is projected locally.
+  useEffect(() => {
+    const nav = useNavStore.getState();
+    if (!route || !useMapStore.getState().isNavigating) {
+      if (nav.routeProgress) nav.setRouteProgress(null);
+      return;
+    }
+    if (visualPathRef.current?.route !== route)
+      visualPathRef.current = { route, path: buildCumulativePath(route.legs) };
+    if (
+      !matchesProgressIdentity(nav.routeProgress, {
+        routeToken: route.routeToken ?? route.routeId,
+        navigationId: nav.navigationId,
+        routeVersion: nav.routeVersion,
+      })
+    )
+      nav.setRouteProgress(null);
+    if (
+      navigationSource !== "voice" ||
+      !userLocation ||
+      navigationMode !== "live"
+    )
+      return;
+    const legIndex = resolveProgressLegIndex(
+      route,
+      instructions,
+      currentStepIndex,
+    );
+    if (legIndex === null) return;
+    const previous = useNavStore.getState().routeProgress;
+    const progress = projectNavigationProgress({
+      route,
+      path: visualPathRef.current.path,
+      location: userLocation,
+      fix: userLocationFix,
+      previous: previous?.legIndex === legIndex ? previous : null,
+      currentLegIndex: legIndex,
+      identity: nav,
+      now: Date.now(),
+      busBoarded: voiceOnVehicle,
+    });
+    if (progress) nav.setRouteProgress(progress);
+  }, [
+    route,
+    userLocation,
+    userLocationFix,
+    navigationSource,
+    navigationMode,
+    currentStepIndex,
+    instructions,
+    voiceOnVehicle,
+  ]);
+  useEffect(() => {
+    if (
+      navigationSource !== "local" ||
+      navigationMode !== "live" ||
+      !route?.legs.some((leg) => leg.type === "BUS")
+    )
+      return;
+    const timer = setInterval(() => setEtaNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, [route, navigationSource, navigationMode]);
 }

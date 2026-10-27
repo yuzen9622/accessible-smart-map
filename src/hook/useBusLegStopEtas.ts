@@ -113,6 +113,8 @@ export function useBusLegStopEtas(
     }
 
     let cancelled = false;
+    let inFlight = false;
+    let nextRequestAt = 0;
     let version = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const controller = new AbortController();
@@ -144,15 +146,26 @@ export function useBusLegStopEtas(
       if (timer) clearTimeout(timer);
       // Force, or the poll would be served from the route-detail cache and only
       // ever refresh because the TTL happens to be shorter than the interval.
-      timer = setTimeout(() => tick(true), POLL_INTERVAL_MS);
+      const delay =
+        typeof document !== "undefined" && document.hidden
+          ? POLL_INTERVAL_MS
+          : Math.max(0, nextRequestAt - Date.now());
+      timer = setTimeout(() => tick(true), delay);
     }
 
     async function tick(force = false) {
-      if (typeof document !== "undefined" && document.hidden) {
+      if (cancelled || inFlight) return;
+      if (
+        (typeof document !== "undefined" && document.hidden) ||
+        Date.now() < nextRequestAt
+      ) {
         scheduleNext();
         return;
       }
+      inFlight = true;
+      nextRequestAt = Date.now() + POLL_INTERVAL_MS;
       await fetchEtas(force);
+      inFlight = false;
       if (!cancelled) scheduleNext();
     }
 
@@ -197,7 +210,7 @@ export function useBusLegStopEtas(
     });
 
     if (!cacheOnly && poll) {
-      tick();
+      tick(true);
       document.addEventListener("visibilitychange", onVisibility);
     } else if (!cacheOnly) {
       // Prefetch only: warm the shared cache once, no polling timer.

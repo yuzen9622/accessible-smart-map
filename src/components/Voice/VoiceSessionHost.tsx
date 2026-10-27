@@ -28,6 +28,7 @@ function routeTokenFromMap(): string | null {
   const map = useMapStore.getState();
   const token = (map.activeNavigationRoute ?? map.selectRoute?.route)
     ?.routeToken;
+  if (map.busSelection?.routeToken === token) return null;
   return typeof token === "string" && token.length > 0 ? token : null;
 }
 
@@ -84,6 +85,7 @@ export default function VoiceSessionHost() {
   } = useVoiceSession();
   const lastSentPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const serverStoppedNavigationRef = useRef(false);
+  const rejectedStartRef = useRef(false);
 
   useEffect(() => {
     useVoiceStore.getState().bindSessionActions({
@@ -135,22 +137,33 @@ export default function VoiceSessionHost() {
   // Keep the selected HTTP route armed. The controller queues the latest
   // token until session.ready and re-sends it after a 1006/4410 reconnect.
   useEffect(() => {
-    setNavigationRoute(routeTokenFromMap());
+    const syncRoute = () => {
+      const map = useMapStore.getState();
+      const token = routeTokenFromMap();
+      setNavigationRoute(token);
+      // Clearing the controller token alone does not cancel a server-side start.
+      if (!token && map.busSelection && !map.isNavigating) {
+        rejectedStartRef.current = true;
+        cancelNavigation();
+      }
+    };
+    syncRoute();
     const unsubscribe = useMapStore.subscribe((state, previous) => {
       if (
         state.activeNavigationRoute !== previous.activeNavigationRoute ||
         state.selectRoute?.route.routeToken !==
-          previous.selectRoute?.route.routeToken
+          previous.selectRoute?.route.routeToken ||
+        state.busSelection !== previous.busSelection
       ) {
         if (
           !state.isNavigating ||
           state.activeNavigationRoute !== previous.activeNavigationRoute
         )
-          setNavigationRoute(routeTokenFromMap());
+          syncRoute();
       }
     });
     return unsubscribe;
-  }, [setNavigationRoute]);
+  }, [setNavigationRoute, cancelNavigation]);
 
   // Forward throttled map fixes while the backend voice-navigation state
   // machine owns navigation. The existing geolocation watch remains the
@@ -226,13 +239,23 @@ export default function VoiceSessionHost() {
     for (const navigationEvent of navigationEvents) {
       const map = useMapStore.getState();
       const nav = useNavStore.getState();
+      if (
+        rejectedStartRef.current &&
+        navigationEvent.type !== "nav.start" &&
+        navigationEvent.type !== "nav.resume_ok"
+      )
+        continue;
 
       switch (navigationEvent.type) {
         case "nav.start": {
           if (
-            navigationEvent.selectionGeneration !== undefined &&
-            navigationEvent.selectionGeneration !== map.routeGeneration
+            (map.busSelection &&
+              map.busSelection.routeToken ===
+                map.selectRoute?.route.routeToken) ||
+            (navigationEvent.selectionGeneration !== undefined &&
+              navigationEvent.selectionGeneration !== map.routeGeneration)
           ) {
+            rejectedStartRef.current = true;
             cancelNavigation();
             break;
           }
@@ -249,8 +272,12 @@ export default function VoiceSessionHost() {
           if (
             !candidate?.routeToken ||
             map.invalidRouteTokens.includes(candidate.routeToken)
-          )
+          ) {
+            rejectedStartRef.current = true;
+            cancelNavigation();
             break;
+          }
+          rejectedStartRef.current = false;
           // Preserve backend order, independently of any manual preview selection.
           const candidateIndex = Math.max(
             0,
@@ -394,6 +421,7 @@ export default function VoiceSessionHost() {
           }
           // The backend still owns this navigation: hand step advancement
           // back to it and adopt its authoritative progress snapshot.
+          rejectedStartRef.current = false;
           nav.setNavigationSource("voice");
           // resume acknowledges this route, it does not replace its warnings/reason/advisories.
           useNavStore.setState({

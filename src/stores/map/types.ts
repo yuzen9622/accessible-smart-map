@@ -12,6 +12,7 @@ import type {
 import type { A11yEnum } from "@/types/index";
 import type {
   AccessibleRoute,
+  AccessibleRouteData,
   AiRoutePlan,
   BusLeg,
   EffectiveRoutePreferences,
@@ -86,6 +87,12 @@ export interface MapInstanceSlice {
 }
 
 export interface RouteSlice {
+  busSelection: {
+    status: "pending" | "error";
+    routeToken: string;
+    legIndex: number;
+    candidateId: string;
+  } | null;
   venueJourney: VenueJourney | null;
   setVenueJourney: (journey: VenueJourney | null) => void;
   setVenueJourneyPreview: (preview: Partial<VenueJourney["preview"]>) => void;
@@ -113,7 +120,11 @@ export interface RouteSlice {
   destinationName: string;
   setDestinationName: (name: string) => void;
   computeRoutes: AccessibleRoute[] | null;
-  setComputeRoutes: (routes: AccessibleRoute[] | null) => void;
+  routeTravelMode: NonNullable<AccessibleRouteData["travelMode"]> | null;
+  setComputeRoutes: (
+    routes: AccessibleRoute[] | null,
+    travelMode?: AccessibleRouteData["travelMode"],
+  ) => void;
   selectRoute: {
     index: number;
     route: AccessibleRoute;

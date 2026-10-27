@@ -15,8 +15,6 @@ export interface AutocompleteItem {
   placeClass: string | null;
   placeType: string | null;
   typeLabel: string | null;
-  location: PlaceGeoPoint | null;
-  distanceMeters: number | null;
 }
 
 export interface NearbyFacilityBrief {

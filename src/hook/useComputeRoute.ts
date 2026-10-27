@@ -174,7 +174,7 @@ export default function useComputeRoute() {
         }
 
         const routes = response.data.routes;
-        setComputeRoutes(routes);
+        setComputeRoutes(routes, response.data.travelMode);
         setMetroAlerts(response.data.metroAlerts ?? null);
         setTransitAlerts(response.data.transitAlerts ?? null);
         setRouteSelect({ index: 0, route: routes[0] });

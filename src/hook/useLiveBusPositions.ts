@@ -97,6 +97,11 @@ export async function fetchLeg(
     subRouteUid: ride.subRouteUid,
   };
   if (!arrival.plate || (!locked && arrival.eta == null)) return [];
+  if (
+    leg.selectedDeparture?.plateNumb &&
+    arrival.plate !== leg.selectedDeparture.plateNumb
+  )
+    return [];
   const posRes = await getLiveBusPositions(
     ref.routeName,
     ref.city,
@@ -119,6 +124,13 @@ export async function fetchLeg(
         arrival.subRouteUid === b.subRouteUid),
   );
   if (!target) return [];
+  const observedAt = Date.parse(target.gpsTime);
+  if (
+    !Number.isFinite(observedAt) ||
+    Date.now() - observedAt >= STALE_AFTER_MS ||
+    observedAt > Date.now() + POLL_INTERVAL_MS
+  )
+    return [];
   // A slow positions request must not revive an expired planned arrival.
   const freshArrival = peekRouteDetailSnapshot(
     ref.routeName,
@@ -260,9 +272,12 @@ export function useLiveBusPositions(options?: {
             lang,
           );
           armStale(
-            buses[0]?.estimateTime != null && snapshot
-              ? snapshot.expiresAt - Date.now()
-              : STALE_AFTER_MS,
+            Math.min(
+              buses[0]?.estimateTime != null && snapshot
+                ? snapshot.expiresAt - Date.now()
+                : STALE_AFTER_MS,
+              Date.parse(buses[0].gpsTime) + STALE_AFTER_MS - Date.now(),
+            ),
           );
         } else if (staleTimer) clearTimeout(staleTimer);
       } catch {

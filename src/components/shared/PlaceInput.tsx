@@ -38,7 +38,6 @@ import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore, { placeKey } from "@/stores/useMapStore";
 import type { PlaceDetail, VenuePlaceDetail } from "@/types";
 import type { AutocompleteItem, PlaceResult } from "@/types/place";
-import { formatDistance } from "@/types/route";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
 import { Input } from "../ui/input";
 
@@ -186,21 +185,15 @@ function PlaceInput({
     () => searchVenuePlaces(models, query).slice(0, 12),
     [models, query],
   );
-  const {
-    searchHistory,
-    addSearchHistory,
-    userLocation,
-    map,
-    setMobileSheetSnap,
-  } = useMapStore(
-    useShallow((s) => ({
-      searchHistory: s.searchHistory,
-      addSearchHistory: s.addSearchHistory,
-      userLocation: s.userLocation,
-      map: s.map,
-      setMobileSheetSnap: s.setMobileSheetSnap,
-    })),
-  );
+  const { searchHistory, addSearchHistory, userLocation, setMobileSheetSnap } =
+    useMapStore(
+      useShallow((s) => ({
+        searchHistory: s.searchHistory,
+        addSearchHistory: s.addSearchHistory,
+        userLocation: s.userLocation,
+        setMobileSheetSnap: s.setMobileSheetSnap,
+      })),
+    );
   const { suggestions, loading, sessionToken, resetSession } =
     usePlacePredictions((value as string) || "");
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -222,11 +215,6 @@ function PlaceInput({
 
   const resolvePlace = useCallback(
     async (item: AutocompleteItem) => {
-      if (item.source === "osm" && item.location) {
-        const [lng, lat] = item.location.coordinates;
-        map?.flyTo({ center: [lng, lat], zoom: 17 });
-      }
-
       const response = await getPlaceDetails(item.id, {
         sessiontoken: sessionToken,
         lat: userLocation?.lat,
@@ -255,7 +243,6 @@ function PlaceInput({
       addSearchHistory,
       i18n,
       lang,
-      map,
       onPlaceSelect,
       resetSession,
       sessionToken,
@@ -606,11 +593,6 @@ function PlaceInput({
                             {suggestion.secondaryText && (
                               <p className="text-xs text-muted-foreground/70 truncate">
                                 {suggestion.secondaryText}
-                              </p>
-                            )}
-                            {suggestion.distanceMeters !== null && (
-                              <p className="text-xs text-muted-foreground/70">
-                                {formatDistance(suggestion.distanceMeters)}
                               </p>
                             )}
                           </div>

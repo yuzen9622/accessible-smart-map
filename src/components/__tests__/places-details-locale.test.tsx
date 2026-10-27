@@ -1,8 +1,12 @@
+import { isValidElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AutocompleteItem, PlaceResult } from "@/types/place";
 
 const h = vi.hoisted(() => ({
   language: "zh-TW",
+  openPanel: false,
+  suggestions: [] as AutocompleteItem[],
   callbacks: [] as { callback: unknown; deps?: unknown[] }[],
   effects: [] as { effect: () => undefined | (() => void); deps: unknown[] }[],
   store: {} as Record<string, unknown>,
@@ -16,7 +20,11 @@ const h = vi.hoisted(() => ({
 vi.mock("react", async (original) => ({
   ...(await original<typeof import("react")>()),
   useState: (initial: unknown) => [
-    typeof initial === "function" ? (initial as () => unknown)() : initial,
+    initial === false
+      ? h.openPanel
+      : typeof initial === "function"
+        ? (initial as () => unknown)()
+        : initial,
     vi.fn(),
   ],
   useRef: (current: unknown) => ({ current }),
@@ -54,7 +62,7 @@ vi.mock("@/lib/api/placeSearch", () => ({
 }));
 vi.mock("@/hook/usePlacePredictions", () => ({
   default: () => ({
-    suggestions: [],
+    suggestions: h.suggestions,
     loading: false,
     sessionToken: "session",
     resetSession: vi.fn(),
@@ -90,8 +98,12 @@ import PlaceInput from "../shared/PlaceInput";
 const item = {
   id: "osm:node:123",
   source: "osm",
-  location: null,
-} as AutocompleteItem;
+  primaryText: "台北車站",
+  secondaryText: "臺北市中正區北平西路",
+  placeClass: "railway",
+  placeType: "station",
+  typeLabel: "火車站",
+} satisfies AutocompleteItem;
 const place = {
   id: item.id,
   name: "Canonical",
@@ -118,6 +130,8 @@ function deferred() {
 beforeEach(() => {
   vi.resetAllMocks();
   h.language = "zh-TW";
+  h.openPanel = false;
+  h.suggestions = [];
   h.callbacks = [];
   h.effects = [];
   h.store = {
@@ -157,6 +171,59 @@ function linkDetails() {
   if (!effect) throw new Error("Shared-link details effect not found");
   return effect;
 }
+function suggestionMarkup(node: ReactNode, id: string): string | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const markup = suggestionMarkup(child, id);
+      if (markup !== null) return markup;
+    }
+    return null;
+  }
+  if (!isValidElement<{ children?: ReactNode }>(node)) return null;
+  if (node.key === id) return renderToStaticMarkup(node.props.children);
+  return suggestionMarkup(node.props.children, id);
+}
+
+describe("Autocomplete suggestion display", () => {
+  it.each(["osm", "google"] as const)(
+    "renders %s seven-field suggestions without an empty distance row",
+    (source) => {
+      h.openPanel = true;
+      h.suggestions = [{ ...item, source }];
+      const markup = suggestionMarkup(
+        PlaceInput({ value: "台北", onPlaceSelect: h.select }),
+        item.id,
+      );
+      expect(markup).toContain(item.primaryText);
+      expect(markup).toContain(item.secondaryText);
+      expect(markup).toContain(item.typeLabel);
+      expect(markup?.match(/<p\b/g)).toHaveLength(2);
+      expect(markup).not.toMatch(/<p[^>]*><\/p>/);
+    },
+  );
+
+  it("omits missing address and type labels without placeholder rows", () => {
+    h.openPanel = true;
+    h.suggestions = [
+      {
+        ...item,
+        secondaryText: null,
+        placeClass: null,
+        placeType: null,
+        typeLabel: null,
+      },
+    ];
+    const markup = suggestionMarkup(
+      PlaceInput({ value: "台北", onPlaceSelect: h.select }),
+      item.id,
+    );
+    expect(markup).toContain(item.primaryText);
+    expect(markup?.match(/<p\b/g)).toHaveLength(1);
+    expect(markup).not.toContain("undefined");
+    expect(markup).not.toContain("NaN");
+  });
+});
+
 describe("Places details locale ownership and field preservation", () => {
   it("input ignores late previous-locale details", async () => {
     const request = deferred();

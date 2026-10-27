@@ -34,6 +34,7 @@ export function BusLegStops({
   boardTime = hidePlannedTimes ? undefined : rawLeg.departureTime,
   alightTime = hidePlannedTimes ? undefined : rawLeg.arrivalTime,
   publicFeed = false,
+  viewedPlate,
   boardEtaMinutes = null,
   alightEtaMinutes = null,
 }: {
@@ -48,6 +49,8 @@ export function BusLegStops({
   alightTime?: string;
   /** Another service than the plan's: it has no token, so read the public feed. */
   publicFeed?: boolean;
+  /** The viewed departure's vehicle, the only one the public feed may track. */
+  viewedPlate?: string;
   /** The viewed service's own live estimate, used when the stop feed has none. */
   boardEtaMinutes?: number | null;
   alightEtaMinutes?: number | null;
@@ -83,10 +86,21 @@ export function BusLegStops({
     false,
     publicFeed,
   );
-  const ride = useMemo(
-    () => resolveLegRide(directions ?? undefined, leg),
-    [directions, leg],
-  );
+  // The public feed times the line's next bus at each stop, not the departure
+  // being viewed: that departure's own times arrive through the props.
+  const ride = useMemo(() => {
+    const resolved = resolveLegRide(directions ?? undefined, leg);
+    return publicFeed && resolved
+      ? {
+          ...resolved,
+          stops: resolved.stops.map((stop) => ({
+            ...stop,
+            estimateMinutes: null,
+            statusLabel: "",
+          })),
+        }
+      : resolved;
+  }, [directions, leg, publicFeed]);
   const boardStop = ride?.stops[0];
   const alightStop = ride?.stops.at(-1);
 
@@ -98,17 +112,16 @@ export function BusLegStops({
       liveBusPositions.find(
         (b) =>
           b.isTarget &&
+          (!publicFeed || b.plateNumb === viewedPlate) &&
           b.direction === ride.direction &&
           (!ride.subRouteUid ||
             !b.subRouteUid ||
             b.subRouteUid === ride.subRouteUid),
       ) ?? null
     );
-  }, [isOpen, ride, liveBusPositions]);
+  }, [isOpen, ride, liveBusPositions, publicFeed, viewedPlate]);
 
   const rows = useMemo(() => {
-    if (!isOpen) return undefined;
-
     if (ride && ride.stops.length > 0) {
       const currentSeq = resolveCurrentStopSeq(ride.stops, targetBus);
       return withPlannedStopNames(
@@ -128,7 +141,7 @@ export function BusLegStops({
     return hidePlannedTimes
       ? fallback.map((row) => ({ ...row, statusLabel: "" }))
       : fallback;
-  }, [isOpen, ride, leg, targetBus, status, language, hidePlannedTimes]);
+  }, [ride, leg, targetBus, status, language, hidePlannedTimes]);
 
   const currentStop = rows?.find((r) => r.state === "current");
   const currentStopName =

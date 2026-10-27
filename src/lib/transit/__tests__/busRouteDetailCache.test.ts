@@ -124,6 +124,95 @@ describe("receipt time", () => {
 });
 
 describe("failure and cancellation", () => {
+  it("keeps a fresh snapshot readable while a forced refresh is pending", async () => {
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    const first = await fetchRouteDetailSnapshot("365", "Taichung");
+    vi.advanceTimersByTime(10_000);
+    let finish!: (value: unknown) => void;
+    getBusRouteDetail.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const refresh = fetchRouteDetailSnapshot("365", "Taichung", {
+      force: true,
+    });
+    const joined = fetchRouteDetailSnapshot("365", "Taichung", { force: true });
+    expect(peekRouteDetailSnapshot("365", "Taichung")).toBe(first);
+    expect(getBusRouteDetail).toHaveBeenCalledTimes(2);
+    finish(ok());
+    expect(await joined).toBe(await refresh);
+  });
+
+  it("preserves a fresh snapshot after a failed refresh without extending its deadline", async () => {
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    const first = await fetchRouteDetailSnapshot("365", "Taichung");
+    vi.advanceTimersByTime(10_000);
+    getBusRouteDetail.mockRejectedValueOnce(new Error("temporary failure"));
+    await expect(
+      fetchRouteDetailSnapshot("365", "Taichung", { force: true }),
+    ).resolves.toBe(first);
+    expect(peekRouteDetailSnapshot("365", "Taichung")).toBe(first);
+    vi.advanceTimersByTime(5_000);
+    expect(peekRouteDetailSnapshot("365", "Taichung")).toBeNull();
+  });
+
+  it("allows retrying a failed refresh while the previous snapshot is still fresh", async () => {
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    const first = await fetchRouteDetailSnapshot("365", "Taichung");
+    vi.advanceTimersByTime(1_000);
+    getBusRouteDetail.mockResolvedValueOnce({ ok: false });
+    await fetchRouteDetailSnapshot("365", "Taichung", { force: true });
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    const next = await fetchRouteDetailSnapshot("365", "Taichung", {
+      force: true,
+    });
+    expect(getBusRouteDetail).toHaveBeenCalledTimes(3);
+    expect(next?.receivedAt).toBe(Date.now());
+    expect(next).not.toBe(first);
+  });
+
+  it("does not restore an expired snapshot when the refresh fails", async () => {
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    await fetchRouteDetailSnapshot("365", "Taichung");
+    vi.advanceTimersByTime(10_000);
+    let finish!: (value: unknown) => void;
+    getBusRouteDetail.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const refresh = fetchRouteDetailSnapshot("365", "Taichung", {
+      force: true,
+    });
+    vi.advanceTimersByTime(5_000);
+    finish({ ok: false });
+    await expect(refresh).resolves.toBeNull();
+    expect(peekRouteDetailSnapshot("365", "Taichung")).toBeNull();
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    await expect(
+      fetchRouteDetailSnapshot("365", "Taichung"),
+    ).resolves.not.toBeNull();
+  });
+
+  it("accepts an explicit successful empty result instead of retaining the old snapshot", async () => {
+    getBusRouteDetail.mockResolvedValueOnce(ok());
+    await fetchRouteDetailSnapshot("365", "Taichung");
+    getBusRouteDetail.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        directions: [],
+        departureCandidates: [],
+        candidateSearchComplete: true,
+      },
+    });
+    const next = await fetchRouteDetailSnapshot("365", "Taichung", {
+      force: true,
+    });
+    expect(peekRouteDetailSnapshot("365", "Taichung")).toBe(next);
+    expect(next).toMatchObject({ directions: [], departureCandidates: [] });
+  });
+
   it("a failed forced refresh does not delete a newer entry", async () => {
     let failFirst: (v: unknown) => void = () => {};
     getBusRouteDetail.mockReturnValueOnce(

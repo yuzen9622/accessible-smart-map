@@ -1,18 +1,70 @@
+import { lazy, Suspense, useMemo } from "react";
 import { Marker } from "react-map-gl/maplibre";
+import { useShallow } from "zustand/react/shallow";
+import { buildCumulativePath } from "@/lib/geo";
+import { matchesProgressIdentity } from "@/lib/navigation/navigationProgress";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
+import { ErrorBoundary } from "./ErrorBoundary";
+
+const NavigationBusLayer = lazy(
+  () => import("@/components/Navigation/NavigationBusLayer"),
+);
 
 export default function NowPin() {
   const userLocation = useMapStore((s) => s.userLocation);
   const isNavigating = useMapStore((s) => s.isNavigating);
   // Selector subscription: only NowPin re-renders on heading ticks.
   const userHeading = useNavStore((s) => s.userHeading);
-  if (!userLocation) return null;
+  const route = useMapStore(
+    (s) => s.activeNavigationRoute ?? s.selectRoute?.route,
+  );
+  const {
+    routeProgress,
+    navigationMode,
+    navigationId,
+    routeVersion,
+    navigationSource,
+    transitRide,
+    voiceTransit,
+  } = useNavStore(
+    useShallow((s) => ({
+      routeProgress: s.routeProgress,
+      navigationMode: s.navigationMode,
+      navigationId: s.navigationId,
+      routeVersion: s.routeVersion,
+      navigationSource: s.navigationSource,
+      transitRide: s.transitRide,
+      voiceTransit: s.voiceTransit,
+    })),
+  );
+  const path = useMemo(() => buildCumulativePath(route?.legs ?? []), [route]);
+  const ridingBus =
+    isNavigating &&
+    navigationMode === "live" &&
+    route &&
+    routeProgress &&
+    matchesProgressIdentity(routeProgress, {
+      routeToken: route.routeToken ?? route.routeId,
+      navigationId,
+      routeVersion,
+    }) &&
+    route.legs[routeProgress.legIndex]?.type === "BUS" &&
+    (navigationSource === "voice"
+      ? voiceTransit?.onVehicle && voiceTransit.leg?.mode === "BUS"
+      : transitRide?.boarded &&
+        transitRide.key ===
+          JSON.stringify([
+            route.routeToken,
+            route.navigationId,
+            route.routeVersion,
+            routeProgress.legIndex,
+          ]));
 
   const hasHeading = userHeading != null;
   const showNavigationArrow = isNavigating && hasHeading;
 
-  return (
+  const marker = userLocation ? (
     <Marker
       longitude={userLocation.lng}
       latitude={userLocation.lat}
@@ -73,5 +125,18 @@ export default function NowPin() {
         )}
       </div>
     </Marker>
+  ) : null;
+  return ridingBus ? (
+    <ErrorBoundary fallback={() => marker}>
+      <Suspense fallback={marker}>
+        <NavigationBusLayer
+          path={path}
+          progress={routeProgress}
+          fallback={marker}
+        />
+      </Suspense>
+    </ErrorBoundary>
+  ) : (
+    marker
   );
 }

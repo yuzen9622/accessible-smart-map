@@ -8,7 +8,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
-  buttons: [] as { onClick?: () => Promise<void>; disabled?: boolean }[],
+  buttons: [] as {
+    onClick?: () => Promise<void>;
+    disabled?: boolean;
+    "aria-label"?: string;
+  }[],
   cards: [] as ComponentProps<"div">[],
   start: vi.fn(),
   showPlace: vi.fn(),
@@ -64,6 +68,7 @@ vi.mock("@/components/ui/button", () => ({
     h.buttons.push({
       onClick: onClick as (() => Promise<void>) | undefined,
       disabled: props.disabled,
+      "aria-label": props["aria-label"],
     });
     return (
       <button {...props} onClick={onClick}>
@@ -304,9 +309,11 @@ describe("venue journeys retain the existing route-results interface", () => {
       isNavigating: true,
     });
     render();
-    h.cards
-      .find((card) => card["aria-label"] === "selectRoute: Second candidate")
-      ?.onClick?.({} as never);
+    h.buttons
+      .find(
+        (button) => button["aria-label"] === "selectRoute: Second candidate",
+      )
+      ?.onClick?.();
     expect(useMapStore.getState().selectRoute?.route).toBe(alternate);
     expect(useMapStore.getState().venueJourney?.outdoor?.selectedIndex).toBe(1);
     expect(useMapStore.getState().venueJourney?.outdoor?.navigationIndex).toBe(
@@ -500,9 +507,11 @@ describe("venue journeys retain the existing route-results interface", () => {
       expect(continuation.summary.props.approach).toBe(expected);
       expect(continuation.steps.props.approach).toBe(expected);
     }
-    h.cards
-      .find((card) => card["aria-label"] === "selectRoute: Second candidate")
-      ?.onClick?.({} as never);
+    h.buttons
+      .find(
+        (button) => button["aria-label"] === "selectRoute: Second candidate",
+      )
+      ?.onClick?.();
     const next = render().markup;
     expect(next).toContain("TailBetaRoad");
     expect(next).not.toContain("TailAlphaRoad");

@@ -1,3 +1,4 @@
+import type { ElevationProfile } from "./elevation";
 import type { BusDirection, ScheduledBusDirection } from "./transit";
 import type {
   MatchedAlert,
@@ -213,7 +214,8 @@ export interface BusCandidateMetadata {
 }
 
 export interface BusLeg extends RouteSourceNames, BusCandidateMetadata {
-  geometrySource?: "route_stops";
+  geometrySource?: "route_stops" | "route_shape";
+  selectedDeparture?: BusDepartureCandidate;
   /** Client-side request context, supplied by the containing planned route. */
   planContext?: BusPlanContext;
   scheduledTrip?: {
@@ -419,6 +421,7 @@ export interface RouteMessageDetail {
 
 // --- Single route ---
 export interface AccessibleRoute {
+  elevationProfile?: ElevationProfile;
   /** Full journey instants (ISO dates with timezone), not leg clock times. */
   departureTime?: string;
   arrivalTime?: string;
@@ -687,6 +690,8 @@ export interface AccessibleRouteRerouteRequest {
     accuracy?: number;
   };
   previousRouteVersion: number;
+  /** Last completed leg from navigation instructions, never inferred from GPS. */
+  completedLegIndex?: number;
   reason: RerouteReason;
   clientRequestId: string;
 }

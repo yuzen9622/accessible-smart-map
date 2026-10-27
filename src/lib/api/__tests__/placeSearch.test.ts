@@ -182,13 +182,22 @@ describe("reverseGeocode", () => {
 
 describe("getPlaceAutocomplete and getPlaceDetails", () => {
   it("calls search autocomplete endpoint with query parameters", async () => {
+    const suggestion = {
+      id: "osm:node:123",
+      source: "osm",
+      primaryText: "Taipei 101",
+      secondaryText: "Xinyi",
+      placeClass: "building",
+      placeType: "commercial",
+      typeLabel: "Building",
+    };
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       expect(String(url)).toContain(
         `${END_POINT}/api/v1/a11y/search/autocomplete?q=taipei&lat=25.03&lng=121.56`,
       );
       return jsonResponse({
         ok: true,
-        data: [{ id: "osm:node:123", title: "Taipei 101", address: "Xinyi" }],
+        data: [suggestion],
       });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -200,6 +209,7 @@ describe("getPlaceAutocomplete and getPlaceDetails", () => {
     });
 
     expect(res.ok).toBe(true);
+    expect(res.data).toEqual([suggestion]);
   });
 
   it("calls search details endpoint with place ID", async () => {

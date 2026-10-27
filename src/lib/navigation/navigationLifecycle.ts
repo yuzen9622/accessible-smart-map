@@ -10,6 +10,7 @@ import {
 import { findVenueModel, indoorModelVersion } from "@/lib/indoor/catalog";
 import type { VenueJourney } from "@/lib/indoor/journey";
 import { isVenueTourAllowed } from "@/lib/indoor/tour";
+import { adoptBusDeparture } from "@/lib/transit/selectDeparture";
 import useIndoorCatalog from "@/stores/useIndoorCatalog";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -64,6 +65,13 @@ function autoplayVenueTour(): boolean {
  */
 export function startNavigation(): void {
   const map = useMapStore.getState();
+  if (
+    map.busSelection &&
+    map.busSelection.routeToken === map.selectRoute?.route.routeToken
+  ) {
+    toast.error("請先完成班次選擇，再開始導航。");
+    return;
+  }
   const journey = map.venueJourney;
   if (journey) {
     const model = findVenueModel(
@@ -102,6 +110,34 @@ export function startNavigation(): void {
   if (!route?.routeToken || map.invalidRouteTokens.includes(route.routeToken)) {
     toast.error("這份路線目前無法啟用導航，請重新規劃。");
     return;
+  }
+  // Confirm every displayed default before navigation, just as an explicit
+  // selection does. Each adoption preserves earlier locks on transfer legs.
+  if (
+    useNavStore.getState().navigationSource !== "voice" &&
+    route === map.selectRoute?.route
+  ) {
+    const legIndex = route.legs.findIndex(
+      (leg) =>
+        leg.type === "BUS" &&
+        !leg.selectedDeparture &&
+        leg.departureCandidates?.some((candidate) => candidate.selected),
+    );
+    const leg = route.legs[legIndex];
+    const candidate =
+      leg?.type === "BUS"
+        ? leg.departureCandidates?.find((item) => item.selected)
+        : undefined;
+    if (candidate) {
+      void adoptBusDeparture(
+        route.routeToken,
+        legIndex,
+        candidate.candidateId,
+      ).then((adopted) => {
+        if (adopted) startNavigation();
+      });
+      return;
+    }
   }
   // VoiceSessionHost installs authoritative steps before invoking this command.
   // Starting its map UI must not reset that owner or its carried instructions.

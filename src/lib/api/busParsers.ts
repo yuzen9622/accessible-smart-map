@@ -91,7 +91,7 @@ function candidateInstant(value: unknown): value is string | null {
   );
 }
 
-function parseDepartureCandidate(row: unknown): BusDepartureCandidate {
+export function parseDepartureCandidate(row: unknown): BusDepartureCandidate {
   if (
     !record(row) ||
     ![

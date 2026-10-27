@@ -76,17 +76,26 @@ const goodFeeds = () => {
       ],
     },
   });
-  h.getLiveBusPositions.mockResolvedValue({
+  h.getLiveBusPositions.mockImplementation(async () => ({
     ok: true,
     data: {
-      buses: [{ plateNumb: "KKA-1", direction: 0, lat: 0, lng: 0 }],
+      buses: [
+        {
+          plateNumb: "KKA-1",
+          direction: 0,
+          lat: 0,
+          lng: 0,
+          gpsTime: new Date(Date.now()).toISOString(),
+        },
+      ],
     },
-  });
+  }));
 };
 
 let cleanup: undefined | (() => void);
 
 beforeEach(() => {
+  vi.clearAllMocks();
   h.lang = "zh-TW";
   vi.useFakeTimers();
   __clearRouteDetailCache();
@@ -119,6 +128,26 @@ const start = async () => {
 const lastSet = () => h.setLiveBusPositions.mock.calls.at(-1)?.[0];
 
 describe("useLiveBusPositions lifecycle", () => {
+  it("expires a source GPS observation without granting it a new lifetime on receipt", async () => {
+    h.getLiveBusPositions.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        buses: [
+          {
+            plateNumb: "KKA-1",
+            direction: 0,
+            lat: 0,
+            lng: 0,
+            gpsTime: new Date(Date.now() - 20_000).toISOString(),
+          },
+        ],
+      },
+    });
+    await start();
+    expect(lastSet()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(5_001);
+    expect(lastSet()).toEqual([]);
+  });
   it("does not poll or publish a real ride in preview", async () => {
     useLiveBusPositions({ enabled: false, sessionKey: "preview" });
     cleanup = h.effects[0]();

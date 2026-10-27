@@ -109,22 +109,28 @@ function looseEqualStopName(a?: string, b?: string): boolean {
   return na === nb || na.includes(nb) || nb.includes(na);
 }
 
+function exactStopName(a?: string, b?: string): boolean {
+  const na = a?.normalize("NFKC").trim();
+  const nb = b?.normalize("NFKC").trim();
+  return Boolean(na) && na === nb;
+}
+
 /**
  * Cut `departureStop` → `arrivalStop` (inclusive) out of the whole line.
  *
  * Every forward (departure before arrival) pair is enumerated; the ride is
  * only returned when exactly one exists. A name that repeats on the line, or a
  * loop that passes both stops twice, leaves the intended lap unknowable, so it
- * is rejected rather than guessed. Exact (normalised) names are tried first,
- * and containment is only a fallback when nothing matched exactly — and must
- * itself be unique. No wrap-around: the arrival is always after the departure.
+ * is rejected rather than guessed. Names retaining platform notes are tried
+ * before normalized names, then containment. Every pass must be unique.
+ * No wrap-around: the arrival is always after the departure.
  */
 export function sliceLegStops(
   stops: RouteDetailStop[],
   departureStop: string,
   arrivalStop: string,
 ): RouteDetailStop[] | null {
-  for (const eq of [equalStopName, looseEqualStopName]) {
+  for (const eq of [exactStopName, equalStopName, looseEqualStopName]) {
     const pairs: [number, number][] = [];
     for (let from = 0; from < stops.length; from++) {
       if (!eq(stops[from].name, departureStop)) continue;
@@ -303,8 +309,9 @@ export function fallbackStopRows(
     language,
   }: { pending?: boolean; language?: "en" | "zh-TW" } = {},
 ): BusLegStopRow[] {
+  let scheduledRows: BusLegStopRow[] | undefined;
   if (leg.scheduledTrip?.stops.length) {
-    return leg.scheduledTrip.stops.map((stop, i, stops) => {
+    scheduledRows = leg.scheduledTrip.stops.map((stop, i, stops) => {
       const time =
         i === 0
           ? (stop.departureAt ?? stop.arrivalAt)
@@ -341,11 +348,17 @@ export function fallbackStopRows(
         pending: false,
       };
     });
+    if (
+      !leg.intermediateStops?.length ||
+      scheduledRows.length >= leg.intermediateStops.length + 2
+    )
+      return scheduledRows;
   }
   const middle = leg.intermediateStops ?? [];
   const names = [
     {
       name: leg.departureStop,
+      stationUid: leg.departureStopId,
       displayName: language
         ? sourceName(
             leg.departureStop,
@@ -373,6 +386,7 @@ export function fallbackStopRows(
     })),
     {
       name: leg.arrivalStop,
+      stationUid: leg.arrivalStopId,
       displayName: language
         ? sourceName(
             leg.arrivalStop,
@@ -385,17 +399,27 @@ export function fallbackStopRows(
       kind: "alight" as StopRowKind,
     },
   ];
-  return names.map((entry, i) => ({
-    seq: i,
-    name: entry.name,
-    displayName: entry.displayName,
-    stationUid: "stationUid" in entry ? entry.stationUid : undefined,
-    estimateMinutes: null,
-    statusLabel: "",
-    state: "upcoming",
-    kind: entry.kind,
-    pending,
-  }));
+  return names.map((entry, i) => {
+    const matches = entry.stationUid
+      ? scheduledRows?.filter((row) => row.stationUid === entry.stationUid)
+      : undefined;
+    const scheduled =
+      matches?.length === 1 &&
+      names.filter((stop) => stop.stationUid === entry.stationUid).length === 1
+        ? matches[0]
+        : undefined;
+    return {
+      seq: i,
+      name: entry.name,
+      displayName: entry.displayName,
+      stationUid: entry.stationUid,
+      estimateMinutes: null,
+      statusLabel: scheduled?.statusLabel ?? "",
+      state: "upcoming",
+      kind: entry.kind,
+      pending: scheduled ? false : pending,
+    };
+  });
 }
 
 export type EtaLabelKind = "eta" | "scheduled" | "status" | "pending";
