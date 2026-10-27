@@ -36,6 +36,9 @@ export function generateStaticParams() {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://map.yuzen.dev"),
+  itunes: {
+    appId: "6820790448",
+  },
   title: "無障礙智慧地圖 - Accessible Smart Map",
 
   description:
