@@ -57,6 +57,7 @@ it("real browser component + parser + Zustand handoff regression", async () => {
           : "google-chrome"),
       [
         "--headless",
+        "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-extensions",
         "--disable-background-networking",
@@ -73,7 +74,13 @@ it("real browser component + parser + Zustand handoff regression", async () => {
     chromeClosed = new Promise((resolve) =>
       chrome?.once("close", () => resolve()),
     );
-    chrome.stderr?.resume();
+    let chromeStderr = "";
+    chrome.stderr?.setEncoding("utf8");
+    chrome.stderr?.on("data", (chunk: string) => {
+      chromeStderr = (chromeStderr + chunk).slice(-8192);
+    });
+    const browserError = (message: string) =>
+      new Error(`${message}\nChrome stderr:\n${chromeStderr || "(empty)"}`);
     const input = chrome.stdio[3] as Writable;
     const messages = chrome.stdio[4] as Readable;
     let id = 0;
@@ -87,7 +94,7 @@ it("real browser component + parser + Zustand handoff regression", async () => {
     };
     chrome.once("error", failPending);
     chrome.once("close", (code, signal) =>
-      failPending(new Error(`Chrome closed: ${code ?? signal}`)),
+      failPending(browserError(`Chrome closed: ${code ?? signal}`)),
     );
     input.on("error", failPending);
     messages.on("error", failPending);
@@ -112,14 +119,15 @@ it("real browser component + parser + Zustand handoff regression", async () => {
       method: string,
       params: object = {},
       sessionId?: string,
+      timeoutMs = 10000,
     ): Promise<{ result: T }> => {
       const key = ++id;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         return await new Promise((resolve, reject) => {
           timeout = setTimeout(
-            () => reject(new Error(`CDP timed out: ${method}`)),
-            10000,
+            () => reject(browserError(`CDP timed out: ${method}`)),
+            timeoutMs,
           );
           calls.set(key, {
             resolve: (value) => resolve(value as { result: T }),
@@ -134,9 +142,15 @@ it("real browser component + parser + Zustand handoff regression", async () => {
         calls.delete(key);
       }
     };
-    const target = await send<{ targetId: string }>("Target.createTarget", {
-      url: "about:blank",
-    });
+    // Browser startup and renderer creation compete with the other CI workers.
+    // Keep a separate startup budget without relaxing runtime command timeouts.
+    await send("Browser.getVersion", {}, undefined, 30000);
+    const target = await send<{ targetId: string }>(
+      "Target.createTarget",
+      { url: "about:blank" },
+      undefined,
+      30000,
+    );
     const attached = await send<{ sessionId: string }>(
       "Target.attachToTarget",
       { targetId: target.result.targetId, flatten: true },
@@ -186,4 +200,4 @@ it("real browser component + parser + Zustand handoff regression", async () => {
       await rm(profile, { recursive: true, force: true, maxRetries: 3 });
     }
   }
-}, 60000);
+}, 120000);
