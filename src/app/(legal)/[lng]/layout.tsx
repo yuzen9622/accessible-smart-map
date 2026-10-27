@@ -10,6 +10,9 @@ import "../policies.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://map.yuzen.dev"),
+  itunes: {
+    appId: "6820790448",
+  },
   robots: { index: true, follow: true },
 };
 
