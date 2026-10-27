@@ -333,9 +333,9 @@ export default function MapControlsWrapper() {
               onClick={() => setEnvExpanded(!envExpanded)}
               className="bg-background/95 backdrop-blur-md rounded-full shadow-lg border border-border/50 px-3 py-2 flex items-center gap-2 cursor-pointer select-none transition-colors hover:shadow-xl h-11"
               whileTap={{ scale: 0.96 }}
-              aria-label={t("airQuality", "空氣品質")}
               aria-expanded={envExpanded}
             >
+              <span className="sr-only">{t("airQuality", "空氣品質")} </span>
               {envLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               ) : air ? (
