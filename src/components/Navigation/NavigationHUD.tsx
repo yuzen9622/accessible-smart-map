@@ -24,6 +24,7 @@ import { NumberTicker } from "@/components/motion/number-ticker";
 import useComputeRoute from "@/hook/useComputeRoute";
 import useNavigationAudio from "@/hook/useNavigationAudio";
 import { useAppTranslation } from "@/i18n/client";
+import { getAppLanguage } from "@/i18n/language";
 import { getSafetyHazardReports } from "@/lib/api/a11y";
 import { haversineMeters } from "@/lib/geo";
 import { selectAdvisoryAnnouncement } from "@/lib/navigation/advisorySpeech";
@@ -51,6 +52,7 @@ import {
   transitSpeechText,
 } from "@/lib/navigation/transitCopy";
 import { createTransitSpeechCoordinator } from "@/lib/navigation/transitSpeechCoordinator";
+import { voiceTransitNames } from "@/lib/voice/navTransit";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
 import type { LatLng } from "@/types";
@@ -705,9 +707,11 @@ export default function NavigationHUD() {
                             ? "On {{mode}} {{route}}, {{from}} to {{to}}"
                             : "搭乘 {{mode}} {{route}}，{{from}} 至 {{to}}",
                           mode: voiceTransit.leg.mode,
-                          route: voiceTransit.leg.routeName ?? "",
-                          from: voiceTransit.leg.from,
-                          to: voiceTransit.leg.to,
+                          ...voiceTransitNames(
+                            voiceTransit.leg,
+                            getAppLanguage(),
+                            t,
+                          ),
                         })
                       : t(
                           "voiceOnVehicle",

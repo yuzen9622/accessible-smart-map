@@ -1,3 +1,4 @@
+import { sourceName } from "@/lib/route/sourceNames";
 import type { AccessibleRoute } from "@/types/route";
 import type { VoiceNavigationEvent, VoiceNavStep } from "./voiceSession";
 
@@ -47,6 +48,22 @@ export function resumedTransit(
         from: leg.departureStation,
         to: leg.arrivalStation,
         routeName: leg.lineName,
+        ...(leg.terminalStation
+          ? { terminalStation: leg.terminalStation }
+          : {}),
+        ...Object.fromEntries(
+          (
+            [
+              ["lineKey", leg.lineKey],
+              ["fromNameEn", leg.fromNameEn],
+              ["toNameEn", leg.toNameEn],
+              [
+                "terminalNameEn",
+                leg.terminalStation ? leg.terminalNameEn : undefined,
+              ],
+            ] as const
+          ).filter(([, value]) => value?.trim()),
+        ),
       },
     };
   if (leg.type === "TRA" || leg.type === "THSR")
@@ -60,4 +77,28 @@ export function resumedTransit(
       },
     };
   return { onVehicle: true, leg: null };
+}
+
+type VoiceTransitLeg = NonNullable<VoiceTransitState["leg"]>;
+
+/**
+ * HUD names for the voice transit leg in the current UI language: the line from
+ * its label, stations from canonical + source English, never stale display text.
+ */
+export function voiceTransitNames(
+  leg: VoiceTransitLeg,
+  language: "en" | "zh-TW",
+  t: (key: string, options?: Record<string, unknown>) => string,
+): { route: string; from: string; to: string } {
+  const line = leg.lineKey
+    ? t(`metroLines.${leg.lineKey}`, { defaultValue: leg.routeName ?? "" })
+    : (leg.routeName ?? "");
+  const terminal = leg.terminalStation?.trim()
+    ? sourceName(leg.terminalStation, leg.terminalNameEn, undefined, language)
+    : "";
+  return {
+    route: terminal ? t("metroLineToward", { line, terminal }) : line,
+    from: sourceName(leg.from, leg.fromNameEn, undefined, language),
+    to: sourceName(leg.to, leg.toNameEn, undefined, language),
+  };
 }

@@ -2,6 +2,7 @@ type AppLanguage = "en" | "zh-TW";
 
 import type {
   AccessibleRoute,
+  MetroLeg,
   RouteSourceNames,
   StepStreetName,
   WalkStep,
@@ -39,6 +40,48 @@ export function legSourceName(
     canonical,
     leg[`${field}NameEn`],
     leg[`${field}DisplayName`],
+    language,
+    leg.displayLanguage,
+  );
+}
+
+type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+/** Metro line text from the backend's line label; unknown labels fall back to the source line name. */
+export function metroLineName(
+  leg: Pick<
+    MetroLeg,
+    | "lineKey"
+    | "lineName"
+    | "routeNameEn"
+    | "routeDisplayName"
+    | "displayLanguage"
+  >,
+  language: AppLanguage,
+  t: Translate,
+): string {
+  const fallback = legSourceName(leg, "route", leg.lineName, language);
+  return leg.lineKey
+    ? t(`metroLines.${leg.lineKey}`, { defaultValue: fallback })
+    : fallback;
+}
+
+/** The selected trip's terminal for 「往…」; never substituted by the alighting station. */
+export function metroTerminalName(
+  leg: Pick<
+    MetroLeg,
+    | "terminalStation"
+    | "terminalNameEn"
+    | "terminalDisplayName"
+    | "displayLanguage"
+  >,
+  language: AppLanguage,
+): string | undefined {
+  if (!nonemptyName(leg.terminalStation)) return undefined;
+  return sourceName(
+    leg.terminalStation,
+    leg.terminalNameEn,
+    leg.terminalDisplayName,
     language,
     leg.displayLanguage,
   );

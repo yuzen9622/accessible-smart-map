@@ -236,6 +236,13 @@ export type VoiceNavigationEvent =
         from: string;
         to: string;
         routeName?: string;
+        /** METRO only: the train's terminal (往…); `to` stays the alighting station. */
+        terminalStation?: string;
+        /** METRO only: line label for `metroLines.<lineKey>` and source English names. */
+        lineKey?: string;
+        fromNameEn?: string;
+        toNameEn?: string;
+        terminalNameEn?: string;
       };
     }
   | { type: "nav.arrived" }

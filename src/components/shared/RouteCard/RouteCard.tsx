@@ -12,7 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
 import { fitRouteBounds, routeBoundsFromLegs } from "@/lib/mapCamera";
-import { legSourceName } from "@/lib/route/sourceNames";
+import { legSourceName, metroLineName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import type { LatLng } from "@/types";
@@ -141,7 +141,7 @@ export const RouteCard = memo(function RouteCard({
             label = legSourceName(l, "route", l.routeName, language);
             break;
           case "METRO":
-            label = legSourceName(l, "route", l.lineName, language);
+            label = metroLineName(l, language, t);
             break;
           case "THSR":
             label = `${t("thsr")} ${l.trainNo}`;
@@ -541,7 +541,7 @@ export const RouteCard = memo(function RouteCard({
         <CardContent className="pt-0">
           <Button
             type="button"
-            aria-label={`${t("selectRoute")}: ${route.routeName}`}
+            aria-label={`${t("selectRoute")}: ${routeSummary.map(({ label }) => label).join(" → ") || t("walk")}`}
             onClick={handleSelect}
             variant="default"
             className="w-full"

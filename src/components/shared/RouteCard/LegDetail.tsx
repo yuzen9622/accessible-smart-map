@@ -9,7 +9,11 @@ import {
 } from "lucide-react";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
-import { legSourceName } from "@/lib/route/sourceNames";
+import {
+  legSourceName,
+  metroLineName,
+  metroTerminalName,
+} from "@/lib/route/sourceNames";
 import type { AccessibleRoute, RouteLeg, WaitInfo } from "@/types/route";
 import { formatDistance, formatDuration, getLegColor } from "@/types/route";
 import { LegAlertNotice } from "../TransitAlerts";
@@ -176,7 +180,9 @@ export function LegDetail({
           {leg.alerts && <LegAlertNotice alerts={leg.alerts} />}
         </div>
       );
-    case "METRO":
+    case "METRO": {
+      const line = metroLineName(leg, getAppLanguage(), t);
+      const terminal = metroTerminalName(leg, getAppLanguage());
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -184,7 +190,7 @@ export function LegDetail({
               className="px-2 py-0.5 rounded text-xs font-bold text-white"
               style={{ backgroundColor: getLegColor(leg) }}
             >
-              {legSourceName(leg, "route", leg.lineName, getAppLanguage())}
+              {terminal ? t("metroLineToward", { line, terminal }) : line}
             </div>
             <WaitBadge waitInfo={leg.waitInfo} />
           </div>
@@ -218,6 +224,7 @@ export function LegDetail({
           {leg.alerts && <LegAlertNotice alerts={leg.alerts} />}
         </div>
       );
+    }
     case "THSR":
     case "TRA": {
       const badgeLabel =
