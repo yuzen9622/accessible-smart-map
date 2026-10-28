@@ -14,6 +14,7 @@ import {
   isUsableStairCandidate,
 } from "./facilityAreas";
 import {
+  buildingWallGeometry,
   centroid,
   clipSegmentHeight,
   DISPLAY_SLAB_THICKNESS,
@@ -24,7 +25,6 @@ import {
   isOpening,
   labelAnchor,
   segmentRectangle,
-  wallGeometry,
 } from "./geometry";
 import { getIndoorPalette, type IndoorMaterialRole } from "./indoorTheme";
 import {
@@ -533,7 +533,7 @@ export function rebuildIndoorContent(
         facility,
       );
     }
-    const walls = wallGeometry(model, ordinal);
+    const walls = buildingWallGeometry(model, ordinal);
     for (const polygon of walls.polygons)
       s.content.add(solid(polygon, base, DISPLAY_WALL_HEIGHT, wallMaterial));
     for (const { a, b } of walls.boundaryWalls) {

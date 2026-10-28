@@ -177,10 +177,7 @@ export function isEnclosed(feature: IndoorFeature) {
   return feature.kind === "room" || feature.tags.amenity === "toilets";
 }
 
-export function floorGeometry(
-  model: LocalIndoorModel,
-  ordinal: number,
-): MultiPolygon {
+function floorParts(model: LocalIndoorModel, ordinal: number) {
   const polygons = model.features.filter(
     (f) => f.ordinal === ordinal && f.geometry.type === "Polygon",
   );
@@ -202,9 +199,28 @@ export function floorGeometry(
     )
     .map(rings);
   const voids = polygons.filter(isVoid).map(rings);
+  return { patches, voids };
+}
+
+export function floorGeometry(
+  model: LocalIndoorModel,
+  ordinal: number,
+): MultiPolygon {
+  const { patches, voids } = floorParts(model, ordinal);
   if (!patches.length) return [];
   const floor = polygonClipping.union(patches[0], ...patches.slice(1));
   return voids.length ? polygonClipping.difference(floor, ...voids) : floor;
+}
+
+/** The floor's outer edge on this level. An authored void stays inside it:
+ * an atrium edge is a railing, not an exterior wall. */
+export function floorOutline(
+  model: LocalIndoorModel,
+  ordinal: number,
+): MultiPolygon {
+  const { patches } = floorParts(model, ordinal);
+  if (!patches.length) return [];
+  return polygonClipping.union(patches[0], ...patches.slice(1));
 }
 
 export interface WallSegment {
@@ -650,6 +666,177 @@ export function wallGeometry(
         )
       : merged,
     boundaryWalls,
+  };
+}
+
+/** Polygon-union output can keep zero-area slivers where traced floor pieces
+ * meet. They are not courtyards and get no wall. */
+const MIN_EXTERIOR_HOLE_AREA = 1;
+/** Clear opening where a source link leaves the floor. Entrances carry no
+ * surveyed door width; this is display only and never affects routing. */
+export const DISPLAY_ENTRANCE_WIDTH = 1.6;
+/** Opening cut depth on each side of the outline, deep enough to clear both
+ * the exterior strip and a room wall along the same edge. */
+const ENTRANCE_CUT_DEPTH = 0.3;
+/** Endpoints this close to the outline sit on it (traced entrance nodes). */
+const OUTLINE_TOLERANCE = 0.05;
+
+function pointSegmentDistance(p: XY, a: XY, b: XY) {
+  const dx = b[0] - a[0],
+    dy = b[1] - a[1];
+  const length2 = dx * dx + dy * dy;
+  const t = length2
+    ? Math.max(
+        0,
+        Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2),
+      )
+    : 0;
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
+
+/** Where a source link leaves the floor: an entrance or a link to another
+ * building. A link that only reaches the outline from inside (a dead-end
+ * corridor) is not an opening. */
+function exteriorOpenings(
+  model: LocalIndoorModel,
+  ordinal: number,
+  outline: MultiPolygon,
+): Polygon[] {
+  const level = model.building.levels.find((l) => l.ordinal === ordinal);
+  const nodes = new Map(model.nodes.map((node) => [node.id, node]));
+  const own = (id: string) => {
+    const node = nodes.get(id);
+    return node?.buildingId === model.building.id && node.ordinal === ordinal;
+  };
+  const segments: [XY, XY][] = [];
+  for (const edge of model.edges) {
+    const a = nodes.get(edge.from),
+      b = nodes.get(edge.to);
+    if (edge.kind === "elevator" || !a || !b) continue;
+    if (own(edge.from) || own(edge.to))
+      segments.push([
+        [a.point[0], a.point[1]],
+        [b.point[0], b.point[1]],
+      ]);
+  }
+  for (const connection of model.campus?.connections ?? model.connections) {
+    if (
+      connection.kind === "elevator" ||
+      connection.buildingId !== model.building.id ||
+      !level
+    )
+      continue;
+    const points = connection.coordinates;
+    for (let i = 1; i < points.length; i++)
+      if (
+        connection.levelRefs[i - 1] === level.ref ||
+        connection.levelRefs[i] === level.ref
+      )
+        segments.push([
+          [points[i - 1][0], points[i - 1][1]],
+          [points[i][0], points[i][1]],
+        ]);
+  }
+  const edges = outline.flatMap((polygon) =>
+    polygon.flatMap((ring) =>
+      ring.slice(1).map((point, i): [XY, XY] => [ring[i], point]),
+    ),
+  );
+  const side = (point: XY) =>
+    edges.some(
+      ([a, b]) => pointSegmentDistance(point, a, b) < OUTLINE_TOLERANCE,
+    )
+      ? 0
+      : outline.some((polygon) => inside(point, polygon))
+        ? 1
+        : -1;
+  const cross = (a: XY, b: XY) => a[0] * b[1] - a[1] * b[0];
+  const openings: Polygon[] = [];
+  for (const [start, end] of segments) {
+    const delta: XY = [end[0] - start[0], end[1] - start[1]];
+    const length = Math.hypot(...delta);
+    if (length < EPS) continue;
+    for (const [a, b] of edges) {
+      const edge: XY = [b[0] - a[0], b[1] - a[1]];
+      const denominator = cross(delta, edge);
+      if (Math.abs(denominator) < 1e-9) continue;
+      const offset: XY = [a[0] - start[0], a[1] - start[1]];
+      const t = cross(offset, edge) / denominator;
+      const u = cross(offset, delta) / denominator;
+      const slack = OUTLINE_TOLERANCE / length;
+      if (t < -slack || t > 1 + slack || u < 0 || u > 1) continue;
+      const at = (s: number): XY => {
+        const clamped = Math.max(0, Math.min(1, s));
+        return [start[0] + delta[0] * clamped, start[1] + delta[1] * clamped];
+      };
+      // Sample just past the crossing on both sides along the link; an end
+      // that sits on the outline samples as the endpoint itself.
+      const step = (OUTLINE_TOLERANCE * 2) / length;
+      const sides = [side(at(t - step)), side(at(t + step))];
+      if (!sides.includes(-1) || sides.every((s) => s === -1)) continue;
+      const edgeLength = Math.hypot(...edge);
+      const along: XY = [edge[0] / edgeLength, edge[1] / edgeLength];
+      const normal: XY = [-along[1], along[0]];
+      const center: XY = [a[0] + edge[0] * u, a[1] + edge[1] * u];
+      const corner = (s: number, n: number): XY => [
+        center[0] + along[0] * s + normal[0] * n,
+        center[1] + along[1] * s + normal[1] * n,
+      ];
+      const half = DISPLAY_ENTRANCE_WIDTH / 2;
+      openings.push([
+        [
+          corner(-half, -ENTRANCE_CUT_DEPTH),
+          corner(half, -ENTRANCE_CUT_DEPTH),
+          corner(half, ENTRANCE_CUT_DEPTH),
+          corner(-half, ENTRANCE_CUT_DEPTH),
+          corner(-half, -ENTRANCE_CUT_DEPTH),
+        ],
+      ]);
+    }
+  }
+  return openings;
+}
+
+/** Every room/source wall plus a closed exterior wall along the floor's outer
+ * edge, open only where a source link enters or leaves the building. */
+export function buildingWallGeometry(
+  model: LocalIndoorModel,
+  ordinal: number,
+): IndoorWallGeometry {
+  const interior = wallGeometry(model, ordinal);
+  const outline = floorOutline(model, ordinal).map((polygon) => [
+    polygon[0],
+    ...polygon
+      .slice(1)
+      .filter((ring) => Math.abs(area(ring)) >= MIN_EXTERIOR_HOLE_AREA),
+  ]);
+  if (!outline.length) return interior;
+  const shell = roomWalls(
+    outline.map(
+      (coordinates, index): IndoorFeature => ({
+        id: `exterior-${index}`,
+        kind: "room",
+        ordinal,
+        levelRef: null,
+        geometry: { type: "Polygon", coordinates },
+        tags: {},
+        geometryStatus: model.building.geometryStatus,
+        heightStatus: model.building.heightStatus,
+      }),
+    ),
+  ).map((wall) => wall.polygon);
+  const walls = unionWallPolygons([...interior.polygons, ...shell]);
+  const openings = exteriorOpenings(model, ordinal, outline);
+  return {
+    polygons: openings.length
+      ? cleanWallOverlay(
+          polygonClipping.difference(
+            walls,
+            ...openings.map(wallOverlayPolygon),
+          ),
+        )
+      : walls,
+    boundaryWalls: interior.boundaryWalls,
   };
 }
 
