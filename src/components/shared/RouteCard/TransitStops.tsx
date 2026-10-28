@@ -64,6 +64,7 @@ export function TransitStops({
   intermediateStops,
   displayLanguage,
   color,
+  edgeColor,
   departureA11y,
   arrivalA11y,
   isSelected,
@@ -82,6 +83,7 @@ export function TransitStops({
   intermediateStops?: IntermediateStop[];
   displayLanguage?: "en" | "zh-TW";
   color: string;
+  edgeColor?: string;
   departureA11y?: SlimOsmA11y[];
   arrivalA11y?: SlimOsmA11y[];
   isSelected?: boolean;
@@ -125,6 +127,7 @@ export function TransitStops({
         displayLanguage={displayLanguage}
         rows={intermediateRows}
         color={color}
+        edgeColor={edgeColor}
         etaStatus={etaStatus}
         open={isStopsOpen}
         onOpenChange={onStopsOpenChange}

@@ -23,6 +23,7 @@ vi.mock("@/i18n/client", () => ({
 vi.mock("@/i18n/language", () => ({ getAppLanguage: () => "zh-TW" }));
 
 const { LegDetail } = await import("../LegDetail");
+const { IntermediateStops } = await import("../IntermediateStops");
 
 const metro = (patch: Partial<MetroLeg> = {}): MetroLeg => ({
   type: "METRO",
@@ -98,5 +99,42 @@ describe("metro leg title", () => {
     const html = render(metro());
     expect(html).toContain("板南線");
     expect(html).not.toContain("・往");
+  });
+});
+
+describe("metro line badge colours", () => {
+  const badgeStyle = (html: string) =>
+    html.match(/<div class="px-2 py-0.5 rounded[^"]*" style="([^"]*)"/)?.[1];
+
+  it("uses dark text on the Circular Line yellow", () => {
+    expect(badgeStyle(render(metro({ lineKey: "NTMC_Y" })))).toBe(
+      "background-color:#FFDB00;color:#1A1A1A",
+    );
+  });
+
+  it("uses white text on the Tamsui-Xinyi red", () => {
+    expect(badgeStyle(render(metro({ lineKey: "TRTC_R" })))).toBe(
+      "background-color:#E3002C;color:#FFFFFF",
+    );
+  });
+
+  it("keeps the generic metro badge for a line without a colour", () => {
+    expect(badgeStyle(render(metro({ lineKey: "KRTC_R" })))).toBe(
+      "background-color:#FF6B35",
+    );
+  });
+
+  it("outlines stop dots of a coloured line", () => {
+    const html = renderToStaticMarkup(
+      <IntermediateStops
+        stops={[{ name: "板新", stationUid: "NTMC_Y08" }]}
+        color="#FFDB00"
+        edgeColor="#1A1A1A"
+        open
+      />,
+    );
+    expect(html).toContain(
+      'style="background-color:#FFDB00;border-color:#1A1A1A"',
+    );
   });
 });

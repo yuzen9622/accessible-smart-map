@@ -12,6 +12,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
 import { fitRouteBounds, routeBoundsFromLegs } from "@/lib/mapCamera";
+import { metroLineColors } from "@/lib/route/metroLineColors";
 import { legSourceName, metroLineName } from "@/lib/route/sourceNames";
 import { cn } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
@@ -325,25 +326,40 @@ export const RouteCard = memo(function RouteCard({
           <div className="relative space-y-2">
             {route.legs.map((leg, index) => {
               const color = getLegColor(leg);
+              const lineColors = metroLineColors(leg);
               return (
                 <div key={getLegKey(leg)} className="relative pl-8">
                   {(index !== route.legs.length - 1 ||
                     separateWalkingContinuation) && (
                     <div
                       className="absolute left-3.5 top-11 bottom-0 w-0.5 rounded-full"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${color} 40%, transparent)`,
-                      }}
+                      style={
+                        lineColors
+                          ? {
+                              backgroundColor: lineColors.fill,
+                              boxShadow: `0 0 0 1px ${lineColors.fg}`,
+                            }
+                          : {
+                              backgroundColor: `color-mix(in srgb, ${color} 40%, transparent)`,
+                            }
+                      }
                     />
                   )}
 
                   <div className="absolute left-0 top-1">
                     <div
                       className="flex items-center justify-center w-8 h-8 rounded-full border-2 bg-background"
-                      style={{
-                        borderColor: `color-mix(in srgb, ${color} 55%, transparent)`,
-                        backgroundColor: `color-mix(in srgb, ${color} 10%, var(--background))`,
-                      }}
+                      style={
+                        lineColors
+                          ? {
+                              borderColor: lineColors.fg,
+                              backgroundColor: lineColors.fill,
+                            }
+                          : {
+                              borderColor: `color-mix(in srgb, ${color} 55%, transparent)`,
+                              backgroundColor: `color-mix(in srgb, ${color} 10%, var(--background))`,
+                            }
+                      }
                     >
                       <LegIcon leg={leg} />
                     </div>

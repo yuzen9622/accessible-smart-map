@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
+import { metroLineColors } from "@/lib/route/metroLineColors";
 import {
   legSourceName,
   metroLineName,
@@ -26,8 +27,9 @@ import { getPointLabel, shouldAppendExitNumber } from "./utils";
 import { WalkA11ySummary } from "./WalkA11ySummary";
 import { type WalkingContinuation, WalkStepsList } from "./WalkStepsList";
 
+/** Drawn inside a leg circle; a coloured metro line fills the circle, so the icon takes its ink. */
 export function LegIcon({ leg }: { leg: RouteLeg }) {
-  const color = getLegColor(leg);
+  const color = metroLineColors(leg)?.fg ?? getLegColor(leg);
   switch (leg.type) {
     case "WALK":
       return <Footprints className="h-4 w-4" style={{ color }} />;
@@ -183,12 +185,16 @@ export function LegDetail({
     case "METRO": {
       const line = metroLineName(leg, getAppLanguage(), t);
       const terminal = metroTerminalName(leg, getAppLanguage());
+      const lineColors = metroLineColors(leg);
       return (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div
               className="px-2 py-0.5 rounded text-xs font-bold text-white"
-              style={{ backgroundColor: getLegColor(leg) }}
+              style={{
+                backgroundColor: getLegColor(leg),
+                ...(lineColors ? { color: lineColors.fg } : {}),
+              }}
             >
               {terminal ? t("metroLineToward", { line, terminal }) : line}
             </div>
@@ -211,6 +217,7 @@ export function LegDetail({
               displayLanguage={leg.displayLanguage}
               intermediateStops={leg.intermediateStops}
               color={getLegColor(leg)}
+              edgeColor={lineColors?.fg}
               departureA11y={leg.departureStationA11y}
               arrivalA11y={leg.arrivalStationA11y}
               isSelected={isSelected}

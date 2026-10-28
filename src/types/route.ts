@@ -1,3 +1,4 @@
+import { metroLineColors } from "@/lib/route/metroLineColors";
 import type { ElevationProfile } from "./elevation";
 import type { BusDirection, ScheduledBusDirection } from "./transit";
 import type {
@@ -1069,7 +1070,8 @@ const LEG_COLORS: Record<string, string> = {
 
 export function getLegColor(leg: RouteLeg): string {
   if (leg.type === "BUS") return LEG_COLORS.BUS;
-  if (leg.type === "METRO") return LEG_COLORS.METRO;
+  if (leg.type === "METRO")
+    return metroLineColors(leg)?.fill ?? LEG_COLORS.METRO;
   return LEG_COLORS[leg.type] || LEG_COLORS.BUS;
 }
 
