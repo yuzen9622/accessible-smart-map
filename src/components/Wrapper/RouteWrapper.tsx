@@ -24,6 +24,7 @@ import {
   poseAtAlong,
   splitLegAtProgress,
 } from "@/lib/navigation/navigationProgress";
+import { metroLineColors } from "@/lib/route/metroLineColors";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type {
@@ -250,8 +251,9 @@ function DriveIncidentOverlay({
   );
 }
 
+/** Marker icon; a coloured metro line fills the marker, so the icon takes its ink. */
 function getLegIcon(leg: RouteLeg) {
-  const color = getLegColor(leg);
+  const color = metroLineColors(leg)?.fg ?? getLegColor(leg);
   switch (leg.type) {
     case "WALK":
       return <Footprints className="h-4 w-4" style={{ color }} />;
@@ -410,6 +412,7 @@ export default function RouteLine() {
         path.length,
       ].join("-");
       const color = getLegColor(leg);
+      const lineColors = metroLineColors(leg);
       const isWalking = leg.type === "WALK";
       const isDriving = leg.type === "DRIVE" || leg.type === "MOTORCYCLE";
       const legId = `route-leg-${legKey}`;
@@ -446,7 +449,14 @@ export default function RouteLine() {
             <div className="relative">
               <div
                 className="flex items-center justify-center w-8 h-8 bg-white rounded-full border-2 shadow-lg relative z-10"
-                style={{ borderColor: color }}
+                style={
+                  lineColors
+                    ? {
+                        borderColor: lineColors.fg,
+                        backgroundColor: lineColors.fill,
+                      }
+                    : { borderColor: color }
+                }
               >
                 {getLegIcon(leg)}
               </div>
@@ -512,6 +522,19 @@ export default function RouteLine() {
       return (
         <Fragment key={`leg-${legKey}`}>
           {completedLine}
+          {/* Light line colours (環狀 yellow) vanish on light tiles without an
+              outline; MapLibre paints in mount order, so the casing goes first. */}
+          {lineColors && (
+            <Polyline
+              id={`${legId}-casing`}
+              path={remainingPath}
+              strokeColor={lineColors.fg}
+              strokeOpacity={0.9}
+              strokeWeight={11}
+              lineCap="round"
+              lineJoin="round"
+            />
+          )}
           <Polyline
             id={legId}
             path={remainingPath}

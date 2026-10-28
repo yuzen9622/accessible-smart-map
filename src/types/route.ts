@@ -1,3 +1,4 @@
+import { metroLineColors } from "@/lib/route/metroLineColors";
 import type { ElevationProfile } from "./elevation";
 import type { BusDirection, ScheduledBusDirection } from "./transit";
 import type {
@@ -268,12 +269,20 @@ export interface MetroLeg extends RouteSourceNames {
   type: "METRO";
   railSystem: string;
   lineId: string;
+  /** Line label; display it via i18n `metroLines.<lineKey>`, not `lineName`. */
+  lineKey?: string;
+  /** Canonical Chinese line name, the fallback when `lineKey` is absent. */
   lineName: string;
   lineUid: string;
   departureStation: string;
   arrivalStation: string;
   departureStationUid: string;
   arrivalStationUid: string;
+  /** Final stop of the selected trip (往…); `arrivalStation` is where the rider alights. */
+  terminalStation?: string;
+  terminalStationUid?: string;
+  terminalNameEn?: string;
+  terminalDisplayName?: string;
   direction: 0 | 1;
   stopsCount: number;
   rideMinutes: number;
@@ -1061,7 +1070,8 @@ const LEG_COLORS: Record<string, string> = {
 
 export function getLegColor(leg: RouteLeg): string {
   if (leg.type === "BUS") return LEG_COLORS.BUS;
-  if (leg.type === "METRO") return LEG_COLORS.METRO;
+  if (leg.type === "METRO")
+    return metroLineColors(leg)?.fill ?? LEG_COLORS.METRO;
   return LEG_COLORS[leg.type] || LEG_COLORS.BUS;
 }
 

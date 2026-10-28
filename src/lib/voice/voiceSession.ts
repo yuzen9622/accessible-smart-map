@@ -205,7 +205,9 @@ export interface VoiceNavAdvisory {
 export type VoiceNavigationEvent =
   | {
       type: "nav.start";
-      /** Frontend-only identity captured from the armed route on an explicit start tool call. */
+      /** The route the server started; differs from the selection when voice chose another candidate. */
+      routeToken?: string;
+      /** Frontend-only identity: the server's `routeToken`, else the route armed at the start tool call. */
       armedRouteToken?: string;
       selectionGeneration?: number;
       steps: VoiceNavStep[];
@@ -236,6 +238,13 @@ export type VoiceNavigationEvent =
         from: string;
         to: string;
         routeName?: string;
+        /** METRO only: the train's terminal (往…); `to` stays the alighting station. */
+        terminalStation?: string;
+        /** METRO only: line label for `metroLines.<lineKey>` and source English names. */
+        lineKey?: string;
+        fromNameEn?: string;
+        toNameEn?: string;
+        terminalNameEn?: string;
       };
     }
   | { type: "nav.arrived" }
@@ -1321,15 +1330,15 @@ export class VoiceSessionController {
           return;
         }
         this.ignoreNavigation = false;
+        const armedRouteToken =
+          event.routeToken ?? this.pendingStartRoute?.routeToken;
         this.deps.onNavigationEvent({
           ...event,
           selectionGeneration:
             this.pendingStartRoute?.generation ??
             this.deps.getRouteGeneration?.() ??
             0,
-          ...(this.pendingStartRoute?.routeToken
-            ? { armedRouteToken: this.pendingStartRoute.routeToken }
-            : {}),
+          ...(armedRouteToken ? { armedRouteToken } : {}),
         });
         return;
       }

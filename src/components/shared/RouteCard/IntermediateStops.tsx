@@ -65,6 +65,7 @@ export function IntermediateStops({
   displayLanguage,
   rows,
   color,
+  edgeColor,
   etaStatus,
   open,
   onOpenChange,
@@ -74,6 +75,8 @@ export function IntermediateStops({
   displayLanguage?: "en" | "zh-TW";
   rows?: BusLegStopRow[];
   color: string;
+  /** Outline for light line colours (metro), so stop dots stay visible on the card. */
+  edgeColor?: string;
   etaStatus?: BusLegEtaStatus;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -206,7 +209,10 @@ export function IntermediateStops({
                 >
                   <div
                     className="w-1.5 h-1.5 rounded-full shrink-0 border border-background"
-                    style={{ backgroundColor: color }}
+                    style={{
+                      backgroundColor: color,
+                      ...(edgeColor ? { borderColor: edgeColor } : {}),
+                    }}
                   />
                   <span>
                     {sourceName(

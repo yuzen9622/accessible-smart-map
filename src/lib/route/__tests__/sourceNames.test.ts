@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { AccessibleRoute, StepStreetName, WalkStep } from "@/types/route";
 import {
   legSourceName,
+  metroLineName,
+  metroTerminalName,
   sourceName,
   walkStreetName,
   withRouteNameLanguage,
@@ -18,6 +20,47 @@ const step: WalkStep = {
   distanceM: 30,
   location: [121, 25],
 };
+
+describe("metro line name", () => {
+  const t = (key: string, values?: Record<string, unknown>) =>
+    key === "metroLines.TRTC_BL" ? "Bannan Line" : String(values?.defaultValue);
+  it("translates the backend line label instead of rendering source words", () => {
+    expect(
+      metroLineName({ lineKey: "TRTC_BL", lineName: "板南線" }, "en", t),
+    ).toBe("Bannan Line");
+  });
+  it("falls back to the source line name when the label is missing or unknown", () => {
+    expect(metroLineName({ lineName: "某線" }, "en", t)).toBe("某線");
+    expect(metroLineName({ lineKey: "X", lineName: "某線" }, "en", t)).toBe(
+      "某線",
+    );
+  });
+});
+
+describe("metro terminal name", () => {
+  it("uses the trip terminal in the requested language", () => {
+    const leg = {
+      terminalStation: "頂埔",
+      terminalNameEn: "Dingpu",
+      terminalDisplayName: "Dingpu",
+      displayLanguage: "en" as const,
+    };
+    expect(metroTerminalName(leg, "en")).toBe("Dingpu");
+    expect(metroTerminalName(leg, "zh-TW")).toBe("頂埔");
+    expect(metroTerminalName({ terminalStation: "亞東醫院" }, "en")).toBe(
+      "亞東醫院",
+    );
+  });
+  it("returns nothing when the trip had no terminal, even with display leftovers", () => {
+    expect(metroTerminalName({}, "zh-TW")).toBeUndefined();
+    expect(
+      metroTerminalName(
+        { terminalStation: " ", terminalDisplayName: "stale" },
+        "zh-TW",
+      ),
+    ).toBeUndefined();
+  });
+});
 
 describe("route source names", () => {
   it("prefers nonempty display only for its response language", () => {

@@ -310,9 +310,9 @@ describe("venue journeys retain the existing route-results interface", () => {
     });
     render();
     h.buttons
-      .find(
-        (button) => button["aria-label"] === "selectRoute: Second candidate",
-      )
+      // Only the unselected candidate renders a select button; its label is
+      // the localized leg summary, not the backend's routeName.
+      .find((button) => button["aria-label"] === "selectRoute: Synthetic 99")
       ?.onClick?.();
     expect(useMapStore.getState().selectRoute?.route).toBe(alternate);
     expect(useMapStore.getState().venueJourney?.outdoor?.selectedIndex).toBe(1);
@@ -508,9 +508,9 @@ describe("venue journeys retain the existing route-results interface", () => {
       expect(continuation.steps.props.approach).toBe(expected);
     }
     h.buttons
-      .find(
-        (button) => button["aria-label"] === "selectRoute: Second candidate",
-      )
+      // Only the unselected candidate renders a select button; its label is
+      // the localized leg summary, not the backend's routeName.
+      .find((button) => button["aria-label"] === "selectRoute: Synthetic 99")
       ?.onClick?.();
     const next = render().markup;
     expect(next).toContain("TailBetaRoad");

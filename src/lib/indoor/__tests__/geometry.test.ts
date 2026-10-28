@@ -3,6 +3,7 @@ import { ExtrudeGeometry, Path, Shape, Vector2 } from "three";
 import { describe, expect, it } from "vitest";
 import {
   area,
+  buildingWallGeometry,
   centroid,
   clipSegmentHeight,
   floorGeometry,
@@ -674,6 +675,126 @@ describe("authored walls and public corridors", () => {
         ]),
       ),
     ).toBeCloseTo(0.18);
+  });
+});
+
+describe("exterior building walls", () => {
+  const hall = rectangle(0, 0, 10, 6);
+  const wallAt = (polygons: MultiPolygon, [x, y]: XY) =>
+    polygonClipping.intersection(polygons, [
+      rectangle(x - 0.02, y - 0.02, x + 0.02, y + 0.02),
+    ]).length > 0;
+
+  function linked(
+    features: IndoorFeature[],
+    links: [XY, XY, string | null, number | null][],
+  ) {
+    const data = model(features);
+    links.forEach(([from, to, buildingId, ordinal], index) => {
+      const ids = [`${index}-a`, `${index}-b`];
+      data.nodes.push(
+        {
+          id: ids[0],
+          buildingId: "synthetic",
+          point: [...from, 0],
+          ordinal: 0,
+          levelRef: "1F",
+          kind: "corridor",
+        },
+        {
+          id: ids[1],
+          buildingId,
+          point: [...to, 0],
+          ordinal,
+          levelRef: ordinal === null ? null : "1F",
+          kind: "footway",
+        },
+      );
+      data.edges.push({
+        id: `link-${index}`,
+        from: ids[0],
+        to: ids[1],
+        kind: "footway",
+        lengthM: 1,
+        wheelchair: "yes",
+        ramp: false,
+        heightPending: false,
+        geometryStatus: "schematic",
+        heightStatus: "estimated",
+        tags: {},
+        osmRef: "synthetic",
+      });
+    });
+    return data;
+  }
+
+  it("closes every side of the floor's outer edge", () => {
+    const { polygons } = buildingWallGeometry(
+      model([feature("hall", hall, { kind: "corridor" })]),
+      0,
+    );
+    for (const point of [
+      [5, 0.06],
+      [9.94, 3],
+      [5, 5.94],
+      [0.06, 3],
+    ] as XY[])
+      expect(wallAt(polygons, point)).toBe(true);
+    expect(wallAt(polygons, [5, 3])).toBe(false);
+  });
+
+  it("opens the wall only where a link leaves the floor", () => {
+    const data = linked(
+      [feature("hall", hall, { kind: "corridor" })],
+      [
+        [[5, 3], [5, 0], "synthetic", 0],
+        [[5, 0], [5, -4], null, null],
+      ],
+    );
+    const { polygons } = buildingWallGeometry(data, 0);
+    expect(
+      polygonClipping.intersection(polygons, [rectangle(4.25, -1, 5.75, 1)]),
+    ).toEqual([]);
+    expect(wallAt(polygons, [3.5, 0.06])).toBe(true);
+    expect(wallAt(polygons, [6.5, 0.06])).toBe(true);
+    // Only the floor of the linked node is opened.
+    expect(wallAt(buildingWallGeometry(data, 1).polygons, [5, 0.06])).toBe(
+      false,
+    );
+  });
+
+  it("keeps the wall closed where a corridor only reaches the outline", () => {
+    const data = linked(
+      [feature("hall", hall, { kind: "corridor" })],
+      [[[5, 3], [5, 0], "synthetic", 0]],
+    );
+    expect(wallAt(buildingWallGeometry(data, 0).polygons, [5, 0.06])).toBe(
+      true,
+    );
+  });
+
+  it("opens a room wall on the same edge as the entrance", () => {
+    const data = linked(
+      [feature("lobby", hall)],
+      [[[5, 3], [5, -4], "neighbour", 0]],
+    );
+    const { polygons } = buildingWallGeometry(data, 0);
+    expect(wallAt(wallGeometry(data, 0).polygons, [5, 0.06])).toBe(true);
+    expect(wallAt(polygons, [5, 0.06])).toBe(false);
+    expect(wallAt(polygons, [5, 5.94])).toBe(true);
+  });
+
+  it("leaves an atrium edge open", () => {
+    const data = model([
+      feature("hall", hall, { kind: "corridor" }),
+      feature("atrium", rectangle(3, 2, 7, 4), {
+        kind: "area",
+        tags: { "a11ymap:area_type": "void" },
+      }),
+    ]);
+    const { polygons } = buildingWallGeometry(data, 0);
+    expect(wallAt(polygons, [3.06, 3])).toBe(false);
+    expect(wallAt(polygons, [2.94, 3])).toBe(false);
   });
 });
 
