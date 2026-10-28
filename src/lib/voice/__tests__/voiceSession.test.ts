@@ -1364,6 +1364,37 @@ describe("explicit navigation start selection ownership", () => {
     h.controller.end();
   });
 
+  it("follows the server's started route when voice chose another candidate", () => {
+    const h = createHarness();
+    h.controller.setNavigationRoute("route-a");
+    h.controller.start();
+    const socket = h.sockets[0];
+    socket.triggerOpen();
+    socket.triggerMessage(JSON.stringify({ type: "session.ready" }));
+    socket.triggerMessage(
+      JSON.stringify({
+        type: "tool_call",
+        name: "startNavigation",
+        callId: "start-b",
+        turnId: "turn-b",
+      }),
+    );
+    const start = {
+      type: "nav.start",
+      routeToken: "route-b",
+      steps: [],
+      currentStepIndex: 0,
+      totalSteps: 0,
+    };
+    socket.triggerMessage(JSON.stringify(start));
+    expect(h.onNavigationEvent).toHaveBeenCalledExactlyOnceWith({
+      ...start,
+      armedRouteToken: "route-b",
+      selectionGeneration: 0,
+    });
+    h.controller.end();
+  });
+
   it.each(["nav.start", "tool_result"])(
     "rejects a superseded %s and cancels backend navigation",
     (first) => {
