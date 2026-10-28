@@ -184,30 +184,27 @@ export function floorGeometry(
   const polygons = model.features.filter(
     (f) => f.ordinal === ordinal && f.geometry.type === "Polygon",
   );
+  const rings = (f: IndoorFeature) =>
+    (f.geometry as { type: "Polygon"; coordinates: XY[][] }).coordinates;
+  const isVoid = (f: IndoorFeature) =>
+    /void/.test(f.tags["a11ymap:area_type"] || "");
+  // Stair, shaft and core openings stay part of the slab so no floor shows the
+  // map through a gap; their outlines and facility markers are drawn on top.
+  // Only an authored void (atrium, double-height space) is left open.
   const patches = polygons
     .filter(
       (f) =>
-        !isOpening(f) &&
-        (isFloorBase(f) ||
-          f.kind === "room" ||
-          f.kind === "corridor" ||
-          f.tags.amenity === "toilets"),
+        (isOpening(f) && !isVoid(f)) ||
+        isFloorBase(f) ||
+        f.kind === "room" ||
+        f.kind === "corridor" ||
+        f.tags.amenity === "toilets",
     )
-    .map(
-      (f) =>
-        (f.geometry as { type: "Polygon"; coordinates: XY[][] }).coordinates,
-    );
-  const openings = polygons
-    .filter(isOpening)
-    .map(
-      (f) =>
-        (f.geometry as { type: "Polygon"; coordinates: XY[][] }).coordinates,
-    );
+    .map(rings);
+  const voids = polygons.filter(isVoid).map(rings);
   if (!patches.length) return [];
   const floor = polygonClipping.union(patches[0], ...patches.slice(1));
-  return openings.length
-    ? polygonClipping.difference(floor, ...openings)
-    : floor;
+  return voids.length ? polygonClipping.difference(floor, ...voids) : floor;
 }
 
 export interface WallSegment {

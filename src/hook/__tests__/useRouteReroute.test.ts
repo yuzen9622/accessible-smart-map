@@ -18,7 +18,7 @@ import type {
   AccessibleRouteRerouteRequest,
   NavInstruction,
 } from "@/types/route";
-import {
+import useRouteReroute, {
   LocalRerouteController,
   LocalRerouteCoordinator,
   REROUTE_COOLDOWN_MS,
@@ -145,6 +145,20 @@ afterEach(() => {
     computeRoutes: null,
   });
   vi.restoreAllMocks();
+});
+
+describe("useRouteReroute", () => {
+  // useNavigation lists these callbacks as effect deps while that effect writes
+  // routeProgress it also subscribes to. A fresh identity per render re-runs
+  // the effect forever (React #185 on starting navigation).
+  it("returns stable callback identities across renders", () => {
+    const first = useRouteReroute();
+    const second = useRouteReroute();
+    expect(second.confirmOffRouteEpisode).toBe(first.confirmOffRouteEpisode);
+    expect(second.clearOffRouteEpisode).toBe(first.clearOffRouteEpisode);
+    expect(second.retry).toBe(first.retry);
+    expect(second.requestManualReroute).toBe(first.requestManualReroute);
+  });
 });
 
 describe("reroute warning detail ownership", () => {

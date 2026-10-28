@@ -136,7 +136,24 @@ describe("indoor floor geometry", () => {
     ).toEqual([]);
   });
 
-  it("subtracts core, shaft and stair openings from overlapping floor patches", () => {
+  it("cuts an authored void out of floor coverage", () => {
+    const atrium = rectangle(2, 2, 4, 4);
+    const data = model([
+      feature("display-floor", rectangle(0, 0, 6, 6), {
+        kind: "area",
+        tags: { "a11ymap:area_type": "indoor-floor-base" },
+      }),
+      feature("atrium", atrium, {
+        kind: "area",
+        tags: { "a11ymap:area_type": "void" },
+      }),
+    ]);
+    const floor = floorGeometry(data, 0);
+    expect(surfaceArea(floor)).toBeCloseTo(32);
+    expect(polygonClipping.intersection(floor, [atrium])).toEqual([]);
+  });
+
+  it("keeps core, shaft and stair openings in the floor slab", () => {
     const data = model([
       feature("corridor", rectangle(0, 0, 12, 5), { kind: "corridor" }),
       ...["vertical-core", "elevator-shaft", "stairwell"].map((type, index) =>
@@ -151,17 +168,19 @@ describe("indoor floor geometry", () => {
       ),
     ]);
     const floor = floorGeometry(data, 0);
-    expect(surfaceArea(floor)).toBeCloseTo(48);
+    expect(surfaceArea(floor)).toBeCloseTo(60);
     for (let index = 0; index < 3; index++) {
       expect(
-        polygonClipping.intersection(floor, [
-          rectangle(1 + index * 3, 1, 3 + index * 3, 3),
-        ]),
-      ).toEqual([]);
+        surfaceArea(
+          polygonClipping.intersection(floor, [
+            rectangle(1 + index * 3, 1, 3 + index * 3, 3),
+          ]),
+        ),
+      ).toBeCloseTo(4);
     }
   });
 
-  it("fills explicit floor coverage without closing authored holes, recesses or shafts", () => {
+  it("fills explicit floor coverage and shafts without closing authored holes or recesses", () => {
     const outline: XY[] = [
       [0, 0],
       [8, 0],
@@ -188,11 +207,14 @@ describe("indoor floor geometry", () => {
     ]);
     const source = JSON.stringify(data);
     const floor = floorGeometry(data, 0);
-    expect(surfaceArea(floor)).toBeCloseTo(40);
+    expect(surfaceArea(floor)).toBeCloseTo(41);
     expect(
       surfaceArea(polygonClipping.intersection(floor, [rectangle(0, 3, 4, 4)])),
     ).toBeCloseTo(4);
-    for (const empty of [courtyard, shaft, rectangle(5, 4, 8, 6)])
+    expect(
+      surfaceArea(polygonClipping.intersection(floor, [shaft])),
+    ).toBeCloseTo(1);
+    for (const empty of [courtyard, rectangle(5, 4, 8, 6)])
       expect(polygonClipping.intersection(floor, [empty])).toEqual([]);
     expect(roomWalls([base])).toEqual([]);
     expect(floorGeometry(data, 1)).toEqual([]);

@@ -19,19 +19,21 @@ export {
   REROUTE_COOLDOWN_MS,
 };
 
+// Module-level so every render sees the same callbacks: callers list them as
+// effect deps, and a fresh identity per render re-runs those effects forever.
+const rerouteActions = {
+  confirmOffRouteEpisode: (position?: LatLng) =>
+    localRerouteCoordinator.triggerAutoReroute(position),
+  clearOffRouteEpisode: () => localRerouteCoordinator.clearOffRoute(),
+  retry: (position?: LatLng) => localRerouteCoordinator.retry(position),
+  requestManualReroute: (reason: RerouteReason = "MANUAL", position?: LatLng) =>
+    localRerouteCoordinator.triggerManualReroute(reason, position),
+};
+
 /**
  * Thin compatibility facade around the single localRerouteCoordinator.
  * Pure imperative methods — no nonces, no useEffect side-effect triggers.
  */
 export default function useRouteReroute() {
-  return {
-    confirmOffRouteEpisode: (position?: LatLng) =>
-      localRerouteCoordinator.triggerAutoReroute(position),
-    clearOffRouteEpisode: () => localRerouteCoordinator.clearOffRoute(),
-    retry: (position?: LatLng) => localRerouteCoordinator.retry(position),
-    requestManualReroute: (
-      reason: RerouteReason = "MANUAL",
-      position?: LatLng,
-    ) => localRerouteCoordinator.triggerManualReroute(reason, position),
-  };
+  return rerouteActions;
 }
