@@ -4,6 +4,7 @@ import {
   getAccessibleRoute,
   getHazardReport,
   getMyHazardReports,
+  getNearbyRouteA11yPlaces,
   getRouteInstructions,
   rerouteAccessibleRoute,
 } from "@/lib/api/a11y";
@@ -446,5 +447,46 @@ it("requests instructions with only token, heading and language, never the full 
     routeToken: "fixture-token",
     userHeading: 45,
     language: "en",
+  });
+});
+
+describe("getNearbyRouteA11yPlaces", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the place extent as bbox", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      jsonResponse({ ok: true, code: 200, data: {} }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getNearbyRouteA11yPlaces(
+      { lat: 24.1372, lng: 120.6867 },
+      undefined,
+      "zh-TW",
+      [120.6853, 24.1359, 120.6881, 24.1387],
+    );
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toBe("/api/v1/a11y/nearby-a11y");
+    expect(url.searchParams.get("lat")).toBe("24.1372");
+    expect(url.searchParams.get("lng")).toBe("120.6867");
+    expect(url.searchParams.get("lang")).toBe("zh-TW");
+    expect(url.searchParams.get("bbox")).toBe(
+      "120.6853,24.1359,120.6881,24.1387",
+    );
+  });
+
+  it("omits bbox when the place has no extent", async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      jsonResponse({ ok: true, code: 200, data: {} }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getNearbyRouteA11yPlaces({ lat: 25, lng: 121.5 }, undefined, "en");
+
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.has("bbox")).toBe(false);
   });
 });

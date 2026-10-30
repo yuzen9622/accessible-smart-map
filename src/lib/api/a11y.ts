@@ -8,6 +8,7 @@ import {
 } from "@/lib/fetch";
 import { withRouteNameLanguage } from "@/lib/route/sourceNames";
 import type { IBathroom, metroA11yData } from "@/types";
+import type { NearbyA11ySummary, PlaceBounds } from "@/types/place";
 import type { ApiResponse } from "@/types/response";
 import type {
   A11yFacility,
@@ -44,21 +45,27 @@ export async function getNearbyRouteA11yPlaces(
   },
   signal?: AbortSignal,
   lang?: string,
+  bounds?: PlaceBounds | null,
 ) {
-  const response = await fetchRequest<
-    ApiResponse<{
-      nearbyBathroom: IBathroom[];
-      nearbyMetroA11y: metroA11yData[];
-    }>
-  >(
-    `${END_POINT}/api/v1/a11y/nearby-a11y?lat=${point.lat}&lng=${point.lng}${lang ? `&${new URLSearchParams({ lang })}` : ""}`,
+  const query = new URLSearchParams({
+    lat: String(point.lat),
+    lng: String(point.lng),
+  });
+  if (lang) query.set("lang", lang);
+  if (bounds) query.set("bbox", bounds.join(","));
+  const response = await fetchRequest<ApiResponse<NearbyRouteA11yData>>(
+    `${END_POINT}/api/v1/a11y/nearby-a11y?${query.toString()}`,
     signal ? { signal } : undefined,
   );
 
-  return response as ApiResponse<{
-    nearbyBathroom: IBathroom[];
-    nearbyMetroA11y: metroA11yData[];
-  }>;
+  return response as ApiResponse<NearbyRouteA11yData>;
+}
+
+interface NearbyRouteA11yData {
+  nearbyBathroom: IBathroom[];
+  nearbyMetroA11y: metroA11yData[];
+  // Absent from backends deployed before the summary existed.
+  summary?: NearbyA11ySummary;
 }
 
 export async function getAccessibleRoute(

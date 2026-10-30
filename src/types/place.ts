@@ -28,6 +28,19 @@ export interface NearbyFacilityBrief {
   distanceMeters: number;
 }
 
+export type PlaceBounds = [number, number, number, number];
+
+export interface NearbyA11yCategoryStat {
+  count: number;
+  nearestMeters: number | null;
+}
+
+export interface NearbyA11ySummary {
+  elevator: NearbyA11yCategoryStat;
+  ramp: NearbyA11yCategoryStat;
+  toilet: NearbyA11yCategoryStat;
+}
+
 export interface PlaceAccessibility {
   status: "accessible" | "limited" | "unknown";
   wheelchair: "yes" | "limited" | "no" | null;
@@ -54,6 +67,8 @@ export interface PlaceResult {
   fullAddress: string | null;
   addressComponents: PlaceAddressComponents;
   location: PlaceGeoPoint;
+  // [minLng, minLat, maxLng, maxLat]; absent on places saved before the field existed.
+  bounds?: PlaceBounds | null;
   placeClass: string | null;
   placeType: string | null;
   typeLabel: string | null;
