@@ -31,6 +31,7 @@ import useMapStore from "@/stores/useMapStore";
 import useOnboardingStore from "@/stores/useOnboardingStore";
 import type { IBathroom, metroA11yData } from "@/types";
 import { checklistPriorityOrder } from "@/types/a11yProfile";
+import type { NearbyA11ySummary } from "@/types/place";
 import type { OsmPlaceDetail } from "@/types/route";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -117,6 +118,9 @@ function OutdoorPlaceContent() {
   const [nearbyMetro, setNearbyMetro] = useState<metroA11yData[]>([]);
   const [a11yLoading, setA11yLoading] = useState(false);
   const [osmDetail, setOsmDetail] = useState<OsmPlaceDetail | null>(null);
+  const [nearbySummary, setNearbySummary] = useState<NearbyA11ySummary | null>(
+    null,
+  );
 
   const placePosition = useMemo(() => {
     if (!infoShow.kind) return null;
@@ -133,17 +137,29 @@ function OutdoorPlaceContent() {
     return null;
   }, [infoShow]);
 
+  // A station or campus spans far more than the 150 m around its pin, so the
+  // place's own extent decides which facilities belong to it.
+  const placeBounds =
+    infoShow.kind === "place" ? (infoShow.place.bounds ?? null) : null;
+
   useEffect(() => {
     setNearbyBathrooms([]);
     setNearbyMetro([]);
+    setNearbySummary(null);
     if (!placePosition) return;
     const controller = new AbortController();
     setA11yLoading(true);
-    getNearbyRouteA11yPlaces(placePosition, controller.signal, lang)
+    getNearbyRouteA11yPlaces(
+      placePosition,
+      controller.signal,
+      lang,
+      placeBounds,
+    )
       .then((res) => {
         if (!controller.signal.aborted && res.ok && res.data) {
           setNearbyBathrooms(res.data.nearbyBathroom || []);
           setNearbyMetro(res.data.nearbyMetroA11y || []);
+          setNearbySummary(res.data.summary ?? null);
         }
       })
       .catch(() => {})
@@ -151,7 +167,7 @@ function OutdoorPlaceContent() {
         if (!controller.signal.aborted) setA11yLoading(false);
       });
     return () => controller.abort();
-  }, [placePosition, lang]);
+  }, [placePosition, placeBounds, lang]);
 
   useEffect(() => {
     setOsmDetail(null);
@@ -283,8 +299,18 @@ function OutdoorPlaceContent() {
   const a11yChecklist = useMemo(() => {
     const items: { key: string; label: string; available: boolean | null }[] =
       [];
-    const hasBathroom = nearbyBathrooms.length > 0;
-    const hasElevator = nearbyMetro.length > 0;
+    // The per-category summary keeps campus toilets from reading as elevators
+    // and ramps from riding on elevators; the list-length checks only cover
+    // backends deployed before the summary existed.
+    const hasBathroom = nearbySummary
+      ? nearbySummary.toilet.count > 0
+      : nearbyBathrooms.length > 0;
+    const hasElevator = nearbySummary
+      ? nearbySummary.elevator.count > 0
+      : nearbyMetro.length > 0;
+    const hasRamp = nearbySummary
+      ? nearbySummary.ramp.count > 0
+      : nearbyMetro.length > 0;
 
     const osmWheelchair = osmDetail?.wheelchair;
     const osmTags = osmDetail?.tags;
@@ -320,7 +346,7 @@ function OutdoorPlaceContent() {
       {
         key: "ramp",
         label: t("hasRamp"),
-        available: hasElevator || hasOsmRamp ? true : null,
+        available: hasRamp || hasOsmRamp ? true : null,
       },
       {
         key: "toilet",
@@ -343,7 +369,16 @@ function OutdoorPlaceContent() {
     items.sort((a, b) => priority.indexOf(a.key) - priority.indexOf(b.key));
 
     return items;
-  }, [isPlace, place, nearbyBathrooms, nearbyMetro, osmDetail, situations, t]);
+  }, [
+    isPlace,
+    place,
+    nearbyBathrooms,
+    nearbyMetro,
+    nearbySummary,
+    osmDetail,
+    situations,
+    t,
+  ]);
 
   const handleFlyTo = useCallback(
     (lng: number, lat: number, zoom = 17) => {
