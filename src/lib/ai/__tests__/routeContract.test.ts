@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyRouteReplacement } from "@/lib/navigation/rerouteCoordinator";
+import { parseSosRoutePreview } from "@/lib/routePreviewAdapter";
 import useChatStore from "@/stores/useChatStore";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
@@ -72,6 +73,49 @@ beforeEach(() => {
 });
 
 describe("AI route contract", () => {
+  it("preserves sidewalk ranges through serialized token previews and the selected route", () => {
+    const fixture = planFixture();
+    const sidewalkSegments = [{ startIndex: 0, endIndex: 1 }];
+    const routes = fixture.routes.map((route) => ({
+      ...route,
+      legs: [
+        {
+          type: "WALK",
+          from: "A",
+          to: "B",
+          distanceM: 20,
+          minutesEst: 1,
+          polyline: [
+            [121.5, 25],
+            [121.51, 25.01],
+          ],
+          a11yFacilities: [],
+          sidewalkSegments,
+        },
+      ],
+    }));
+    const plan = parseAiRoutePlan(
+      JSON.parse(JSON.stringify({ ...fixture, routes })),
+    );
+    useMapStore.getState().applyAiRoutePlan(plan);
+    expect(useMapStore.getState().selectRoute?.route.legs[0]).toMatchObject({
+      sidewalkSegments,
+    });
+    const preview = parseSosRoutePreview(
+      JSON.parse(
+        JSON.stringify({
+          sessionId: "preview",
+          originLabel: "A",
+          destinationLabel: "B",
+          origin: fixture.origin,
+          destination: fixture.destination,
+          routes,
+        }),
+      ),
+    );
+    expect(preview.routes[0].legs[0]).toMatchObject({ sidewalkSegments });
+  });
+
   it("adopts the resolved walking mode and preserves optional elevation", () => {
     const fixture = planFixture();
     const elevationProfile = { status: "unavailable", reason: "timeout" };

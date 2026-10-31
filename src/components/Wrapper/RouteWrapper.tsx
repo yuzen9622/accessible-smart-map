@@ -36,6 +36,7 @@ import type {
 import {
   A11Y_FEATURE_COLOR,
   getLegColor,
+  SIDEWALK_COLOR,
   TRAFFIC_LEVEL_COLORS,
   visibleTrafficSegments,
 } from "@/types/route";
@@ -80,6 +81,46 @@ function remainingSegment(
   ];
 }
 
+function SidewalkOverlay({
+  leg,
+  legKey,
+  cut,
+}: {
+  leg: WalkLeg;
+  legKey: string;
+  cut: LegProgress;
+}) {
+  if (!Array.isArray(leg.sidewalkSegments)) return null;
+  return leg.sidewalkSegments.map((segment) => {
+    if (
+      !segment ||
+      !Number.isInteger(segment.startIndex) ||
+      !Number.isInteger(segment.endIndex) ||
+      segment.startIndex < 0 ||
+      segment.startIndex >= segment.endIndex ||
+      segment.endIndex >= leg.polyline.length
+    )
+      return null;
+    const path = polylineToPath(
+      remainingSegment(leg.polyline, segment.startIndex, segment.endIndex, cut),
+    );
+    if (path.length < 2) return null;
+    const id = `${legKey}-sidewalk-${segment.startIndex}-${segment.endIndex}`;
+    return (
+      <Polyline
+        key={id}
+        id={id}
+        path={path}
+        strokeColor={SIDEWALK_COLOR}
+        strokeOpacity={0.95}
+        strokeWeight={6}
+        lineCap="round"
+        lineJoin="round"
+      />
+    );
+  });
+}
+
 function A11ySegmentOverlay({
   leg,
   legKey,
@@ -121,6 +162,8 @@ function A11ySegmentOverlay({
             </Marker>
           );
         }
+
+        if (leg.sidewalkSegments !== undefined) return null;
 
         const path = polylineToPath(
           remainingSegment(
@@ -482,6 +525,7 @@ export default function RouteLine() {
               lineCap="round"
               lineJoin="round"
             />
+            <SidewalkOverlay leg={leg} legKey={legId} cut={cut} />
             <A11ySegmentOverlay leg={leg} legKey={legId} cut={cut} />
           </Fragment>
         );
@@ -577,17 +621,27 @@ export default function RouteLine() {
           leg.polyline.length,
         ].join("-");
         return (
-          <Polyline
-            key={id}
-            id={id}
-            path={polylineToPath(leg.polyline)}
-            strokeColor="#2563eb"
-            strokeOpacity={0.9}
-            strokeWeight={6}
-            dashArray={[2, 4]}
-            lineCap="round"
-            lineJoin="round"
-          />
+          <Fragment key={id}>
+            <Polyline
+              id={id}
+              path={polylineToPath(leg.polyline)}
+              strokeColor={getLegColor(leg)}
+              strokeOpacity={0.9}
+              strokeWeight={6}
+              dashArray={[2, 4]}
+              lineCap="round"
+              lineJoin="round"
+            />
+            <SidewalkOverlay
+              leg={leg}
+              legKey={id}
+              cut={{
+                path: buildCumulativePath(approachOverview.legs),
+                legIndex: 0,
+                progress: null,
+              }}
+            />
+          </Fragment>
         );
       })}
       {waypointMarkers}

@@ -19,7 +19,12 @@ import { buildCumulativePath } from "@/lib/geo";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type { AccessibleRoute, BusLeg, DriveLeg, WalkLeg } from "@/types/route";
-import { TRAFFIC_BASE_COLOR, TRAFFIC_LEVEL_COLORS } from "@/types/route";
+import {
+  getLegColor,
+  SIDEWALK_COLOR,
+  TRAFFIC_BASE_COLOR,
+  TRAFFIC_LEVEL_COLORS,
+} from "@/types/route";
 
 const mockUseMapStore = vi.mocked(useMapStore);
 
@@ -181,7 +186,7 @@ describe("venue outdoor and walking-tail display", () => {
       tail.legs[0].polyline,
     ]);
     expect(new Set(rendered.sources.map((source) => source.id)).size).toBe(2);
-    expect(rendered.colors.at(-1)?.color).toBe("#2563eb");
+    expect(rendered.colors.at(-1)?.color).toBe(getLegColor(tail.legs[0]));
   });
   it("does not add a venue tail to an ordinary outdoor overview", () => {
     renderState({ withoutVenue: true });
@@ -570,5 +575,131 @@ describe("completed route rendering", () => {
     expect(rendered.sources.some((s) => s.id.endsWith("-completed"))).toBe(
       false,
     );
+  });
+});
+
+describe("mapped sidewalk display", () => {
+  const leg: WalkLeg = {
+    type: "WALK",
+    from: "A",
+    to: "B",
+    distanceM: 300,
+    minutesEst: 4,
+    a11yFacilities: [],
+    polyline: [
+      [121, 25],
+      [121.001, 25],
+      [121.002, 25],
+      [121.003, 25],
+    ],
+  };
+  function renderWalk(patch: Partial<WalkLeg> = {}, navigating = false) {
+    const walk = { ...leg, ...patch };
+    const route: AccessibleRoute = {
+      routeId: "sidewalk",
+      routeToken: "sidewalk-token",
+      routeName: "Walk",
+      totalMinutes: 4,
+      transferCount: 0,
+      accessibilityHighlights: [],
+      legs: [walk],
+    };
+    mockUseMapStore.mockReturnValue({
+      selectRoute: { index: 0, route },
+      activeNavigationRoute: route,
+      isNavigating: navigating,
+      routeWaypoints: [],
+      sosNavActive: false,
+      venueJourney: null,
+    });
+    if (navigating) {
+      const path = buildCumulativePath(route.legs);
+      vi.mocked(useNavStore).mockReturnValue({
+        navigationMode: "live",
+        navigationId: "sidewalk-nav",
+        routeVersion: 1,
+        routeProgress: {
+          routeToken: "sidewalk-token",
+          navigationId: "sidewalk-nav",
+          routeVersion: 1,
+          legIndex: 0,
+          segmentIndex: 1,
+          alongM: (path.cumM[1] + path.cumM[2]) / 2,
+          observedAt: 1,
+          source: "gps",
+        },
+      });
+    }
+    const before = JSON.stringify(walk);
+    const html = renderToStaticMarkup(<RouteLine />);
+    expect(JSON.stringify(walk)).toBe(before);
+    return html;
+  }
+  it.each([undefined, []])(
+    "keeps unconfirmed geometry blue with ranges %j",
+    (sidewalkSegments) => {
+      renderWalk({ sidewalkSegments });
+      expect(rendered.sources.map((s) => s.coordinates)).toEqual([
+        leg.polyline,
+      ]);
+      expect(rendered.colors.map((s) => s.color)).toEqual([getLegColor(leg)]);
+    },
+  );
+  it("adds green only for the original mapped sidewalk range", () => {
+    renderWalk({ sidewalkSegments: [{ startIndex: 1, endIndex: 2 }] });
+    expect(rendered.sources.map((s) => s.coordinates)).toEqual([
+      leg.polyline,
+      leg.polyline.slice(1, 3),
+    ]);
+    expect(rendered.colors.map((s) => s.color)).toEqual([
+      getLegColor(leg),
+      SIDEWALK_COLOR,
+    ]);
+  });
+  it("ignores invalid ranges instead of coloring an unrelated part of the route", () => {
+    renderWalk({
+      sidewalkSegments: [
+        { startIndex: -1, endIndex: 1 },
+        { startIndex: 1, endIndex: 4 },
+        { startIndex: 2, endIndex: 1 },
+        { startIndex: 1.5, endIndex: 2 },
+      ],
+    });
+    expect(rendered.sources.map((s) => s.coordinates)).toEqual([leg.polyline]);
+  });
+  it("clips green at the same navigation position as the original route", () => {
+    renderWalk({ sidewalkSegments: [{ startIndex: 1, endIndex: 3 }] }, true);
+    const completed = rendered.sources.find((s) => s.id.endsWith("-completed"));
+    const sidewalk = rendered.sources.find((s) => s.id.includes("-sidewalk-"));
+    expect(sidewalk?.coordinates[0]).toEqual(completed?.coordinates.at(-1));
+    expect(sidewalk?.coordinates[0][0]).toBeCloseTo(121.0015, 8);
+    expect(sidewalk?.coordinates.slice(1)).toEqual(leg.polyline.slice(2));
+  });
+  it("removes passed sidewalk overlays without reusing a later overlapping coordinate", () => {
+    renderWalk({ sidewalkSegments: [{ startIndex: 0, endIndex: 1 }] }, true);
+    expect(rendered.sources.some((s) => s.id.includes("-sidewalk-"))).toBe(
+      false,
+    );
+  });
+  it("retains elevator points while preventing facility line colors from overriding the two colors", () => {
+    const detail = {
+      indoor: false,
+      distanceM: null,
+      maxSlopePercent: null,
+      minWidthCm: null,
+    };
+    const html = renderWalk({
+      sidewalkSegments: [{ startIndex: 1, endIndex: 3 }],
+      a11ySegments: [
+        { ...detail, feature: "stairs", startIndex: 0, endIndex: 1 },
+        { ...detail, feature: "elevator", startIndex: 2, endIndex: 2 },
+      ],
+    });
+    expect(rendered.colors.map((s) => s.color)).toEqual([
+      getLegColor(leg),
+      SIDEWALK_COLOR,
+    ]);
+    expect(html).toContain('data-lng="121.002"');
+    expect(html).toContain('data-lat="25"');
   });
 });

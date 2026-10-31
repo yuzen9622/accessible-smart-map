@@ -178,6 +178,10 @@ export interface WalkLeg extends RouteSourceNames {
   /** Curb ramps registered on the government sidewalk segments this leg runs
    * along — a count for the whole leg, not positions on the path. */
   sidewalkRampCount?: number;
+  /** Inclusive ranges into the unchanged polyline, conservatively matched to
+   * mapped sidewalks. Missing/empty ranges leave classification unconfirmed;
+   * a sidewalk beside a road is not a match to the route itself. */
+  sidewalkSegments?: { startIndex: number; endIndex: number }[];
   /** Only present on `engine: "pedestrian-a11y"` routes. An empty array means
    * "checked, nothing classifiable"; an absent field means "never checked". */
   a11ySegments?: A11ySegment[];
@@ -1006,6 +1010,8 @@ export function scoreToStars(score: number): number {
 // The backend classifies only, it makes no judgement about good or bad.
 // Shared so the map overlay and the route card's legend cannot drift apart —
 // the legend is the only thing telling the user what a coloured line means.
+export const SIDEWALK_COLOR = "#16a34a";
+
 export const A11Y_FEATURE_COLOR: Record<A11yFeature, string> = {
   stairs: "#dc2626",
   crossing: "#f59e0b",
