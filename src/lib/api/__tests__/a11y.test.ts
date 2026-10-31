@@ -478,15 +478,19 @@ describe("getNearbyRouteA11yPlaces", () => {
     );
   });
 
-  it("omits bbox when the place has no extent", async () => {
+  it("does not issue a nearby request when the place has no extent", async () => {
     const fetchMock = vi.fn(async (_url: string) =>
       jsonResponse({ ok: true, code: 200, data: {} }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await getNearbyRouteA11yPlaces({ lat: 25, lng: 121.5 }, undefined, "en");
+    await getNearbyRouteA11yPlaces(
+      { lat: 25, lng: 121.5 },
+      undefined,
+      "en",
+      undefined as never,
+    ).catch(() => {});
 
-    const url = new URL(String(fetchMock.mock.calls[0][0]));
-    expect(url.searchParams.has("bbox")).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

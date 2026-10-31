@@ -16,7 +16,12 @@ describe("facility GET language (route POST untouched)", () => {
   const calls = [
     (lang?: string) => getAllA11yFacilities(lang),
     (lang?: string) =>
-      getNearbyRouteA11yPlaces({ lat: 25, lng: 121 }, signal, lang),
+      getNearbyRouteA11yPlaces(
+        { lat: 25, lng: 121 },
+        signal,
+        lang,
+        [120.9, 24.9, 121.1, 25.1],
+      ),
     (lang?: string) => getOsmPlaceDetail("123", signal, lang),
     (lang?: string) => getNearbyWelfare(25, 121, 3000, lang),
     (lang?: string) => getNearbyParking(25, 121, lang),

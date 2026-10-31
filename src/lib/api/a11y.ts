@@ -6,6 +6,7 @@ import {
   getAccessToken,
   personalizedRequest,
 } from "@/lib/fetch";
+import { isValidPlaceBounds } from "@/lib/place/placeBounds";
 import { withRouteNameLanguage } from "@/lib/route/sourceNames";
 import type { IBathroom, metroA11yData } from "@/types";
 import type { NearbyA11ySummary, PlaceBounds } from "@/types/place";
@@ -43,16 +44,19 @@ export async function getNearbyRouteA11yPlaces(
     lat: number;
     lng: number;
   },
-  signal?: AbortSignal,
-  lang?: string,
-  bounds?: PlaceBounds | null,
+  signal: AbortSignal | undefined,
+  lang: string | undefined,
+  bounds: PlaceBounds,
 ) {
+  if (!isValidPlaceBounds(bounds)) {
+    throw new Error("Valid place bounds are required for nearby facilities");
+  }
   const query = new URLSearchParams({
     lat: String(point.lat),
     lng: String(point.lng),
+    bbox: bounds.join(","),
   });
   if (lang) query.set("lang", lang);
-  if (bounds) query.set("bbox", bounds.join(","));
   const response = await fetchRequest<ApiResponse<NearbyRouteA11yData>>(
     `${END_POINT}/api/v1/a11y/nearby-a11y?${query.toString()}`,
     signal ? { signal } : undefined,

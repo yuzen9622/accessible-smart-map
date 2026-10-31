@@ -1,20 +1,22 @@
 "use client";
 
 import { ArrowLeft, ArrowUpDown, DoorOpen, MapPin, Train } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
-import { getNearbyRouteA11yPlaces } from "@/lib/api/a11y";
-import { toApiLang } from "@/lib/place/lang";
 import { nonemptyName } from "@/lib/route/sourceNames";
 import { geoCoords } from "@/lib/utils";
 import useMapStore from "@/stores/useMapStore";
 import type { IBathroom, metroA11yData } from "@/types";
 import { Badge } from "../ui/badge";
 
+// A station marker has no trustworthy place bounds; do not infer an extent.
+const EMPTY_BATHROOMS: IBathroom[] = [];
+const EMPTY_METRO: metroA11yData[] = [];
+const EMPTY_GROUPS: [string, metroA11yData[]][] = [];
+
 export default function StationDetailContent() {
-  const { t, i18n } = useAppTranslation();
-  const lang = toApiLang(i18n.language) ?? "zh-TW";
+  const { t } = useAppTranslation();
   const { selectA11yPlace, setSheetMode, setSelectA11yPlace, map } =
     useMapStore(
       useShallow((s) => ({
@@ -25,46 +27,17 @@ export default function StationDetailContent() {
       })),
     );
 
-  const [nearbyBathrooms, setNearbyBathrooms] = useState<IBathroom[]>([]);
-  const [nearbyMetro, setNearbyMetro] = useState<metroA11yData[]>([]);
-  const [loading, setLoading] = useState(false);
-
+  const nearbyBathrooms = EMPTY_BATHROOMS;
+  const nearbyMetro = EMPTY_METRO;
+  const loading = false;
   const position = selectA11yPlace?.position ?? null;
-
-  useEffect(() => {
-    setNearbyBathrooms([]);
-    setNearbyMetro([]);
-    if (!position) return;
-    const controller = new AbortController();
-    setLoading(true);
-    getNearbyRouteA11yPlaces(position, controller.signal, lang)
-      .then((res) => {
-        if (!controller.signal.aborted && res.ok && res.data) {
-          setNearbyBathrooms(res.data.nearbyBathroom || []);
-          setNearbyMetro(res.data.nearbyMetroA11y || []);
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [position, lang]);
 
   const handleBack = useCallback(() => {
     setSelectA11yPlace(null);
     setSheetMode("home");
   }, [setSelectA11yPlace, setSheetMode]);
 
-  const groupedByExit = useMemo(() => {
-    const groups = new Map<string, metroA11yData[]>();
-    for (const m of nearbyMetro) {
-      const exit = m.出入口編號 || "其他";
-      if (!groups.has(exit)) groups.set(exit, []);
-      groups.get(exit)?.push(m);
-    }
-    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [nearbyMetro]);
+  const groupedByExit = EMPTY_GROUPS;
 
   if (!selectA11yPlace) return null;
 

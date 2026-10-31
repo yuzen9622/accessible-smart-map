@@ -24,6 +24,8 @@ import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
 import { getNearbyRouteA11yPlaces, getOsmPlaceDetail } from "@/lib/api/a11y";
 import { toApiLang } from "@/lib/place/lang";
+import { nearbyFacilityCategory } from "@/lib/place/nearbyFacilityCategory";
+import { isValidPlaceBounds } from "@/lib/place/placeBounds";
 import { getPlaceTypeLabel } from "@/lib/placeTypes";
 import { nonemptyName } from "@/lib/route/sourceNames";
 import { geoCoords } from "@/lib/utils";
@@ -74,9 +76,23 @@ function getAccessibilityStatusLabel(
 
 export default function PlaceContent() {
   const detail = useMapStore((s) => s.infoShow);
+  const { i18n } = useAppTranslation();
   if (detail.kind === "venue-place" || detail.kind === "venue-feature")
     return <VenuePlaceContent detail={detail} />;
-  return <OutdoorPlaceContent />;
+  // Reset the outgoing place's nearby data before the next effect runs.
+  const identity =
+    detail.kind === "place"
+      ? [
+          detail.kind,
+          detail.place.id,
+          detail.place.location.coordinates,
+          detail.place.bounds,
+        ]
+      : detail.kind === "coordinate"
+        ? [detail.kind, detail.position]
+        : [detail.kind];
+  const key = JSON.stringify([identity, toApiLang(i18n.language) ?? "zh-TW"]);
+  return <OutdoorPlaceContent key={key} />;
 }
 
 function OutdoorPlaceContent() {
@@ -146,7 +162,10 @@ function OutdoorPlaceContent() {
     setNearbyBathrooms([]);
     setNearbyMetro([]);
     setNearbySummary(null);
-    if (!placePosition) return;
+    if (!placePosition || !isValidPlaceBounds(placeBounds)) {
+      setA11yLoading(false);
+      return;
+    }
     const controller = new AbortController();
     setA11yLoading(true);
     getNearbyRouteA11yPlaces(
@@ -299,18 +318,9 @@ function OutdoorPlaceContent() {
   const a11yChecklist = useMemo(() => {
     const items: { key: string; label: string; available: boolean | null }[] =
       [];
-    // The per-category summary keeps campus toilets from reading as elevators
-    // and ramps from riding on elevators; the list-length checks only cover
-    // backends deployed before the summary existed.
-    const hasBathroom = nearbySummary
-      ? nearbySummary.toilet.count > 0
-      : nearbyBathrooms.length > 0;
-    const hasElevator = nearbySummary
-      ? nearbySummary.elevator.count > 0
-      : nearbyMetro.length > 0;
-    const hasRamp = nearbySummary
-      ? nearbySummary.ramp.count > 0
-      : nearbyMetro.length > 0;
+    const hasBathroom = (nearbySummary?.toilet.count ?? 0) > 0;
+    const hasElevator = (nearbySummary?.elevator.count ?? 0) > 0;
+    const hasRamp = (nearbySummary?.ramp.count ?? 0) > 0;
 
     const osmWheelchair = osmDetail?.wheelchair;
     const osmTags = osmDetail?.tags;
@@ -369,16 +379,7 @@ function OutdoorPlaceContent() {
     items.sort((a, b) => priority.indexOf(a.key) - priority.indexOf(b.key));
 
     return items;
-  }, [
-    isPlace,
-    place,
-    nearbyBathrooms,
-    nearbyMetro,
-    nearbySummary,
-    osmDetail,
-    situations,
-    t,
-  ]);
+  }, [isPlace, place, nearbySummary, osmDetail, situations, t]);
 
   const handleFlyTo = useCallback(
     (lng: number, lat: number, zoom = 17) => {
@@ -602,34 +603,52 @@ function OutdoorPlaceContent() {
                 </Badge>
               </button>
             ))}
-            {metroSliced.map((m, i) => (
-              <button
-                key={`metro-${m._id ?? i}`}
-                type="button"
-                onClick={() => {
-                  const pos = geoCoords(m.location, m.緯度, m.經度);
-                  if (pos) handleFlyTo(pos.lng, pos.lat);
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors text-left"
-              >
-                <div className="h-9 w-9 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
-                  <ArrowDownUpIcon size={16} className="text-green-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {nonemptyName(m.displayName) ||
-                      nonemptyName(m["出入口電梯/無障礙坡道名稱"]) ||
-                      t("elevator")}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {t("elevator")} · {m.出入口編號}
-                  </p>
-                </div>
-                <Badge variant="secondary" className="text-xs shrink-0">
-                  {t("elevator")}
-                </Badge>
-              </button>
-            ))}
+            {metroSliced.map((m, i) => {
+              const category = nearbyFacilityCategory(m);
+              const categoryLabel =
+                category === "toilet"
+                  ? t("accessibleToilet")
+                  : category === "elevator"
+                    ? t("elevator")
+                    : category === "ramp"
+                      ? t("a11yFeatureRamp")
+                      : (lang === "zh-TW" && nonemptyName(m.facTypeLabel)) ||
+                        t("facility");
+              return (
+                <button
+                  key={`metro-${m._id ?? i}`}
+                  type="button"
+                  onClick={() => {
+                    const pos = geoCoords(m.location, m.緯度, m.經度);
+                    if (pos) handleFlyTo(pos.lng, pos.lat);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors text-left"
+                >
+                  <div className="h-9 w-9 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                    {category === "toilet" ? (
+                      <DoorOpen className="h-4 w-4 text-green-600" />
+                    ) : category === "elevator" ? (
+                      <ArrowDownUpIcon size={16} className="text-green-600" />
+                    ) : (
+                      <AccessibilityIcon size={16} className="text-green-600" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {nonemptyName(m.displayName) ||
+                        nonemptyName(m["出入口電梯/無障礙坡道名稱"]) ||
+                        categoryLabel}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {categoryLabel} · {m.出入口編號}
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    {categoryLabel}
+                  </Badge>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground py-2">

@@ -122,7 +122,14 @@ export type metroA11yData = {
   displayName?: string;
   _id?: string;
   osmId?: string;
-  source?: "metro" | "osm";
+  source?: "metro" | "osm" | "campus";
+  /** Campus records retain their original facility type; OSM records use category. */
+  facType?: string;
+  facTypeLabel?: string;
+  category?: string;
+  campusId?: string;
+  facUid?: string;
+  distanceMeters?: number;
   項次: number | string;
   _importdata?: { date: string; timezone: string; timezone_type: number };
   出入口編號?: string;
