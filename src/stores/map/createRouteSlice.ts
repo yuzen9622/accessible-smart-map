@@ -191,6 +191,71 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
       chatOpen: false,
     });
   },
+  applyAiIndoorRoutePlan: (plan) => {
+    set({
+      busSelection: null,
+      venueJourney: null,
+      ...(get().venueJourney
+        ? { isNavigating: false, activeNavigationRoute: null }
+        : {}),
+      routeGeneration: get().routeGeneration + 1,
+      planId: null,
+      selectedRouteId: plan.selectedRouteId,
+      effectivePreferences: null,
+      aiRouteMetadata: null,
+      origin: null,
+      destination: null,
+      originName: "",
+      destinationName: "",
+      computeRoutes: [plan.route],
+      routeTravelMode: "walk",
+      selectRoute: { index: 0, route: plan.route },
+      metroAlerts: null,
+      transitAlerts: null,
+      routeWaypoints: [],
+      routeInfoShow: true,
+      activeBusLeg: null,
+      liveBusPositions: [],
+      sheetMode: "route",
+      routeSubPanel: "none",
+      sidebarCollapsed: false,
+      chatOpen: false,
+    });
+  },
+  attachAiVenueJourney: (routes, journey) => {
+    const state = get();
+    if (state.computeRoutes !== routes) return false;
+    const outdoor = journey.outdoor;
+    const selected = state.selectRoute
+      ? routes.indexOf(state.selectRoute.route)
+      : -1;
+    const active = state.activeNavigationRoute;
+    const navigating =
+      state.isNavigating && active ? routes.indexOf(active) : -1;
+    set({
+      venueJourney: outdoor
+        ? {
+            ...journey,
+            outdoor: {
+              ...outdoor,
+              selectedIndex: selected >= 0 ? selected : outdoor.selectedIndex,
+              ...(navigating >= 0 ? { navigationIndex: navigating } : {}),
+            },
+            // Navigation that started before the venue loaded is outdoors.
+            ...(navigating >= 0
+              ? { guidance: { status: "outdoor" as const, stepIndex: 0 } }
+              : {}),
+          }
+        : journey,
+      ...(journey.departure || !outdoor
+        ? { origin: journey.from, originName: journey.from.name }
+        : {}),
+      ...(!journey.departure
+        ? { destination: journey.to, destinationName: journey.to.name }
+        : {}),
+    });
+    return true;
+  },
   origin: null,
   setOrigin: (origin) => set({ origin }),
   destination: null,
@@ -260,7 +325,10 @@ export const createRouteSlice: MapSliceCreator<RouteSlice> = (set, get) => ({
                       selectedIndex: journeyIndex,
                     },
                   }
-                : null,
+                : // An AI departure leg leads to every outdoor candidate.
+                  journey.departure && get().computeRoutes?.includes(selected)
+                  ? journey
+                  : null,
           }
         : {}),
       selectedRouteId: selected.routeId,

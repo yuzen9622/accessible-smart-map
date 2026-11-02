@@ -202,7 +202,8 @@ export default function VoiceToolResults({
         )
           return null;
         if (
-          event.name === "planAccessibleRoute" &&
+          (event.name === "planAccessibleRoute" ||
+            event.name === "planIndoorRoute") &&
           Array.isArray(result.routes)
         )
           return (

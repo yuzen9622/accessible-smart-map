@@ -228,6 +228,18 @@
           "label": "Plan an accessible route",
           "loading": "Planning an accessible route…"
         },
+        "planIndoorRoute": {
+          "label": "Plan an indoor route",
+          "loading": "Planning the indoor route…"
+        },
+        "startNavigation": {
+          "label": "Start navigation",
+          "loading": "Starting navigation…"
+        },
+        "stopNavigation": {
+          "label": "End navigation",
+          "loading": "Ending navigation…"
+        },
         "getNavInstructions": {
           "label": "Get navigation directions",
           "loading": "Getting navigation directions…"
@@ -606,6 +618,7 @@
   "arrived": "Arrived",
   "arrivedDesc": "You have reached your destination",
   "navContinueToDestination": "Continue toward your destination",
+  "navSpeakAhead": "In {{distance}}, {{instruction}}",
   "navSpeakContinue": "Continue straight for {{distance}}",
   "navSpeakMeters": "{{value}} meters",
   "navSpeakKilometers": "{{value}} kilometers",
@@ -702,6 +715,11 @@
   "venueConfirmEntranceSection": "Finished the entrance section",
   "venueConfirmSection": "Finished this section",
   "venueIndoorRouteSummary": "Campus route · about {{distance}} m",
+  "venueDepartureRouteSummary": "Campus route first · about {{distance}} m",
+  "aiVenueLegUnavailable": "The indoor part can't be shown on the map right now. Voice navigation still works.",
+  "navVenueFloor": "{{floor}}",
+  "navVenueFloorChange": "{{from}} → {{to}}",
+  "navVenueManualHint": "Say “I'm here” or “next step” when you get there",
   "venueDropOffPoint": "Drop-off point",
   "venueWalkHandoffPoint": "Walking connection",
   "venueHeadingTo": "Head to {{destination}}",

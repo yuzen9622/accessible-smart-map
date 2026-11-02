@@ -105,14 +105,10 @@ export default function useAIChat() {
       setChatOpen: s.setChatOpen,
     })),
   );
+  // A reply outlives its panel: the conversation lives in the chat store, and
+  // starting navigation unmounts the desktop panel mid-reply. Route, identity
+  // and conversation changes still abort it below.
   const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-    },
-    [],
-  );
 
   const markDone = useCallback(
     (activities: ToolActivity[] | undefined) =>
@@ -186,12 +182,15 @@ export default function useAIChat() {
       let fullText = "";
       let generation = useMapStore.getState().routeGeneration;
       let applying = false;
+      // The assistant's own navigation start/stop settles after its tool result.
+      let pendingActions = 0;
       const summaries: ToolSummary[] = [];
       const calls = new Set<string>();
       const completed = new Set<string>();
       const unsubscribe = useMapStore.subscribe((state) => {
-        if (!applying && state.routeGeneration !== generation)
-          controller.abort();
+        if (state.routeGeneration === generation) return;
+        if (pendingActions > 0) generation = state.routeGeneration;
+        else if (!applying) controller.abort();
       });
       const conversationGeneration =
         useChatStore.getState().conversationGeneration;
@@ -318,8 +317,14 @@ export default function useAIChat() {
               applying = true;
               try {
                 for (const action of actions) {
-                  if (!executeAction(action).ok)
-                    throw new Error(AI_ROUTE_UNAVAILABLE);
+                  const outcome = executeAction(action);
+                  if (!outcome.ok) throw new Error(AI_ROUTE_UNAVAILABLE);
+                  if (outcome.settled) {
+                    pendingActions += 1;
+                    void outcome.settled.finally(() => {
+                      pendingActions -= 1;
+                    });
+                  }
                 }
                 generation = useMapStore.getState().routeGeneration;
               } finally {

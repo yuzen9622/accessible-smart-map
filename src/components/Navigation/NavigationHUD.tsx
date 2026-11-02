@@ -38,7 +38,16 @@ import {
   resolveActiveLegType,
 } from "@/lib/navigation/legMode";
 import { localRerouteCoordinator } from "@/lib/navigation/localRerouteCoordinator";
-import { shouldSpeakLocally } from "@/lib/navigation/navigationAudio";
+import {
+  isStraightManeuver,
+  type ManeuverStage,
+  selectManeuverStage,
+  stripStepDistance,
+} from "@/lib/navigation/maneuverAnnouncement";
+import {
+  deliverNavigationCue,
+  shouldSpeakLocally,
+} from "@/lib/navigation/navigationAudio";
 import { stopNavigation } from "@/lib/navigation/navigationLifecycle";
 import {
   selectProgressReminder,
@@ -53,8 +62,10 @@ import {
 } from "@/lib/navigation/transitCopy";
 import { createTransitSpeechCoordinator } from "@/lib/navigation/transitSpeechCoordinator";
 import { voiceTransitNames } from "@/lib/voice/navTransit";
+import { isVoiceSpeechChannelLive } from "@/lib/voice/voiceSession";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore, { type NavRerouteReason } from "@/stores/useNavStore";
+import useVoiceStore from "@/stores/useVoiceStore";
 import type { LatLng } from "@/types";
 import {
   formatDistance,
@@ -217,12 +228,16 @@ export default function NavigationHUD() {
   }, []);
 
   const alightUtterance = useRef<SpeechSynthesisUtterance | null>(null);
+  // A live voice assistant speaks the announcements whatever the local toggle.
+  const voiceCueLive = useVoiceStore((s) =>
+    isVoiceSpeechChannelLive(s.status.status),
+  );
   const speechScope =
     isNavigating &&
     route &&
     navigationSource === "local" &&
     !preview &&
-    voiceEnabled &&
+    (voiceEnabled || voiceCueLive) &&
     !isGeminiNavSpeechLive &&
     rerouteStatus === "idle"
       ? JSON.stringify([
@@ -238,6 +253,11 @@ export default function NavigationHUD() {
   const speechCoordinator = useRef(createTransitSpeechCoordinator());
   const speak = useCallback(
     (text: string, alight = false) => {
+      const nav = useNavStore.getState();
+      if (nav.navigationSource === "local" && nav.navigationMode === "preview")
+        return;
+      // A live voice session takes the line (or swallows it while muted).
+      if (deliverNavigationCue(text)) return;
       // Read the toggle fresh: speak() is called from effects that may fire
       // after the user flipped it.
       const maySpeak = shouldSpeakLocally({
@@ -268,6 +288,67 @@ export default function NavigationHUD() {
     [i18n.language, isGeminiNavSpeechLive],
   );
 
+  // Staged "In X m, turn left" announcements for the current maneuver.
+  const stagedStep = useRef<{
+    scope: string | null;
+    instructions: NavInstruction[];
+    step: number;
+    spoken: Set<ManeuverStage>;
+    advanceDistanceM: number | null;
+  } | null>(null);
+  const announceStagedStep = useCallback(() => {
+    const state = stagedStep.current;
+    const nav = useNavStore.getState();
+    const step = nav.instructions[nav.currentStepIndex];
+    if (
+      !state ||
+      !step ||
+      state.instructions !== nav.instructions ||
+      state.step !== nav.currentStepIndex ||
+      // The arrival effect owns the completed-arrival announcement.
+      (step.type === "arrive" && nav.arrived)
+    )
+      return;
+    const text = navigationInstructionText(step, nav.arrived, t);
+    const distanceM = nav.distanceToNextM;
+    if (distanceM == null) {
+      // No fix on the route yet: say the maneuver once, as before staging.
+      if (state.spoken.size === 0) {
+        state.spoken.add("now");
+        speak(text);
+      }
+      return;
+    }
+    const stage = selectManeuverStage(
+      distanceM,
+      step.legType,
+      state.spoken,
+      state.advanceDistanceM,
+      isStraightManeuver(step),
+    );
+    if (!stage) return;
+    state.spoken.add(stage);
+    if (stage === "advance") state.advanceDistanceM = distanceM;
+    if (stage === "now") {
+      speak(text);
+      return;
+    }
+    const spoken = spokenDistance(distanceM);
+    speak(
+      t("navSpeakAhead", {
+        distance: t(
+          spoken.unit === "km" ? "navSpeakKilometers" : "navSpeakMeters",
+          { value: spoken.value },
+        ),
+        instruction: stripStepDistance(text),
+      }),
+    );
+  }, [speak, t]);
+  useEffect(() => {
+    if (preview || distanceToNextM == null) return;
+    announceStagedStep();
+  }, [distanceToNextM, preview, announceStagedStep]);
+
   useEffect(() => {
     if (
       priorSpeechScope.current !== speechScope ||
@@ -296,11 +377,16 @@ export default function NavigationHUD() {
         transitSpeechText(navT, decision.speech),
         decision.speech.kind === "alight",
       );
-    } else if ((decision.generic || navigationSource === "voice") && !preview) {
-      const s = instructions[currentStep];
-      // The arrival effect owns the completed-arrival announcement.
-      if (s && !(s.type === "arrive" && arrived))
-        speak(navigationInstructionText(s, arrived, t));
+    } else if (decision.generic && !preview) {
+      // The staged effect below announces this maneuver by distance.
+      stagedStep.current = {
+        scope: speechScope,
+        instructions,
+        step: currentStep,
+        spoken: new Set(),
+        advanceDistanceM: null,
+      };
+      announceStagedStep();
     }
   }, [
     speechScope,
@@ -311,9 +397,7 @@ export default function NavigationHUD() {
     speak,
     navT,
     preview,
-    navigationSource,
-    arrived,
-    t,
+    announceStagedStep,
   ]);
 
   // Long straight stretches arrive as one step; remind "continue straight N"

@@ -35,6 +35,8 @@ interface SessionStartMessage extends Partial<RouteConversationInput> {
   token: string;
   language?: "zh-TW" | "en";
   userLocation?: { latitude: number; longitude: number };
+  /** The page runs navigation itself: the server sends `ui.command`, reads `nav.state` and voices `nav.cue`. */
+  clientNavigation: 1;
 }
 
 // The gateway's 8 KiB control-frame limit includes the entire session.start JSON.
@@ -88,28 +90,41 @@ interface NavCancelMessage {
   type: "nav.cancel";
 }
 
-/**
- * Client -> server: re-attach to an in-flight backend navigation after the
- * socket was rebuilt (§6.1 reconnect). Sent right after `session.ready` of a
- * *reconnect* — never of the first connect, where there is nothing to resume.
- * The server answers with `nav.resume_ok` or `nav.resume_failed`.
- */
-interface NavResumeMessage {
-  type: "nav.resume";
-  navigationId: string;
-  routeVersion: number;
-  routeToken: string;
-  lastKnownStepIndex: number;
-  currentPosition?: VoiceNavigationPosition;
+/** Server -> client: the assistant asks the page to run its own navigation flow. */
+export interface VoiceUiCommand {
+  action: "start" | "stop" | "advance" | "repeat";
+  routeToken?: string;
 }
 
-/** Snapshot the adapter provides so the controller can build nav.resume. */
-export interface VoiceNavigationResumeState {
-  navigationId: string;
-  routeVersion: number;
-  routeToken: string;
-  lastKnownStepIndex: number;
-  currentPosition?: VoiceNavigationPosition;
+interface UiCommandMessage extends VoiceUiCommand {
+  type: "ui.command";
+  id: string;
+}
+
+/** What the page actually did; answered as `ui.command.ack`. */
+export type VoiceUiCommandResult =
+  | { ok: true; guidance?: "preview" | "live" | "indoor" }
+  | { ok: false; reason: string };
+
+/** Client -> server: the navigation engine's state (`nav.state`). */
+export interface VoiceNavigationState {
+  active: boolean;
+  guidance?: "preview" | "live" | "indoor";
+  travelMode?: string;
+  destination?: string | null;
+  currentStepIndex?: number;
+  distanceToNextM?: number | null;
+  remainingDistanceM?: number | null;
+  remainingDurationSec?: number | null;
+  arrived?: boolean;
+  steps?: {
+    index: number;
+    instruction: string;
+    legType?: string;
+    distanceM?: number | null;
+    streetName?: string | null;
+    maneuver?: string | null;
+  }[];
 }
 
 /** Server -> client: auth + Gemini connect done, client may now send audio. */
@@ -385,6 +400,7 @@ type ServerEventMessage =
   | TranscriptCorrectionMessage
   | ToolCallMessage
   | ToolResultMessage
+  | UiCommandMessage
   | InterruptedMessage
   | TurnCompleteMessage
   | ErrorMessage
@@ -532,12 +548,12 @@ export interface VoiceSessionDeps {
   onInterrupted?(): void;
   onToolEvent(event: VoiceToolEvent): void;
   onNavigationEvent(event: VoiceNavigationEvent): void;
-  /**
-   * Current backend-owned navigation, read synchronously right after a
-   * reconnect's `session.ready`. Returning `null` (not navigating, or the
-   * local engine owns navigation) skips `nav.resume` entirely.
-   */
-  getNavigationResumeState?(): VoiceNavigationResumeState | null;
+  /** Runs a `ui.command` through the page's own navigation functions. */
+  onUiCommand?(
+    command: VoiceUiCommand,
+  ): VoiceUiCommandResult | Promise<VoiceUiCommandResult>;
+  /** Every `session.ready` (first connect and reconnects). */
+  onSessionReady?(): void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -584,12 +600,6 @@ export class VoiceSessionController {
   /** Latest selected HTTP route capability; re-armed after every reconnect. */
   private routeToken: string | null = null;
 
-  /**
-   * True once this session has seen a `session.ready`. Every later ready is
-   * therefore a *reconnect* ready — the only point at which `nav.resume` is
-   * meaningful.
-   */
-  private hasBeenReady = false;
   private deferredContext = false;
   private modelTurnActive = false;
   private contextSupported = false;
@@ -606,28 +616,10 @@ export class VoiceSessionController {
     { name: string; turnId?: string; generation: number }
   >();
   private completedCalls = new Set<string>();
-  private pendingStartRoute: {
-    routeToken: string | null;
-    generation: number;
-  } | null = null;
-  private ignoreNavigation = false;
-
-  private isPendingStartStale(): boolean {
-    return (
-      this.pendingStartRoute !== null &&
-      (this.pendingStartRoute.generation !==
-        (this.deps.getRouteGeneration?.() ?? 0) ||
-        this.pendingStartRoute.routeToken !== this.routeToken)
-    );
-  }
-
   syncRouteContext(options: { deferUntilIdle?: boolean } = {}): void {
     if (!this.sessionActive || this.isEnding()) return;
-    const supersededStart = this.isPendingStartStale();
-    if (supersededStart) this.cancelNavigation();
     if (
       options.deferUntilIdle &&
-      !supersededStart &&
       !this.contextBlocked &&
       (this.modelTurnActive || this.playback?.isIdle?.() === false)
     ) {
@@ -690,7 +682,6 @@ export class VoiceSessionController {
     this.identityAtStart = identity;
     this.sessionActive = true;
     this.hasRefreshed = false;
-    this.hasBeenReady = false;
     this.muted = false;
     this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS;
 
@@ -802,8 +793,27 @@ export class VoiceSessionController {
   }
 
   cancelNavigation(): void {
-    this.ignoreNavigation = true;
     this.sendControl({ type: "nav.cancel" });
+  }
+
+  /** Tells the backend which route is being navigated, for corridor alerts only. */
+  startNavigationTracking(
+    routeToken: string,
+    position?: VoiceNavigationPosition,
+  ): void {
+    this.routeToken = routeToken;
+    this.sendControl({ type: "nav.setRoute", routeToken });
+    if (position) this.sendNavigationPosition(position);
+    this.sendControl({ type: "nav.start" });
+  }
+
+  sendNavigationState(state: VoiceNavigationState): void {
+    this.sendControl({ type: "nav.state", ...state });
+  }
+
+  /** A guidance line the navigation engine timed, voiced naturally by the assistant. */
+  sendNavigationCue(text: string): void {
+    this.sendControl({ type: "nav.cue", text });
   }
 
   getStatus(): VoiceStatus {
@@ -822,7 +832,10 @@ export class VoiceSessionController {
       | NavSetRouteMessage
       | NavPositionMessage
       | NavCancelMessage
-      | NavResumeMessage,
+      | { type: "nav.start" }
+      | ({ type: "nav.state" } & VoiceNavigationState)
+      | { type: "nav.cue"; text: string }
+      | ({ type: "ui.command.ack"; id: string } & VoiceUiCommandResult),
   ): void {
     if (!this.sessionActive || !this.socket) return;
     if (
@@ -1031,8 +1044,6 @@ export class VoiceSessionController {
     if (this.contextTimer) clearTimeout(this.contextTimer);
     this.toolCalls.clear();
     this.completedCalls.clear();
-    this.pendingStartRoute = null;
-    this.ignoreNavigation = false;
 
     const socket = this.deps.createSocket(this.deps.wsUrl);
     this.socket = socket;
@@ -1045,6 +1056,7 @@ export class VoiceSessionController {
       const message: SessionStartMessage = {
         type: "session.start",
         token,
+        clientNavigation: 1,
         ...conversation,
         ...(this.sessionLanguage ? { language: this.sessionLanguage } : {}),
         ...(this.deps.getHistory ? { history: this.deps.getHistory() } : {}),
@@ -1125,20 +1137,9 @@ export class VoiceSessionController {
         this.deps.onRouteContextStatus?.(
           this.contextSupported ? "synced" : "unsupported",
         );
-        const isReconnect = this.hasBeenReady;
-        this.hasBeenReady = true;
         this.reconnectDelay = RECONNECT_INITIAL_DELAY_MS; // reset backoff on success
         this.setStatus({ status: "ready" });
-        if (this.routeToken) {
-          this.sendControl({
-            type: "nav.setRoute",
-            routeToken: this.routeToken,
-          });
-        }
-        // A rebuilt socket dropped the server-side navigation binding; ask to
-        // re-attach to it before any audio flows, so the assistant keeps
-        // announcing the same navigation instead of starting from scratch.
-        if (isReconnect) this.sendNavigationResume();
+        this.deps.onSessionReady?.();
         this.startCapture(gen);
         if (
           (this.deps.getConversationInput?.().routeContext?.routeToken ??
@@ -1195,11 +1196,6 @@ export class VoiceSessionController {
           (this.completedCalls.has(m.callId) || this.toolCalls.has(m.callId))
         )
           return;
-        if (m.name === "startNavigation")
-          this.pendingStartRoute = {
-            routeToken: this.routeToken,
-            generation: this.deps.getRouteGeneration?.() ?? 0,
-          };
         if (m.callId)
           this.toolCalls.set(m.callId, {
             name: m.name,
@@ -1226,10 +1222,6 @@ export class VoiceSessionController {
             (call.turnId && call.turnId !== m.turnId))
         )
           return;
-        if (m.name === "startNavigation" && this.isPendingStartStale()) {
-          this.syncRouteContext();
-          return;
-        }
         const routeTool =
           m.name === "planAccessibleRoute" || m.name === "plan_route";
         if (
@@ -1242,16 +1234,10 @@ export class VoiceSessionController {
             call.turnId !== m.turnId ||
             call.generation !== (this.deps.getRouteGeneration?.() ?? 0))
         ) {
-          this.terminate(
-            { status: "error", code: "AI_ROUTE_UNAVAILABLE" },
-            true,
-          );
+          // A plan for a selection the user has since changed is dropped, not
+          // fatal: the conversation goes on and a later start reports honestly.
+          console.warn("[voiceSession] stale route result dropped", m.name);
           return;
-        }
-        if (m.name === "startNavigation") this.pendingStartRoute = null;
-        if (routeTool && !toolResultFailure({ ...m, type: "result" })) {
-          this.pendingStartRoute = null;
-          this.ignoreNavigation = false;
         }
         if (m.callId) {
           this.completedCalls.add(m.callId);
@@ -1281,8 +1267,6 @@ export class VoiceSessionController {
         if (this.isEnding()) return;
         this.modelTurnActive = false;
         this.toolCalls.clear();
-        if (this.pendingStartRoute) this.cancelNavigation();
-        this.pendingStartRoute = null;
         // §5.10: interrupted always clears playback immediately.
         this.playback?.clear();
         this.deps.onInterrupted?.();
@@ -1315,31 +1299,25 @@ export class VoiceSessionController {
         );
         return;
       }
-      case "nav.start": {
-        const event = message as Extract<
-          VoiceNavigationEvent,
-          { type: "nav.start" }
-        >;
-        if (this.ignoreNavigation && !this.pendingStartRoute) return;
-        if (this.contextBlocked) {
-          this.cancelNavigation();
-          return;
-        }
-        if (this.isPendingStartStale()) {
-          this.syncRouteContext();
-          return;
-        }
-        this.ignoreNavigation = false;
-        const armedRouteToken =
-          event.routeToken ?? this.pendingStartRoute?.routeToken;
-        this.deps.onNavigationEvent({
-          ...event,
-          selectionGeneration:
-            this.pendingStartRoute?.generation ??
-            this.deps.getRouteGeneration?.() ??
-            0,
-          ...(armedRouteToken ? { armedRouteToken } : {}),
+      case "ui.command": {
+        const command = message as UiCommandMessage;
+        const run = this.deps.onUiCommand?.({
+          action: command.action,
+          routeToken: command.routeToken,
         });
+        // Ack once the page's own flow has settled; a newer socket drops it.
+        void Promise.resolve(
+          run ?? { ok: false as const, reason: "UNSUPPORTED" },
+        )
+          .catch(() => ({ ok: false as const, reason: "CLIENT_ERROR" }))
+          .then((result) => {
+            if (gen === this.generation)
+              this.sendControl({
+                type: "ui.command.ack",
+                id: command.id,
+                ...result,
+              });
+          });
         return;
       }
       case "nav.step":
@@ -1355,7 +1333,6 @@ export class VoiceSessionController {
       case "nav.resume_ok":
       case "nav.resume_failed":
       case "nav.error": {
-        if (this.ignoreNavigation) return;
         this.deps.onNavigationEvent(message as VoiceNavigationEvent);
         return;
       }
@@ -1365,28 +1342,6 @@ export class VoiceSessionController {
           message.type,
         );
     }
-  }
-
-  /**
-   * Build and send `nav.resume` from the adapter's snapshot. Anything
-   * incomplete (no navigation, no route capability) means there is nothing to
-   * resume, so the message is skipped rather than sent half-filled.
-   */
-  private sendNavigationResume(): void {
-    const state = this.deps.getNavigationResumeState?.();
-    if (!state) return;
-    const routeToken = state.routeToken || this.routeToken;
-    if (!state.navigationId || !routeToken) return;
-
-    const message: NavResumeMessage = {
-      type: "nav.resume",
-      navigationId: state.navigationId,
-      routeVersion: state.routeVersion,
-      routeToken,
-      lastKnownStepIndex: state.lastKnownStepIndex,
-    };
-    if (state.currentPosition) message.currentPosition = state.currentPosition;
-    this.sendControl(message);
   }
 
   private startCapture(gen: number): void {

@@ -8,7 +8,7 @@ import {
   type VenueArrivalEvaluation,
 } from "@/lib/indoor/arrivalTransition";
 import { findVenueModel, indoorModelVersion } from "@/lib/indoor/catalog";
-import type { VenueJourney } from "@/lib/indoor/journey";
+import { isIndoorOnlyJourney, type VenueJourney } from "@/lib/indoor/journey";
 import { isVenueTourAllowed } from "@/lib/indoor/tour";
 import { adoptBusDeparture } from "@/lib/transit/selectDeparture";
 import useIndoorCatalog from "@/stores/useIndoorCatalog";
@@ -82,7 +82,8 @@ export function startNavigation(): void {
       toast.error("場域資料已更新或尚未載入，請重新規劃。");
       return;
     }
-    if (!journey.outdoor) {
+    // An AI departure leg is only shown before the outdoor route navigated below.
+    if (isIndoorOnlyJourney(journey)) {
       if (!isVenueTourAllowed(journey.route)) {
         toast.error("路線資料不完整，請重新規劃。");
         return;
@@ -164,6 +165,8 @@ export function startNavigation(): void {
   if (journey?.outdoor) {
     map.beginVenueOutdoorNavigation();
     map.setIndoorExploring(false);
+  } else if (journey) {
+    map.stopVenueGuidance();
   }
   const navigationId = route.navigationId ?? null;
   localRerouteCoordinator.startSession(navigationId);
