@@ -154,15 +154,17 @@ function OutdoorPlaceContent() {
   }, [infoShow]);
 
   // A station or campus spans far more than the 150 m around its pin, so the
-  // place's own extent decides which facilities belong to it.
-  const placeBounds =
+  // place's own extent decides which facilities belong to it. Places with no
+  // extent (map taps, OSM, coordinates) are a point: query around it.
+  const rawBounds =
     infoShow.kind === "place" ? (infoShow.place.bounds ?? null) : null;
+  const placeBounds = isValidPlaceBounds(rawBounds) ? rawBounds : null;
 
   useEffect(() => {
     setNearbyBathrooms([]);
     setNearbyMetro([]);
     setNearbySummary(null);
-    if (!placePosition || !isValidPlaceBounds(placeBounds)) {
+    if (!placePosition) {
       setA11yLoading(false);
       return;
     }
