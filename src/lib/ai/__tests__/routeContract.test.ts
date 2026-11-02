@@ -231,9 +231,6 @@ describe("AI route contract", () => {
       Reflect.deleteProperty(p, "routeContractVersion");
     },
     (p: ReturnType<typeof planFixture>) => {
-      p.ok = false;
-    },
-    (p: ReturnType<typeof planFixture>) => {
       p.routes = [];
     },
     (p: ReturnType<typeof planFixture>) => {

@@ -11,6 +11,7 @@ const SEARCH_TOOLS = new Set([
 
 const SOLVE_TOOLS = new Set([
   "planAccessibleRoute",
+  "planIndoorRoute",
   "plan_route",
   "getNavInstructions",
 ]);

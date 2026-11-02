@@ -71,3 +71,17 @@ export function shouldSpeakLocally(
     state.localNavigationMode !== "preview"
   );
 }
+
+let cueSink: ((text: string) => boolean) | null = null;
+
+/** A live voice session takes engine announcements and voices them naturally. */
+export function setNavigationCueSink(
+  sink: ((text: string) => boolean) | null,
+): void {
+  cueSink = sink;
+}
+
+/** True when the voice assistant took the line; otherwise speak it locally. */
+export function deliverNavigationCue(text: string): boolean {
+  return cueSink?.(text) ?? false;
+}

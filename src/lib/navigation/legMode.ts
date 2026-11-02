@@ -29,8 +29,15 @@ export function resolveActiveLegType(
 }
 
 export interface NavThresholds {
-  /** Pass within this of a maneuver → advance to it. */
+  /** Within this of a maneuver, the leg type it belongs to takes over. */
   arriveM: number;
+  /**
+   * How far *past* a maneuver the user must be, along the route, before it
+   * counts as done. Projection onto the route snaps to the corner while the
+   * user has not turned yet, so only someone who actually took the turn gets
+   * this far along the next segment.
+   */
+  passM: number;
   /** Perpendicular distance from the route that counts as off-route. */
   offRouteM: number;
   /** Within this of the final maneuver → arrived. */
@@ -39,15 +46,17 @@ export interface NavThresholds {
 
 export const WALK_THRESHOLDS: NavThresholds = {
   arriveM: 18,
+  passM: 8,
   offRouteM: 40,
   finalArriveM: 25,
 };
 
 /** Roads are wider than the GPS error a pedestrian tolerates, and a car
- * covers 18 m in under a second — tight pedestrian radii would announce turns
- * too late and flag every lane change as off-route. */
+ * covers 18 m in under a second — tight pedestrian radii would flag every lane
+ * change as off-route. */
 export const VEHICLE_THRESHOLDS: NavThresholds = {
   arriveM: 60,
+  passM: 20,
   offRouteM: 80,
   finalArriveM: 60,
 };
@@ -59,34 +68,34 @@ export function navThresholdsFor(
 }
 
 /**
- * How close counts as "reached" for maneuver `i`, in meters along the route.
+ * How far past maneuver `i` (meters along the route) counts as done.
  *
- * The leg-type radius is the ceiling, never the answer: it is also capped at
- * half the distance from the previous maneuver. Without that cap a radius wider
- * than the gap between two maneuvers reaches back *past* the one before it, so
- * every maneuver inside one radius counts as reached at once. That is what made
- * navigation open on a step deep into the route — a driver standing at the
- * origin had the whole first 60 m of turns swallowed in a single pass, and the
- * result depended only on position, so re-navigating from the same spot landed
- * on the same step every time.
+ * A maneuver is only done once the user is *beyond* it — like Google / Apple
+ * Maps, the HUD keeps showing "turn left" until the turn is taken. Advancing
+ * inside a radius *before* the maneuver made the HUD and the voice run one
+ * step ahead, and a vehicle's 60 m radius skipped the "turn now" announcement.
+ *
+ * The leg-type distance is capped at half the gap to the next maneuver so two
+ * close maneuvers still advance one by one. Depart and alight steps have no
+ * turn to confirm: standing at the origin / the stop is enough.
  */
-function reachedRadiusM(
+function passedBeyondM(
   instructions: readonly NavInstruction[],
   waypoints: readonly { alongM: number }[],
   i: number,
 ): number {
-  const { arriveM } = navThresholdsFor(instructions[i]?.legType);
-  const prevAlongM = i > 0 ? waypoints[i - 1].alongM : 0;
-  const gapM = Math.max(0, waypoints[i].alongM - prevAlongM);
-  return Math.min(arriveM, gapM / 2);
+  const type = instructions[i]?.type;
+  if (type === "depart" || type === "transit_alight") return 0;
+  const { passM } = navThresholdsFor(instructions[i]?.legType);
+  const next = waypoints[i + 1];
+  if (!next) return passM;
+  return Math.min(passM, Math.max(0, next.alongM - waypoints[i].alongM) / 2);
 }
 
 /**
- * First maneuver still ahead of the user, using each waypoint's own leg-type
- * threshold — a composite route hits the 60 m driving radius while on the road
- * leg and the 18 m walking radius after the handoff, within one pass. Each
- * radius is capped so it cannot swallow the maneuver before it (see
- * `reachedRadiusM`).
+ * First maneuver the user has not passed yet, using each waypoint's own
+ * leg-type distance — a composite route uses the driving distance on the road
+ * leg and the walking one after the handoff, within one pass.
  */
 export function selectNextStepIndex(
   instructions: readonly NavInstruction[],
@@ -96,8 +105,8 @@ export function selectNextStepIndex(
   const count = Math.min(instructions.length, waypoints.length);
   for (let i = 0; i < count; i++) {
     if (
-      waypoints[i].alongM >
-      alongM + reachedRadiusM(instructions, waypoints, i)
+      alongM <
+      waypoints[i].alongM + passedBeyondM(instructions, waypoints, i)
     )
       return i;
   }

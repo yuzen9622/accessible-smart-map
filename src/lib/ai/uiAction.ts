@@ -1,6 +1,6 @@
 import type { SheetMode } from "@/stores/useMapStore";
 import type { AiResultMarker, LatLng } from "@/types";
-import type { AiRoutePlan } from "@/types/route";
+import type { AiIndoorRoutePlan, AiRoutePlan } from "@/types/route";
 
 // ── Map ──
 
@@ -26,6 +26,11 @@ interface ShowRouteAction {
   plan: AiRoutePlan;
 }
 
+interface ShowIndoorRouteAction {
+  type: "show-indoor-route";
+  plan: AiIndoorRoutePlan;
+}
+
 // ── Panel ──
 
 interface SwitchPanelAction {
@@ -37,6 +42,17 @@ interface CloseChatAction {
   type: "close-chat";
 }
 
+/** The text assistant asks the page to start navigation, as the start button does. */
+interface StartNavigationAction {
+  type: "start-navigation";
+  /** Omitted: the selected route. */
+  routeId?: string;
+}
+
+interface StopNavigationAction {
+  type: "stop-navigation";
+}
+
 // ── Union ──
 
 export type UIAction =
@@ -44,10 +60,15 @@ export type UIAction =
   | ClearMarkersAction
   | FlyToAction
   | ShowRouteAction
+  | ShowIndoorRouteAction
   | SwitchPanelAction
-  | CloseChatAction;
+  | CloseChatAction
+  | StartNavigationAction
+  | StopNavigationAction;
 
 export interface ActionResult {
   ok: boolean;
   skipped?: string;
+  /** Resolves once an action that finishes later (starting navigation) has. */
+  settled?: Promise<unknown>;
 }

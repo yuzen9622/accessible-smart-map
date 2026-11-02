@@ -46,16 +46,15 @@ export async function getNearbyRouteA11yPlaces(
   },
   signal: AbortSignal | undefined,
   lang: string | undefined,
-  bounds: PlaceBounds,
+  // Without a real extent (map taps, OSM/coordinate places) the backend
+  // searches its fixed radius around the point.
+  bounds?: PlaceBounds | null,
 ) {
-  if (!isValidPlaceBounds(bounds)) {
-    throw new Error("Valid place bounds are required for nearby facilities");
-  }
   const query = new URLSearchParams({
     lat: String(point.lat),
     lng: String(point.lng),
-    bbox: bounds.join(","),
   });
+  if (isValidPlaceBounds(bounds)) query.set("bbox", bounds.join(","));
   if (lang) query.set("lang", lang);
   const response = await fetchRequest<ApiResponse<NearbyRouteA11yData>>(
     `${END_POINT}/api/v1/a11y/nearby-a11y?${query.toString()}`,

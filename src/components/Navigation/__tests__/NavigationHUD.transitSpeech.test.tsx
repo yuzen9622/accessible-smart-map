@@ -243,10 +243,10 @@ describe("an upcoming arrival maneuver is not a completed arrival", () => {
     const markup = frame();
     expect(markup).toContain("navContinueToDestination");
     expect(markup).not.toContain("SOURCE ARRIVAL CLAIM");
+    // Announced ahead of the maneuver ("In 100 m, continue to destination"),
+    // never with the source's arrival claim.
     expect(h.synth.speak).toHaveBeenCalledTimes(1);
-    expect(h.synth.speak.mock.calls[0][0].text).toBe(
-      "navContinueToDestination",
-    );
+    expect(h.synth.speak.mock.calls[0][0].text).toBe("navSpeakAhead");
     const nav = useNavStore.getState();
     expect(nav.arrived).toBe(false);
     expect(nav.currentStepIndex).toBe(1);
@@ -285,7 +285,7 @@ describe("an upcoming arrival maneuver is not a completed arrival", () => {
 });
 
 describe("long straight walking stretch", () => {
-  it("reminds continue-straight once per 500 m mark, after the step's own announcement", () => {
+  it("announces the turn ahead, reminds continue-straight per 500 m mark, then at the turn", () => {
     const nav = useNavStore.getState();
     nav.setInstructions([
       { type: "depart", legType: "WALK", legIndex: 0, text: "DEPART" },
@@ -298,16 +298,19 @@ describe("long straight walking stretch", () => {
     frame();
     const spoken = () =>
       h.synth.speak.mock.calls.map(([utter]) => utter.text as string);
-    expect(spoken()).toEqual(["TURN LEFT"]);
+    expect(spoken()).toEqual(["navSpeakAhead"]);
 
-    for (const distance of [1060, 990, 960, 700, 485, 440]) {
+    for (const distance of [1060, 990, 960, 700, 485, 440, 40, 10]) {
       nav.setDistanceToNextM(distance);
       frame();
     }
+    // In 1.2 km turn left, two straight-on reminders, again close by, then at the turn.
     expect(spoken()).toEqual([
+      "navSpeakAhead",
+      "navSpeakContinue",
+      "navSpeakContinue",
+      "navSpeakAhead",
       "TURN LEFT",
-      "navSpeakContinue",
-      "navSpeakContinue",
     ]);
   });
 });

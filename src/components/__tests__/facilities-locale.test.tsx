@@ -407,12 +407,13 @@ describe("facility card display fallbacks", () => {
     expect(unknown).not.toContain("其他類型");
   });
 
-  it("does not request nearby facilities when the selected place has no bounds", () => {
+  it("queries around the point when the selected place has no bounds", () => {
     h.nearby.mockResolvedValue({ ok: true, data: {} });
     const info = h.store.infoShow as { place: { bounds?: unknown } };
     delete info.place.bounds;
     render(() => PlaceContent())[0].effect();
-    expect(h.nearby).not.toHaveBeenCalled();
+    expect(h.nearby).toHaveBeenCalledTimes(1);
+    expect(h.nearby.mock.calls[0][3]).toBeNull();
   });
 
   it("does not request nearby facilities when a station only has a position", () => {
@@ -469,7 +470,7 @@ describe("facility card display fallbacks", () => {
     ).toContain("a11yStatusYes");
   });
 
-  it("cancels the previous place and clears loading when the next place has no bounds", async () => {
+  it("cancels the previous place when the next place has no bounds", async () => {
     const old = deferred();
     h.nearby
       .mockReturnValueOnce(old.promise)
@@ -482,8 +483,9 @@ describe("facility card display fallbacks", () => {
     const info = h.store.infoShow as { place: { bounds?: unknown } };
     delete info.place.bounds;
     render(() => PlaceContent())[0].effect();
-    expect(h.nearby).toHaveBeenCalledTimes(1);
-    expect(h.writes).toContainEqual({ index: 2, value: false });
+    expect(h.nearby).toHaveBeenCalledTimes(2);
+    expect(h.nearby.mock.calls[1][3]).toBeNull();
+    await flush();
     const settled = [...h.writes];
     old.resolve({
       ok: true,

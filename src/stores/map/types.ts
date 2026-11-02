@@ -13,6 +13,7 @@ import type { A11yEnum } from "@/types/index";
 import type {
   AccessibleRoute,
   AccessibleRouteData,
+  AiIndoorRoutePlan,
   AiRoutePlan,
   BusLeg,
   EffectiveRoutePreferences,
@@ -110,6 +111,15 @@ export interface RouteSlice {
   invalidRouteTokens: string[];
   invalidateRouteToken: (token: string) => void;
   applyAiRoutePlan: (plan: AiRoutePlan) => void;
+  /** Register a `planIndoorRoute` result's single route; the venue journey
+   * that draws it is attached once its venue has been validated. */
+  applyAiIndoorRoutePlan: (plan: AiIndoorRoutePlan) => void;
+  /** Show an AI plan's validated venue leg with the routes it was planned
+   * with. Ignored (false) once those routes are no longer displayed. */
+  attachAiVenueJourney: (
+    routes: AccessibleRoute[],
+    journey: VenueJourney,
+  ) => boolean;
 
   origin: PlaceDetail | null;
   setOrigin: (origin: PlaceDetail | null) => void;

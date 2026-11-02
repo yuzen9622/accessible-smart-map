@@ -279,6 +279,18 @@
           "label": "規劃無障礙路線",
           "loading": "正在為你規劃無障礙路線…"
         },
+        "planIndoorRoute": {
+          "label": "規劃室內路線",
+          "loading": "正在規劃校內室內路線…"
+        },
+        "startNavigation": {
+          "label": "開始導航",
+          "loading": "正在開始導航…"
+        },
+        "stopNavigation": {
+          "label": "結束導航",
+          "loading": "正在結束導航…"
+        },
         "getNavInstructions": {
           "label": "產生導航指引",
           "loading": "正在產生導航指引…"
@@ -599,6 +611,7 @@
   "arrived": "已抵達目的地",
   "arrivedDesc": "您已到達目的地",
   "navContinueToDestination": "繼續前往目的地",
+  "navSpeakAhead": "{{distance}}後，{{instruction}}",
   "navSpeakContinue": "繼續直行 {{distance}}",
   "navSpeakMeters": "{{value}} 公尺",
   "navSpeakKilometers": "{{value}} 公里",
@@ -695,6 +708,11 @@
   "venueConfirmEntranceSection": "已走完入口路段",
   "venueConfirmSection": "已走完這段路線",
   "venueIndoorRouteSummary": "校內路線 · 約 {{distance}} 公尺",
+  "venueDepartureRouteSummary": "先走校內路線 · 約 {{distance}} 公尺",
+  "aiVenueLegUnavailable": "室內路段暫時無法顯示在地圖上，語音導航不受影響。",
+  "navVenueFloor": "{{floor}}",
+  "navVenueFloorChange": "{{from}} → {{to}}",
+  "navVenueManualHint": "到了請說「到了」或「下一步」",
   "venueDropOffPoint": "下車點",
   "venueWalkHandoffPoint": "步行接續點",
   "venueHeadingTo": "前往 {{destination}}",

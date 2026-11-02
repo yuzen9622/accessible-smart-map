@@ -11,7 +11,7 @@ import {
 import dynamic from "next/dynamic";
 import { useShallow } from "zustand/react/shallow";
 import { useAppTranslation } from "@/i18n/client";
-import type { VenueJourney } from "@/lib/indoor/journey";
+import { isIndoorOnlyJourney, type VenueJourney } from "@/lib/indoor/journey";
 import {
   startNavigation,
   venueApproachRouteKind,
@@ -156,8 +156,16 @@ export default function RouteContent() {
     return <HazardReportPanel onClose={closePanel} />;
   }
 
-  const indoorOnly = Boolean(venueJourney && !venueJourney.outdoor);
+  const indoorOnly = isIndoorOnlyJourney(venueJourney);
   const selectedToken = selectRoute?.route.routeToken;
+  // An AI indoor-only route has no outdoor legs to show as a card; its venue
+  // journey shows it once loaded. Its token still arms voice navigation.
+  const routeCards = (computeRoutes ?? []).filter(
+    (route) => route.legs.length > 0,
+  );
+  const venuePlace = venueJourney?.departure
+    ? venueJourney.from
+    : venueJourney?.to;
 
   return (
     <div className="space-y-4">
@@ -177,13 +185,9 @@ export default function RouteContent() {
         <h1 className="text-lg font-bold">{t("routeResultsTitle")}</h1>
       </div>
 
-      {venueJourney && (
+      {venuePlace && (
         <p className="text-sm text-muted-foreground">
-          {[
-            venueJourney.to.buildingName,
-            venueJourney.to.levelRef,
-            venueJourney.to.name,
-          ]
+          {[venuePlace.buildingName, venuePlace.levelRef, venuePlace.name]
             .filter(Boolean)
             .join(" · ")}
         </p>
@@ -210,6 +214,7 @@ export default function RouteContent() {
           disabled={
             !indoorOnly &&
             (!selectedToken ||
+              !selectRoute?.route.legs.length ||
               invalidTokens.includes(selectedToken) ||
               busSelection?.routeToken === selectedToken)
           }
@@ -223,7 +228,7 @@ export default function RouteContent() {
       {/* Quick action chips */}
       {(selectRoute || venueJourney) && (
         <div className="flex gap-2 overflow-x-auto pb-1">
-          {selectRoute && (
+          {selectRoute && selectRoute.route.legs.length > 0 && (
             <button
               type="button"
               onClick={() => setRouteSubPanel("explanation")}
@@ -252,9 +257,19 @@ export default function RouteContent() {
         </div>
       )}
 
+      {venueJourney?.departure && (
+        <VenueRouteSteps
+          journey={venueJourney}
+          title={t("venueDepartureRouteSummary", {
+            distance: Math.round(venueJourney.route.distanceM),
+          })}
+        />
+      )}
+
       {/* Route Cards */}
       <div className="space-y-3">
-        {(computeRoutes ?? []).map((route, index) => {
+        {routeCards.map((route) => {
+          const index = computeRoutes?.indexOf(route) ?? 0;
           const approach = route.routeToken
             ? venueJourney?.outdoor?.approachRoutes?.[route.routeToken]
             : undefined;

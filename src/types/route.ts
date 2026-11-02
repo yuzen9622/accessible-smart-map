@@ -1,3 +1,4 @@
+import type { VenueRouteResponse } from "@/lib/indoor/venueApi";
 import { metroLineColors } from "@/lib/route/metroLineColors";
 import type { ElevationProfile } from "./elevation";
 import type { BusDirection, ScheduledBusDirection } from "./transit";
@@ -611,12 +612,32 @@ export interface NavInstruction {
   relativeDirection: RelativeDirection;
   distanceM: number | null;
   streetName: string | null;
-  legType: "WALK" | "BUS" | "METRO" | "THSR" | "TRA" | "DRIVE" | "MOTORCYCLE";
+  legType:
+    | "WALK"
+    | "BUS"
+    | "METRO"
+    | "THSR"
+    | "TRA"
+    | "DRIVE"
+    | "MOTORCYCLE"
+    | "VENUE";
+  /** Voice-only: "manual" steps advance when the user says they got there. */
+  driver?: "manual";
+  /** Voice-only indoor (VENUE) step semantics; `type` keeps its legacy value. */
+  venueStepType?: VenueStepType;
+  /** Voice-only indoor floor of the step, and its floor change if any. */
+  levelRef?: string | null;
+  fromLevelRef?: string;
+  toLevelRef?: string;
   /** Source index in route.legs; absent for legacy and voice instructions. */
   legIndex?: number;
   /** Index in this instruction's own leg.polyline, not the concatenated route path. */
   polylineIndex: number | null;
+  /** Routing-engine walk maneuver (e.g. CONTINUE, LEFT); null for non-walk steps. */
+  maneuver?: string | null;
 }
+
+export type VenueStepType = VenueRouteResponse["steps"][number]["type"];
 
 export type NavWarning =
   | "WALK_STEPS_UNAVAILABLE"
@@ -1192,4 +1213,37 @@ export interface AiRoutePlan {
   transitAlerts?: MatchedAlert[];
   alerts?: unknown;
   arrivalEntrance?: unknown;
+  /** Indoor part of the trip; absent for plans that never enter a venue. */
+  venue?: AiVenueLeg;
+}
+
+/** The venue gate where an AI plan's outdoor routes end or start. */
+export interface AiVenueHandover {
+  venueId: string;
+  placeId: string;
+  gateId: string;
+  gateLocation: { lat: number; lng: number };
+  mode: EffectiveRoutePreferences["mode"];
+  venueVersion: number;
+}
+
+/** An indoor venue leg planned by the AI assistant (backend `VenueRoute`).
+ * `arrival` follows the outdoor routes (gate → place), `departure` precedes
+ * them (place → gate) and `indoor` is an indoor-only trip with no gate. */
+export type AiVenueLeg =
+  | {
+      direction: "arrival" | "departure";
+      handover: AiVenueHandover;
+      route: VenueRouteResponse;
+    }
+  | { direction: "indoor"; route: VenueRouteResponse };
+
+/** Successful `planIndoorRoute` tool result: one navigable route without
+ * outdoor legs, whose routeToken arms voice navigation of the indoor steps. */
+export interface AiIndoorRoutePlan {
+  venueId: string;
+  mode: EffectiveRoutePreferences["mode"];
+  selectedRouteId: string;
+  route: AccessibleRoute;
+  venue: Extract<AiVenueLeg, { direction: "indoor" }>;
 }

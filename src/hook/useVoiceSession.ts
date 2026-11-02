@@ -13,11 +13,12 @@ import { END_POINT } from "@/lib/config";
 import { createCapture } from "@/lib/voice/audioCapture";
 import { createPlayback } from "@/lib/voice/audioPlayback";
 import { createVoiceChatPersistence } from "@/lib/voice/voiceChatPersistence";
+import { handleVoiceUiCommand } from "@/lib/voice/voiceNavigationControl";
 import {
   filterApplicableNavigationEvents,
   type VoiceNavigationEvent,
   type VoiceNavigationPosition,
-  type VoiceNavigationResumeState,
+  type VoiceNavigationState,
   VoiceSessionController,
   type VoiceSocket,
   type VoiceStatus,
@@ -27,7 +28,6 @@ import { createVoiceBindings } from "@/lib/voice/voiceSessionBindings";
 import type { VoiceToolActivity } from "@/lib/voice/voiceTools";
 import useAuthStore from "@/stores/useAuthStore";
 import useMapStore from "@/stores/useMapStore";
-import useNavStore from "@/stores/useNavStore";
 import useVoiceStore, {
   type VoiceTranscriptEntry,
 } from "@/stores/useVoiceStore";
@@ -94,42 +94,6 @@ function getUserLocation(): { latitude: number; longitude: number } | null {
  * driving itself, and an arrived/absent navigation has nothing to re-attach
  * to, so both return `null` and the controller sends no message.
  */
-function getNavigationResumeState(): VoiceNavigationResumeState | null {
-  const map = useMapStore.getState();
-  const nav = useNavStore.getState();
-  if (!map.isNavigating || nav.navigationSource !== "voice" || nav.arrived) {
-    return null;
-  }
-
-  const route = map.activeNavigationRoute ?? map.selectRoute?.route;
-  const navigationId = route?.navigationId ?? nav.navigationId;
-  const routeToken = route?.routeToken;
-  if (
-    !navigationId ||
-    typeof routeToken !== "string" ||
-    routeToken.length === 0
-  ) {
-    return null;
-  }
-
-  const location = map.userLocation;
-  const heading = nav.userHeading ?? nav.gpsHeading;
-  return {
-    navigationId,
-    routeVersion: route?.routeVersion ?? nav.routeVersion,
-    routeToken,
-    lastKnownStepIndex: nav.currentStepIndex,
-    ...(location
-      ? {
-          currentPosition: {
-            latitude: location.lat,
-            longitude: location.lng,
-            ...(heading == null ? {} : { heading }),
-          },
-        }
-      : {}),
-  };
-}
 
 export interface UseVoiceSessionResult {
   status: VoiceStatus;
@@ -143,6 +107,14 @@ export interface UseVoiceSessionResult {
   setNavigationRoute: (routeToken: string | null) => void;
   sendNavigationPosition: (position: VoiceNavigationPosition) => void;
   cancelNavigation: () => void;
+  startNavigationTracking: (
+    routeToken: string,
+    position?: VoiceNavigationPosition,
+  ) => void;
+  sendNavigationState: (state: VoiceNavigationState) => void;
+  sendNavigationCue: (text: string) => void;
+  /** Registers what runs on every `session.ready` (first connect and reconnects). */
+  onSessionReady: (listener: (() => void) | null) => void;
   consumeNavigationEvents: (count: number) => void;
   setMuted: (muted: boolean) => void;
 }
@@ -200,6 +172,7 @@ export default function useVoiceSession(): UseVoiceSessionResult {
   }
   const bindings = bindingsRef.current;
 
+  const sessionReadyRef = useRef<(() => void) | null>(null);
   const controllerRef = useRef<VoiceSessionController | null>(null);
   if (!controllerRef.current) {
     controllerRef.current = new VoiceSessionController({
@@ -259,7 +232,8 @@ export default function useVoiceSession(): UseVoiceSessionResult {
           setNavigationEvents((pending) => [...pending, event]);
         }
       },
-      getNavigationResumeState,
+      onUiCommand: handleVoiceUiCommand,
+      onSessionReady: () => sessionReadyRef.current?.(),
     });
   }
 
@@ -279,9 +253,8 @@ export default function useVoiceSession(): UseVoiceSessionResult {
           (!previous.isNavigating ||
             state.activeNavigationRoute !== previous.activeNavigationRoute);
         if (startingNavigation)
-          controllerRef.current?.syncRouteContext({
-            deferUntilIdle: useNavStore.getState().navigationSource === "voice",
-          });
+          // Never cut off the assistant confirming a start it requested.
+          controllerRef.current?.syncRouteContext({ deferUntilIdle: true });
         else if (state.routeGeneration !== previous.routeGeneration) {
           controllerRef.current?.syncRouteContext({
             deferUntilIdle:
@@ -356,6 +329,25 @@ export default function useVoiceSession(): UseVoiceSessionResult {
     controllerRef.current?.cancelNavigation();
   }, []);
 
+  const startNavigationTracking = useCallback(
+    (routeToken: string, position?: VoiceNavigationPosition) => {
+      controllerRef.current?.startNavigationTracking(routeToken, position);
+    },
+    [],
+  );
+
+  const sendNavigationState = useCallback((state: VoiceNavigationState) => {
+    controllerRef.current?.sendNavigationState(state);
+  }, []);
+
+  const sendNavigationCue = useCallback((text: string) => {
+    controllerRef.current?.sendNavigationCue(text);
+  }, []);
+
+  const onSessionReady = useCallback((listener: (() => void) | null) => {
+    sessionReadyRef.current = listener;
+  }, []);
+
   const setMuted = useCallback(
     (muted: boolean) => {
       controllerRef.current?.setMuted(muted);
@@ -382,6 +374,10 @@ export default function useVoiceSession(): UseVoiceSessionResult {
     setNavigationRoute,
     sendNavigationPosition,
     cancelNavigation,
+    startNavigationTracking,
+    sendNavigationState,
+    sendNavigationCue,
+    onSessionReady,
     consumeNavigationEvents,
     setMuted,
   };

@@ -36,6 +36,10 @@ export interface VenueJourney {
     status: "idle" | "outdoor" | "touring" | "guiding" | "arrived";
     stepIndex: number;
   };
+  /** AI plans only: this indoor leg ends at the gate where the plan's outdoor
+   * routes (the store's computeRoutes) begin. It is shown with them and never
+   * toured or navigated on its own. */
+  departure?: true;
   /** Real outdoor results only. The venue path begins at this known arrival. */
   outdoor?: {
     origin: PlaceDetail;
@@ -49,6 +53,13 @@ export interface VenueJourney {
     navigationIndex?: number;
     arrival: VenuePlaceDetail;
   };
+}
+
+/** A venue trip with nothing outdoors before or after it. */
+export function isIndoorOnlyJourney(
+  journey: VenueJourney | null | undefined,
+): boolean {
+  return Boolean(journey && !journey.outdoor && !journey.departure);
 }
 
 export type VenueJourneyResult =

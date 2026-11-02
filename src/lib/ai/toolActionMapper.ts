@@ -4,7 +4,11 @@ import { withRouteNameLanguage } from "@/lib/route/sourceNames";
 import { getToolResultGroup } from "@/lib/toolResultCards";
 import { toolResultFailure } from "@/lib/voice/voiceTools";
 import { A11yEnum, type AiResultMarker } from "@/types";
-import { parseAiRoutePlan } from "./routeContract";
+import {
+  isRouteTool,
+  parseAiIndoorRoutePlan,
+  parseAiRoutePlan,
+} from "./routeContract";
 import type { UIAction } from "./uiAction";
 
 function markerActions(markers: AiResultMarker[]): UIAction[] {
@@ -24,10 +28,12 @@ export function mapToolToActions(
   _args?: unknown,
   displayLanguage?: "en" | "zh-TW",
 ): UIAction[] {
+  // A refused plan is the assistant's to explain; only an accepted plan must
+  // satisfy the route contract.
   if (
-    toolName !== "plan_route" &&
-    toolName !== "planAccessibleRoute" &&
-    toolResultFailure({ type: "result", name: toolName, result })
+    isRouteTool(toolName)
+      ? (result as { ok?: unknown } | null)?.ok === false
+      : toolResultFailure({ type: "result", name: toolName, result })
   )
     return [];
   switch (toolName) {
@@ -79,6 +85,27 @@ export function mapToolToActions(
       );
     }
 
+    // Only the text assistant's results carry clientAction; voice already ran
+    // these through the backend's ui.command.
+    case "startNavigation": {
+      const value = result as { clientAction?: unknown; routeId?: unknown };
+      return value?.clientAction === "start-navigation"
+        ? [
+            {
+              type: "start-navigation",
+              ...(typeof value.routeId === "string"
+                ? { routeId: value.routeId }
+                : {}),
+            },
+          ]
+        : [];
+    }
+    case "stopNavigation":
+      return (result as { clientAction?: unknown })?.clientAction ===
+        "stop-navigation"
+        ? [{ type: "stop-navigation" }]
+        : [];
+
     case "plan_route":
     case "planAccessibleRoute": {
       const plan = parseAiRoutePlan(result);
@@ -94,6 +121,11 @@ export function mapToolToActions(
         },
       ];
     }
+
+    case "planIndoorRoute":
+      return [
+        { type: "show-indoor-route", plan: parseAiIndoorRoutePlan(result) },
+      ];
 
     default:
       return [];
