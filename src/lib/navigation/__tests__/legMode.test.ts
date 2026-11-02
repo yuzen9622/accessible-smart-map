@@ -92,18 +92,21 @@ describe("selectNextStepIndex", () => {
     { alongM: 400 },
   ];
 
-  it("advances past a driving maneuver at the 60 m radius", () => {
-    // 45 m short of the maneuver: inside the driving radius, so it is done.
-    expect(selectNextStepIndex(compositeRoute, waypoints, 255)).toBe(2);
-    // 70 m short: still ahead.
-    expect(selectNextStepIndex(compositeRoute, waypoints, 230)).toBe(1);
+  // Regression: the step used to advance inside a radius *before* the
+  // maneuver, so the HUD and the voice ran one step ahead of the user.
+  it("keeps a maneuver until the user is past it", () => {
+    // 45 m short of the 300 m driving maneuver, then right on it: not done yet.
+    expect(selectNextStepIndex(compositeRoute, waypoints, 255)).toBe(1);
+    expect(selectNextStepIndex(compositeRoute, waypoints, 300)).toBe(1);
+    // 20 m past it — but capped at half the 40 m gap to the next maneuver.
+    expect(selectNextStepIndex(compositeRoute, waypoints, 319)).toBe(1);
+    expect(selectNextStepIndex(compositeRoute, waypoints, 320)).toBe(2);
   });
 
-  it("uses the walking radius once the leg is on foot", () => {
-    // 30 m short of the 340 m walking maneuver — beyond the 18 m radius, so
-    // it is still the target even though a driving radius would have passed it.
-    expect(selectNextStepIndex(compositeRoute, waypoints, 310)).toBe(2);
-    expect(selectNextStepIndex(compositeRoute, waypoints, 330)).toBe(3);
+  it("uses the walking pass distance once the leg is on foot", () => {
+    expect(selectNextStepIndex(compositeRoute, waypoints, 330)).toBe(2);
+    expect(selectNextStepIndex(compositeRoute, waypoints, 347)).toBe(2);
+    expect(selectNextStepIndex(compositeRoute, waypoints, 348)).toBe(3);
   });
 
   it("clamps to the final step past the end of the route", () => {
@@ -148,7 +151,9 @@ describe("selectNextStepIndex", () => {
       { alongM: 900 },
     ];
     expect(selectNextStepIndex(driveRoute, dense, 0)).toBe(1);
-    expect(selectNextStepIndex(driveRoute, dense, 20)).toBe(2);
+    expect(selectNextStepIndex(driveRoute, dense, 20)).toBe(1);
+    // Past 30 m by the capped pass distance (half the 25 m gap to the next).
+    expect(selectNextStepIndex(driveRoute, dense, 43)).toBe(2);
   });
 
   it("advances monotonically as the user moves through dense maneuvers", () => {
