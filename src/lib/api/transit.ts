@@ -256,6 +256,16 @@ export interface RouteDetailDirection {
   subRouteName?: string;
 }
 
+function planArrivalsQuery(planContext: BusPlanContext): string {
+  const params = new URLSearchParams({
+    routeToken: planContext.routeToken,
+    legIndex: String(planContext.legIndex),
+  });
+  if (typeof planContext.readyInSeconds === "number")
+    params.set("readyInSeconds", String(planContext.readyInSeconds));
+  return params.toString();
+}
+
 export async function getBusRouteDetail(
   routeName: string,
   city: string,
@@ -268,9 +278,9 @@ export async function getBusRouteDetail(
   if (lang) params.set("lang", lang);
   if (subRouteUid) params.set("subRouteUid", subRouteUid);
   // This capability endpoint has a strict query contract: unlike transit
-  // name GETs, it accepts ONLY the token and leg index (no lang).
+  // name GETs, it accepts ONLY the token, leg index and rider readiness (no lang).
   const endpoint = planContext
-    ? `/api/v1/a11y/accessible-route/bus-arrivals?${new URLSearchParams({ routeToken: planContext.routeToken, legIndex: String(planContext.legIndex) })}`
+    ? `/api/v1/a11y/accessible-route/bus-arrivals?${planArrivalsQuery(planContext)}`
     : `/api/v1/transit/bus/route-detail?${params}`;
   const data = (await timedBusRequest(
     `${END_POINT}${endpoint}`,

@@ -219,3 +219,24 @@ it("sends only the route capability and full leg index for a planned bus", async
   expect(res.data?.departureCandidates).toEqual(departureCandidates);
   expect(res.data?.candidateSearchComplete).toBe(false);
 });
+
+it("adds the navigating rider readiness to the planned bus query", async () => {
+  const fetchMock = vi.fn(async (_url: RequestInfo | URL) =>
+    Response.json({
+      ok: true,
+      status: "success",
+      code: 200,
+      message: "ok",
+      data: { directions: [] },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  await getBusRouteDetail("99", "Taipei", "branch", undefined, {
+    routeToken: "plan-token",
+    legIndex: 2,
+    readyInSeconds: 0,
+  });
+  expect(String(fetchMock.mock.calls[0][0])).toBe(
+    `${END_POINT}/api/v1/a11y/accessible-route/bus-arrivals?routeToken=plan-token&legIndex=2&readyInSeconds=0`,
+  );
+});

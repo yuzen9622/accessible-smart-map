@@ -10,10 +10,18 @@ import type {
 } from "@/types/route";
 import { shouldSpeakLocally } from "../navigationAudio";
 import { startNavigation, stopNavigation } from "../navigationLifecycle";
-import { navigationCopyDefault } from "../transitCopy";
 import {
+  navigationCopyDefault,
+  type Translate,
+  transitHeadline,
+  transitLiveText,
+  transitSpeechText,
+} from "../transitCopy";
+import {
+  boardReadySeconds,
   buildTransitGuide,
   findBusRuns,
+  plannedWalkPaceMps,
   rideStops,
   transitAnnouncement,
 } from "../transitRide";
@@ -426,5 +434,58 @@ describe("manual and boarding ownership", () => {
     expect(useNavStore.getState().transitRide).toBeNull();
     nav.reset();
     expect(useNavStore.getState().navigationMode).toBe("preview");
+  });
+});
+
+describe("rider readiness and timetable time while waiting", () => {
+  const t: Translate = (key, options) =>
+    options ? `${key}${JSON.stringify(options)}` : key;
+  it("reports 0 at the stop, else the remaining walk at the planned pace in 30 s steps", () => {
+    expect(boardReadySeconds(980, 1000, 1)).toBe(0);
+    expect(boardReadySeconds(900, 1000, 1)).toBe(120);
+    expect(boardReadySeconds(null, 1000, 1)).toBeNull();
+    expect(boardReadySeconds(500, 1000, null)).toBeNull();
+  });
+  it("takes the pace from the walk ending at the boarding stop", () => {
+    const walk = { type: "WALK", distanceM: 300, minutesEst: 5 };
+    expect(
+      plannedWalkPaceMps([walk, leg] as AccessibleRoute["legs"], 1),
+    ).toBeCloseTo(1);
+    expect(
+      plannedWalkPaceMps([leg, leg] as AccessibleRoute["legs"], 1),
+    ).toBeNull();
+  });
+  it("shows and says the timetable time only when there are no live minutes", () => {
+    const run = { ordinal: 0, boardIndex: 1, alightIndex: 2, legIndex: 1 };
+    const input = (liveMinutes: number | null) => ({
+      run,
+      leg,
+      boarded: false,
+      alongM: 100,
+      boardAlongM: 100,
+      stops: null,
+      legEndAlongM: 900,
+      liveMinutes,
+      scheduledAt: "10:30",
+    });
+    const guide = buildTransitGuide(input(null), 1);
+    expect(guide).toMatchObject({
+      phase: "waiting",
+      waitMinutes: null,
+      scheduledAt: "10:30",
+    });
+    expect(buildTransitGuide(input(4), 1)).not.toHaveProperty("scheduledAt");
+    if (!guide) throw new Error("no guide");
+    expect(transitHeadline(t, guide)).toBe('navBusScheduledAt{"time":"10:30"}');
+    expect(transitLiveText(t, guide)).toContain("navBusWaitLineScheduled");
+    expect(
+      transitSpeechText(t, {
+        kind: "atStop",
+        routeName: "99",
+        boardStop: "A",
+        waitMinutes: null,
+        scheduledAt: "10:30",
+      }),
+    ).toContain('navBusSpeakScheduled{"route":"99","time":"10:30"}');
   });
 });

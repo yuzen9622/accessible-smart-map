@@ -8,6 +8,7 @@ import type {
 import {
   estimateNavigationEta,
   selectedDepartureLiveMinutes,
+  selectedDepartureTimetable,
 } from "../navigationEta";
 
 const now = Date.parse("2026-10-22T10:00:00+08:00");
@@ -168,8 +169,27 @@ describe("selected service live times", () => {
     expect(selectedDepartureLiveMinutes(leg, [selected], false, now)).toBe(3);
     expect(selectedDepartureLiveMinutes(leg, [selected], true, now)).toBe(12);
   });
+  it("follows the backend's re-selected vehicle of the same service while waiting, but not on board", () => {
+    const other = { ...selected, plateNumb: "OTHER" } as BusDepartureCandidate;
+    expect(selectedDepartureLiveMinutes(leg, [other], false, now)).toBe(3);
+    expect(selectedDepartureLiveMinutes(leg, [other], true, now)).toBeNull();
+  });
+  it("gives the scheduled boarding time only for a timetable-only selection", () => {
+    const timetable = {
+      ...selected,
+      boardingTime: "2026-10-22T10:30:00+08:00",
+      boardingTimeSource: "schedule",
+    } as BusDepartureCandidate;
+    expect(selectedDepartureTimetable(leg, [timetable])).toBe("10:30");
+    expect(selectedDepartureTimetable(leg, [selected])).toBeNull();
+    expect(
+      selectedDepartureTimetable(leg, [{ ...timetable, selected: false }]),
+    ).toBeNull();
+    expect(
+      selectedDepartureTimetable(leg, [{ ...timetable, subRouteUid: "99B" }]),
+    ).toBeNull();
+  });
   it.each([
-    { plateNumb: "OTHER" },
     { subRouteUid: "99B" },
     { direction: 1 },
     { arrivalStopId: "OTHER" },
@@ -186,7 +206,7 @@ describe("selected service live times", () => {
       ),
     ).toBeNull();
   });
-  it("rejects ambiguous records and a different scheduled trip", () => {
+  it("rejects ambiguous records, and a different scheduled trip once on board", () => {
     expect(
       selectedDepartureLiveMinutes(leg, [selected, selected], false, now),
     ).toBeNull();
@@ -202,7 +222,7 @@ describe("selected service live times", () => {
       selectedDepartureLiveMinutes(
         scheduled,
         [{ ...selected, tripId: "trip-B" }],
-        false,
+        true,
         now,
       ),
     ).toBeNull();
