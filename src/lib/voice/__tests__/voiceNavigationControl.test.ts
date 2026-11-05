@@ -19,6 +19,7 @@ vi.mock("@/lib/navigation/navigationLifecycle", () => ({
 
 import { trackAiVenueLoad } from "@/lib/ai/aiVenueLoad";
 import {
+  busWaitOf,
   currentNavigationState,
   handleVoiceUiCommand,
   runNavigationControl,
@@ -246,6 +247,45 @@ describe("engine state the assistant answers from", () => {
     });
     expect(cue).toHaveBeenCalledWith("沿三民路直行");
     setVoiceCueSink(null);
+  });
+
+  it("tells the assistant what the waiting card shows, and nothing once riding", () => {
+    expect(
+      busWaitOf({
+        phase: "waiting",
+        routeName: "26",
+        boardStop: "黎明文心南五路口",
+        waitMinutes: null,
+        scheduledAt: "10:30",
+      }),
+    ).toEqual({
+      busWait: {
+        routeName: "26",
+        stop: "黎明文心南五路口",
+        waitMinutes: null,
+        expectedAt: "10:30",
+      },
+    });
+    expect(
+      busWaitOf({
+        phase: "approaching",
+        routeName: "26",
+        boardStop: "A",
+        waitMinutes: 4,
+        scheduledAt: "10:30",
+      }),
+    ).toEqual({ busWait: { routeName: "26", stop: "A", waitMinutes: 4 } });
+    expect(
+      busWaitOf({
+        phase: "riding",
+        routeName: "26",
+        alightStop: "B",
+        stopsLeft: 2,
+        minutes: 5,
+        minutesSource: "realtime",
+      }),
+    ).toEqual({});
+    expect(busWaitOf(null)).toEqual({});
   });
 
   it("reports an indoor arrival as finished", async () => {

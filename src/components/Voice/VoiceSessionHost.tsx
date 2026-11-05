@@ -7,6 +7,7 @@ import { haversineMeters } from "@/lib/geo";
 import { setNavigationCueSink } from "@/lib/navigation/navigationAudio";
 import { handleVoiceRerouteEvent } from "@/lib/navigation/rerouteCoordinator";
 import {
+  busWaitOf,
   currentNavigationState,
   setVoiceCueSink,
 } from "@/lib/voice/voiceNavigationControl";
@@ -164,7 +165,12 @@ export default function VoiceSessionHost() {
         state.currentStepIndex !== previous.currentStepIndex ||
         state.navigationMode !== previous.navigationMode ||
         state.arrived !== previous.arrived ||
-        state.instructions !== previous.instructions;
+        state.instructions !== previous.instructions ||
+        // The waiting card's minutes or expected time changed: the assistant
+        // must answer from what the screen shows. The guide object is rebuilt
+        // on every GPS sample, so compare what is sent, not the reference.
+        JSON.stringify(busWaitOf(state.transitGuide)) !==
+          JSON.stringify(busWaitOf(previous.transitGuide));
       if (changed) publishState(true);
       else if (state.distanceToNextM !== previous.distanceToNextM)
         publishState(false);
