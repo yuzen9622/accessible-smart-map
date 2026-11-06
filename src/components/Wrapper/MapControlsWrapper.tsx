@@ -270,7 +270,7 @@ export default function MapControlsWrapper() {
   }, [shareOpen, userLocation, i18n.language]);
 
   const shareUrl = userLocation
-    ? `${window.location.origin}/${i18n.language}?loc=${userLocation.lat.toFixed(6)},${userLocation.lng.toFixed(6)}`
+    ? `${window.location.origin}/${i18n.language}/map/?loc=${userLocation.lat.toFixed(6)},${userLocation.lng.toFixed(6)}`
     : "";
   const shareText = t("shareText", { address: address ?? t("myLocation") });
   const fullMessage = `${shareText} ${shareUrl}`;

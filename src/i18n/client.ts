@@ -84,6 +84,9 @@ export function useAppTranslation(ns?: string | string[]) {
     document.documentElement.lang = userConfig.language;
   }, [userConfig.language, ret.i18n, updateUserConfig]);
   useEffect(() => {
+    // /map has no locale prefix. Its language is still driven by userConfig,
+    // but changing preferences must not replace the application entry URL.
+    if (path === "/map" || path === "/map/") return;
     // 只有在語言不同時才切換，避免重複呼叫
     if (
       userConfig.language !== lang &&

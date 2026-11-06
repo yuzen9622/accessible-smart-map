@@ -71,7 +71,7 @@ function VerifyEmailContent() {
         status="success"
         title="電子郵件驗證成功"
         description="您已自動登入"
-        primaryAction={{ label: "回到地圖", href: `/${lng}` }}
+        primaryAction={{ label: "回到地圖", href: `/${lng}/map/` }}
       />
     );
   }
@@ -81,7 +81,7 @@ function VerifyEmailContent() {
       status="error"
       title="驗證失敗"
       description={message}
-      primaryAction={{ label: "回到首頁", href: `/${lng}` }}
+      primaryAction={{ label: "回到首頁", href: `/${lng}/map/` }}
     />
   );
 }

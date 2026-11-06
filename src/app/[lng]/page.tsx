@@ -1,29 +1,17 @@
 "use client";
-import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
-import OnboardingHost from "@/components/Onboarding/OnboardingHost";
-import Splash from "@/components/Splash";
 
-const ClientMap = dynamic(() => import("@/components/ClientMap"), {
-  ssr: false,
-});
+import { useEffect } from "react";
+import { fallbackLng, languages } from "@/i18n/setting";
 
-const SPLASH_MS = 2000;
-
-export default function Home() {
-  const [showSplash, setShowSplash] = useState(true);
-
+// Also works in native static exports, where middleware is unavailable.
+export default function LegacyMapPage() {
   useEffect(() => {
-    const id = window.setTimeout(() => setShowSplash(false), SPLASH_MS);
-    return () => window.clearTimeout(id);
+    const segment = window.location.pathname.split("/")[1];
+    const lng = languages.includes(segment) ? segment : fallbackLng;
+    const native = ["capacitor:", "ionic:"].includes(window.location.protocol);
+    window.location.replace(
+      `/${lng}/map/${native ? "index.html" : ""}${window.location.search}${window.location.hash}`,
+    );
   }, []);
-  return (
-    <div className=" w-full h-full flex flex-col">
-      <Splash show={showSplash} durationMs={SPLASH_MS} />
-      <ClientMap />
-      {/* Held back until the splash clears so the tour is never announced to a
-          screen reader while it is still visually covered. */}
-      <OnboardingHost ready={!showSplash} />
-    </div>
-  );
+  return null;
 }

@@ -250,7 +250,10 @@ function OutdoorPlaceContent() {
 
   const handleShare = useCallback(async () => {
     if (!infoShow.kind) return;
-    let url = process.env.NEXT_PUBLIC_URL ?? window.location.origin;
+    let url = new URL(
+      "/map/",
+      process.env.NEXT_PUBLIC_URL ?? window.location.origin,
+    ).toString();
     if (infoShow.kind === "place") {
       const place = infoShow.place;
       const [lng, lat] = place.location.coordinates;
