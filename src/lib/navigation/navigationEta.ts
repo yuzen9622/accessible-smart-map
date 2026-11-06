@@ -8,13 +8,18 @@ import type {
 } from "@/types/route";
 import type { NavigationProgress } from "./navigationProgress";
 
-/** Candidate IDs contain changing ETA instants; match the locked service identity. */
-export function selectedDepartureLiveMinutes(
+/**
+ * The backend's selected departure for this leg in a bus-arrivals answer.
+ * Before boarding the backend may re-select another vehicle of the same
+ * service (the rider reached the stop early, or the planned bus ran early), so
+ * only the service must match. After boarding the rider is on one vehicle and
+ * its plate/trip must match exactly.
+ */
+function selectedDeparture(
   leg: BusLeg,
   candidates: readonly BusDepartureCandidate[] | undefined,
   boarded: boolean,
-  now: number,
-): number | null {
+): BusDepartureCandidate | null {
   const selected = leg.selectedDeparture;
   if (!selected || (!selected.plateNumb && !selected.tripId)) return null;
   const matches = candidates?.filter(
@@ -24,11 +29,21 @@ export function selectedDepartureLiveMinutes(
       candidate.direction === selected.direction &&
       candidate.departureStopId === selected.departureStopId &&
       candidate.arrivalStopId === selected.arrivalStopId &&
-      (!selected.plateNumb || candidate.plateNumb === selected.plateNumb) &&
-      (!selected.tripId || candidate.tripId === selected.tripId),
+      (!boarded ||
+        ((!selected.plateNumb || candidate.plateNumb === selected.plateNumb) &&
+          (!selected.tripId || candidate.tripId === selected.tripId))),
   );
-  if (matches?.length !== 1) return null;
-  const candidate = matches[0];
+  return matches?.length === 1 ? matches[0] : null;
+}
+
+export function selectedDepartureLiveMinutes(
+  leg: BusLeg,
+  candidates: readonly BusDepartureCandidate[] | undefined,
+  boarded: boolean,
+  now: number,
+): number | null {
+  const candidate = selectedDeparture(leg, candidates, boarded);
+  if (!candidate) return null;
   const source = boarded
     ? candidate.alightingTimeSource
     : candidate.boardingTimeSource;
@@ -36,6 +51,25 @@ export function selectedDepartureLiveMinutes(
   const time = instant ? Date.parse(instant) : NaN;
   return source === "realtime" && Number.isFinite(time)
     ? Math.max(0, Math.ceil((time - now) / 60_000))
+    : null;
+}
+
+/** While waiting: the selected trip's scheduled boarding time (HH:mm) when it
+ * has only a timetable; null when live or unknown. */
+export function selectedDepartureTimetable(
+  leg: BusLeg,
+  candidates: readonly BusDepartureCandidate[] | undefined,
+): string | null {
+  const candidate = selectedDeparture(leg, candidates, false);
+  if (candidate?.boardingTimeSource !== "schedule" || !candidate.boardingTime)
+    return null;
+  const time = Date.parse(candidate.boardingTime);
+  return Number.isFinite(time)
+    ? new Date(time).toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Taipei",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
     : null;
 }
 

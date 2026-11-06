@@ -252,9 +252,19 @@ describe("shared bus progress and live ETA", () => {
         ],
       },
     } as Awaited<ReturnType<typeof getBusRouteDetail>>);
+    // Navigation reports that the rider is at the stop; the poller asks with
+    // that readiness, and the HUD reads the same answer.
+    renderEffects();
+    h.effects[4]();
+    const navContext = useMapStore.getState().activeBusLeg?.leg.planContext;
+    expect(navContext).toEqual({
+      routeToken: "token",
+      legIndex: 0,
+      readyInSeconds: 0,
+    });
     await fetchRouteDetailSnapshot("99", "Taipei", {
       subRouteUid: "99A",
-      planContext: { routeToken: "token", legIndex: 0 },
+      planContext: navContext,
       lang: "en",
     });
     renderEffects();

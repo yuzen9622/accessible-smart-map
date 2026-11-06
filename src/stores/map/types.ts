@@ -214,6 +214,10 @@ export interface TransitSlice {
   setLiveBusPositions: (positions: LiveBus[]) => void;
   activeBusLeg: ActiveBusLeg | null;
   setActiveBusLeg: (active: ActiveBusLeg | null) => void;
+  /** Navigation reports seconds until the rider reaches the boarding stop
+   * (null = unknown, send nothing). Only the leg with this key changes; the
+   * key stays, so polling is not restarted and picks the value up next round. */
+  setBoardReadiness: (key: string, readyInSeconds: number | null) => void;
   nearbyBusStops: (BusStopSearchResult & { distance?: number })[];
   setNearbyBusStops: (
     stops: (BusStopSearchResult & { distance?: number })[],

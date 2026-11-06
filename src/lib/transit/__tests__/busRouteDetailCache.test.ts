@@ -59,6 +59,20 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("navigation readiness in the key", () => {
+  it("separates navigation answers from route-card answers but not by the seconds value", () => {
+    const plan = { routeToken: "plan", legIndex: 2 };
+    expect(routeDetailKey("99", "Taipei", "A", plan)).not.toBe(
+      routeDetailKey("99", "Taipei", "A", { ...plan, readyInSeconds: 0 }),
+    );
+    expect(
+      routeDetailKey("99", "Taipei", "A", { ...plan, readyInSeconds: 0 }),
+    ).toBe(
+      routeDetailKey("99", "Taipei", "A", { ...plan, readyInSeconds: 120 }),
+    );
+  });
+});
+
 describe("routeDetailKey", () => {
   it("keys by city and route so two cities never collide", () => {
     expect(routeDetailKey("365", "Taichung")).not.toBe(

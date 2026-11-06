@@ -28,6 +28,7 @@ import {
 import {
   estimateNavigationEta,
   selectedDepartureLiveMinutes,
+  selectedDepartureTimetable,
 } from "@/lib/navigation/navigationEta";
 import {
   createNavigationGeometryRuntime,
@@ -41,9 +42,11 @@ import {
   resolveProgressLegIndex,
 } from "@/lib/navigation/navigationProgress";
 import {
+  boardReadySeconds,
   buildTransitGuide,
   findActiveBusRun,
   legAlongRange,
+  plannedWalkPaceMps,
   rideStops,
 } from "@/lib/navigation/transitRide";
 import {
@@ -689,20 +692,44 @@ export default function useNavigation() {
     ]);
     const ride =
       nav.transitRide?.key === key ? nav.transitRide : newTransitRide(key);
-    const activeContext = useMapStore.getState().activeBusLeg?.leg.planContext;
-    const bus =
+    const activeBusLeg = useMapStore.getState().activeBusLeg;
+    const activeContext = activeBusLeg?.leg.planContext;
+    const tracked =
       activeContext?.routeToken === route.routeToken &&
-      activeContext?.legIndex === run.legIndex
-        ? liveBuses.find((b) => b.isTarget)
-        : undefined;
+      activeContext?.legIndex === run.legIndex;
+    const bus = tracked ? liveBuses.find((b) => b.isTarget) : undefined;
+    const alongM =
+      nav.routeProgress?.alongM ??
+      (userLocation
+        ? projectToPath(userLocation, cp.path, cp.cumM).alongM
+        : null);
+    // Tell the backend when the rider will really be at the stop, so it picks
+    // a bus they can still catch; after boarding the selection must not move.
+    if (tracked && activeBusLeg)
+      useMapStore
+        .getState()
+        .setBoardReadiness(
+          activeBusLeg.key,
+          ride.boarded
+            ? null
+            : boardReadySeconds(
+                alongM,
+                range.startM,
+                plannedWalkPaceMps(route.legs, run.legIndex),
+              ),
+        );
     const targetStop = ride.boarded ? leg.arrivalStop : leg.departureStop;
     const ref = legRouteDetailRef(leg);
+    // Read the answer the poller fetched for this leg: during navigation that
+    // is the readiness-aware one.
     const snapshot = route.routeToken
       ? peekRouteDetailSnapshot(
           ref.routeName,
           ref.city,
           ref.subRouteUid,
-          { routeToken: route.routeToken, legIndex: run.legIndex },
+          tracked
+            ? useMapStore.getState().activeBusLeg?.leg.planContext
+            : { routeToken: route.routeToken, legIndex: run.legIndex },
           lang,
         )
       : null;
@@ -742,15 +769,14 @@ export default function useNavigation() {
           run,
           leg,
           boarded: ride.boarded,
-          alongM:
-            nav.routeProgress?.alongM ??
-            (userLocation
-              ? projectToPath(userLocation, cp.path, cp.cumM).alongM
-              : null),
+          alongM,
           boardAlongM: range.startM,
           stops: rideStops(leg, cp, run.legIndex),
           legEndAlongM: range.endM,
           liveMinutes: minutes,
+          scheduledAt: ride.boarded
+            ? null
+            : selectedDepartureTimetable(leg, snapshot?.departureCandidates),
         },
         currentStepIndex,
       ),

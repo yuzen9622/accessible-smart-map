@@ -125,6 +125,17 @@ export interface VoiceNavigationState {
     streetName?: string | null;
     maneuver?: string | null;
   }[];
+  /**
+   * Heading to or waiting at a bus stop: what the waiting card shows — live
+   * minutes, or (no live data) the selected trip's expected time "HH:mm". The
+   * assistant answers "when does the bus come" from this, matching the screen.
+   */
+  busWait?: {
+    routeName: string;
+    stop: string;
+    waitMinutes: number | null;
+    expectedAt?: string;
+  };
 }
 
 /** Server -> client: auth + Gemini connect done, client may now send audio. */

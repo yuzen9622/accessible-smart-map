@@ -9,6 +9,24 @@ export const createTransitSlice: MapSliceCreator<TransitSlice> = (set) => ({
   // on the previous leg's bus until the next poll lands.
   setActiveBusLeg: (active) =>
     set({ activeBusLeg: active, liveBusPositions: [] }),
+  setBoardReadiness: (key, readyInSeconds) =>
+    set((state) => {
+      const active = state.activeBusLeg;
+      const context = active?.leg.planContext;
+      if (active?.key !== key || !context) return state;
+      if ((context.readyInSeconds ?? null) === readyInSeconds) return state;
+      const { readyInSeconds: _previous, ...rest } = context;
+      return {
+        activeBusLeg: {
+          ...active,
+          leg: {
+            ...active.leg,
+            planContext:
+              readyInSeconds === null ? rest : { ...rest, readyInSeconds },
+          },
+        },
+      };
+    }),
   nearbyBusStops: [],
   setNearbyBusStops: (stops) => set({ nearbyBusStops: stops }),
   busRouteStops: [],

@@ -14,10 +14,16 @@ export type Translate = (
 type WaitingGuide = Extract<TransitGuide, { phase: "approaching" | "waiting" }>;
 type RidingGuide = Extract<TransitGuide, { phase: "riding" }>;
 
-/** 等車的分鐘數句子（「小18 約 4 分鐘到站」／「即將進站」／「暫無即時到站資訊」）。 */
+/** 等車的分鐘數句子（「小18 約 4 分鐘到站」／「即將進站」／「小18 表定 10:30 到站」／「暫無即時到站資訊」）。 */
 export function waitLine(t: Translate, guide: WaitingGuide): string {
   const wait = guide.waitMinutes;
-  if (wait === null) return t("navBusWaitLineUnknown");
+  if (wait === null)
+    return guide.scheduledAt
+      ? t("navBusWaitLineScheduled", {
+          route: guide.routeName,
+          time: guide.scheduledAt,
+        })
+      : t("navBusWaitLineUnknown");
   if (wait <= BUS_ARRIVING_MINUTES)
     return t("navBusWaitLineArriving", { route: guide.routeName });
   return t("navBusWaitLine", { route: guide.routeName, count: wait });
@@ -31,7 +37,10 @@ export function transitHeadline(
   if (guide.phase !== "riding") {
     if (guide.phase === "approaching") return null;
     const wait = guide.waitMinutes;
-    if (wait === null) return t("navBusWaitUnknown");
+    if (wait === null)
+      return guide.scheduledAt
+        ? t("navBusScheduledAt", { time: guide.scheduledAt })
+        : t("navBusWaitUnknown");
     if (wait === 0) return t("navBusArrivingNow");
     if (wait <= BUS_ARRIVING_MINUTES) return t("navBusArrivingSoon");
     return t("navBusWaitMinutes", { count: wait });
@@ -90,8 +99,12 @@ function waitSpeech(
   t: Translate,
   routeName: string,
   wait: number | null,
+  scheduledAt?: string,
 ): string {
-  if (wait === null) return t("navBusSpeakNoLive");
+  if (wait === null)
+    return scheduledAt
+      ? t("navBusSpeakScheduled", { route: routeName, time: scheduledAt })
+      : t("navBusSpeakNoLive");
   if (wait <= BUS_ARRIVING_MINUTES)
     return t("navBusSpeakArriving", { route: routeName });
   return t("navBusSpeakWait", { route: routeName, count: wait });
@@ -110,13 +123,13 @@ export function transitSpeechText(
           route: speech.routeName,
         }) +
         " " +
-        waitSpeech(t, speech.routeName, speech.waitMinutes)
+        waitSpeech(t, speech.routeName, speech.waitMinutes, speech.scheduledAt)
       );
     case "atStop":
       return (
         t("navBusSpeakAtStop", { stop: speech.boardStop }) +
         " " +
-        waitSpeech(t, speech.routeName, speech.waitMinutes)
+        waitSpeech(t, speech.routeName, speech.waitMinutes, speech.scheduledAt)
       );
     case "busSoon":
       return waitSpeech(t, speech.routeName, speech.waitMinutes);
@@ -169,6 +182,10 @@ export const navigationCopyDefaults = {
     navBusWaitLine: "「{{route}}」約 {{count}} 分鐘到站",
     navBusWaitLineArriving: "「{{route}}」即將進站，請準備上車",
     navBusWaitLineUnknown: "暫無即時到站資訊",
+    navBusWaitLineScheduled: "暫無即時資訊・「{{route}}」預計 {{time}} 到站",
+    navBusScheduledAt: "{{time}} 到站",
+    navBusSpeakScheduled:
+      "目前沒有即時到站資訊，「{{route}}」預計 {{time}} 到站。",
     navBusStopsLeft: "還有 {{count}} 站",
     navBusRideInstruction: "約 {{count}} 分鐘到「{{stop}}」，到站後請下車",
     navBusRideInstructionNoTime: "到「{{stop}}」後請下車",
@@ -205,6 +222,10 @@ export const navigationCopyDefaults = {
     navBusWaitLine_other: "{{route}} arrives in about {{count}} min",
     navBusWaitLineArriving: "{{route}} is arriving. Get ready to board",
     navBusWaitLineUnknown: "No live arrival info",
+    navBusWaitLineScheduled: "No live info · {{route}} scheduled at {{time}}",
+    navBusScheduledAt: "Scheduled {{time}}",
+    navBusSpeakScheduled:
+      "No live arrival information. {{route}} is scheduled at {{time}}.",
     navBusStopsLeft_one: "{{count}} stop left",
     navBusStopsLeft_other: "{{count}} stops left",
     navBusRideInstruction_one: "About {{count}} min to {{stop}}. Get off there",

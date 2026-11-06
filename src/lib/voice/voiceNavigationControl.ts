@@ -137,6 +137,23 @@ async function startFromAssistant(
   return { ok: true, guidance: active ? startedGuidance(active) : "preview" };
 }
 
+/** What the waiting card shows while heading to or waiting at a bus stop. */
+export function busWaitOf(
+  guide: ReturnType<typeof useNavStore.getState>["transitGuide"],
+): Pick<VoiceNavigationState, "busWait"> {
+  if (!guide || guide.phase === "riding") return {};
+  return {
+    busWait: {
+      routeName: guide.routeName,
+      stop: guide.boardStop,
+      waitMinutes: guide.waitMinutes,
+      ...(guide.waitMinutes === null && guide.scheduledAt
+        ? { expectedAt: guide.scheduledAt }
+        : {}),
+    },
+  };
+}
+
 /** The navigation engine's state, which the assistant answers route questions from. */
 export function currentNavigationState(): VoiceNavigationState {
   const map = useMapStore.getState();
@@ -172,6 +189,7 @@ export function currentNavigationState(): VoiceNavigationState {
     distanceToNextM: nav.distanceToNextM,
     remainingDistanceM: nav.remainingM,
     remainingDurationSec: nav.remainingDurationSec,
+    ...busWaitOf(nav.transitGuide),
     steps: nav.instructions.map((step, index) => ({
       index,
       instruction: step.text,

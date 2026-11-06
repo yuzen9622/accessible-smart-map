@@ -192,6 +192,13 @@ export interface BusPlanContext {
   routeToken: string;
   /** Index in the complete route.legs array, including walking legs. */
   legIndex: number;
+  /**
+   * Navigating, not yet boarded: seconds until the rider reaches the boarding
+   * stop (0 = at the stop). The backend picks the bus the rider can still catch
+   * from this instead of the planner's stored estimate. Never sent from route
+   * cards or after boarding.
+   */
+  readyInSeconds?: number;
 }
 
 export interface BusDepartureCandidate {

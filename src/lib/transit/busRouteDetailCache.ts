@@ -74,6 +74,11 @@ export function routeDetailKey(
     subRouteUid ?? null,
     planContext?.routeToken ?? null,
     planContext?.legIndex ?? null,
+    // Rider readiness can make the backend select another bus, so navigation
+    // answers and route-card answers never mix. The seconds value itself stays
+    // out of the key: it changes every 30 s and the newest navigation answer
+    // simply replaces the previous one.
+    planContext?.readyInSeconds !== undefined,
   ]);
 }
 
