@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useShallow } from "zustand/react/shallow";
@@ -111,35 +110,6 @@ export default function AccountLogin({ active = true }: { active?: boolean }) {
   >("login");
   const [lineBindDialogOpen, setLineBindDialogOpen] = useState(false);
   const { t } = useAppTranslation("translation");
-  const router = useRouter();
-  const pathname = usePathname();
-
-  // The reset-password page's "request a new link" button can't open the
-  // login modal directly — it renders on its own bare layout, outside this
-  // component's tree (see ClientLayout), so this component only ever mounts
-  // fresh right as that navigation lands here. Reads location.search
-  // directly (not useSearchParams) so this doesn't require a Suspense
-  // boundary this component isn't wrapped in. One-shot deep-link handoff
-  // read at the moment this component (re)mounts, not a live subscription
-  // to route/pathname changes — hence the mount-only deps below.
-  // `BottomSheet` mounts both a mobile and a desktop copy of this component
-  // simultaneously (CSS-toggled, not conditionally rendered) — `active`
-  // marks which one is actually visible, so only that copy reacts to a
-  // cross-component signal like this deep link and opens its own Dialog.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
-  useEffect(() => {
-    if (!active) return;
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("authModal") !== "forgot") return;
-    setAuthDialogInitialMode("forgot");
-    setAuthDialogOpen(true);
-    params.delete("authModal");
-    const nextSearch = params.toString();
-    router.replace(nextSearch ? `${pathname}?${nextSearch}` : pathname, {
-      scroll: false,
-    });
-  }, []);
 
   const {
     user,
