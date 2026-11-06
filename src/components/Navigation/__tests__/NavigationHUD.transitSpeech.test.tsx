@@ -1,6 +1,7 @@
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import zh from "@/i18n/locale/zh-TW/translation.json";
 
 const h = vi.hoisted(() => ({
   refs: [] as { current: unknown }[],
@@ -8,6 +9,7 @@ const h = vi.hoisted(() => ({
   effects: [] as (() => unknown)[],
   gemini: false,
   language: "en",
+  localized: false,
   buttons: [] as { onClick?: () => void }[],
   startApproach: vi.fn(),
   confirmArrival: vi.fn(),
@@ -48,7 +50,14 @@ vi.mock("@/stores/useNavStore", async (original) => {
 });
 vi.mock("@/i18n/client", () => ({
   useAppTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: Record<string, unknown>) => {
+      if (!h.localized) return key;
+      const text = zh[key as keyof typeof zh] ?? key;
+      if (typeof text !== "string") return key;
+      return text.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
+        String(options?.[name] ?? ""),
+      );
+    },
     i18n: { language: h.language },
   }),
 }));
@@ -120,6 +129,7 @@ beforeEach(() => {
   h.refs.length = 0;
   h.gemini = false;
   h.language = "en";
+  h.localized = false;
   h.buttons.length = 0;
   h.startApproach.mockClear();
   h.confirmArrival.mockClear();
@@ -243,16 +253,59 @@ describe("an upcoming arrival maneuver is not a completed arrival", () => {
     const markup = frame();
     expect(markup).toContain("navContinueToDestination");
     expect(markup).not.toContain("SOURCE ARRIVAL CLAIM");
-    // Announced ahead of the maneuver ("In 100 m, continue to destination"),
+    // Announced ahead of arrival ("In 100 m, arrive at your destination"),
     // never with the source's arrival claim.
     expect(h.synth.speak).toHaveBeenCalledTimes(1);
-    expect(h.synth.speak.mock.calls[0][0].text).toBe("navSpeakAhead");
+    expect(h.synth.speak.mock.calls[0][0].text).toBe("navSpeakArrivalAhead");
     const nav = useNavStore.getState();
     expect(nav.arrived).toBe(false);
     expect(nav.currentStepIndex).toBe(1);
     expect(nav.distanceToNextM).toBe(100);
     expect(nav.instructions[1].text).toBe("SOURCE ARRIVAL CLAIM");
   });
+
+  it.each(["WALK", "DRIVE", "MOTORCYCLE"] as const)(
+    "%s uses future arrival copy until arrival is confirmed",
+    (legType) => {
+      h.localized = true;
+      h.language = "zh-TW";
+      const nav = useNavStore.getState();
+      nav.setInstructions(
+        walkInstructions.map((step) => ({
+          ...step,
+          legType,
+          text: "您已抵達目的地",
+        })),
+      );
+      nav.setCurrentStepIndex(1);
+      nav.setTransitRide(null, null);
+      nav.setDistanceToNextM(430);
+      nav.setArrived(false);
+      frame();
+      expect(
+        h.synth.speak.mock.calls.map(([utterance]) => utterance.text),
+      ).toEqual(["430 公尺後抵達目的地"]);
+      nav.setDistanceToNextM(legType === "WALK" ? 40 : 250);
+      frame();
+      expect(h.synth.speak.mock.calls.at(-1)?.[0].text).toBe(
+        legType === "WALK" ? "40 公尺後抵達目的地" : "430 公尺後抵達目的地",
+      );
+      // A turn's 'now' threshold alone does not confirm arrival.
+      nav.setDistanceToNextM(10);
+      frame();
+      expect(h.synth.speak.mock.calls.at(-1)?.[0].text).toBe(
+        "10 公尺後抵達目的地",
+      );
+      expect(
+        h.synth.speak.mock.calls.some(([utterance]) =>
+          utterance.text.includes("已抵達"),
+        ),
+      ).toBe(false);
+      nav.setArrived(true);
+      frame();
+      expect(h.synth.speak.mock.calls.at(-1)?.[0].text).toBe("您已抵達目的地");
+    },
+  );
 
   it("announces completed arrival only through the existing arrival effect", () => {
     prepareWalk(true);

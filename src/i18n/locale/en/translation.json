@@ -618,6 +618,7 @@
   "arrived": "Arrived",
   "arrivedDesc": "You have reached your destination",
   "navContinueToDestination": "Continue toward your destination",
+  "navSpeakArrivalAhead": "In {{distance}}, arrive at your destination",
   "navSpeakAhead": "In {{distance}}, {{instruction}}",
   "navSpeakContinue": "Continue straight for {{distance}}",
   "navSpeakMeters": "{{value}} meters",

@@ -47,6 +47,15 @@ describe("selectManeuverStage", () => {
 });
 
 describe("stripStepDistance", () => {
+  it("removes the new continuation phrase without leaving it in turn previews", () => {
+    expect(stripStepDistance("向右轉，繼續直行約 400 公尺，注意路口")).toBe(
+      "向右轉，注意路口",
+    );
+    expect(stripStepDistance("沿「信義路」繼續直行約 400 公尺")).toBe(
+      "沿「信義路」繼續直行",
+    );
+  });
+
   it("drops the step's own segment length", () => {
     expect(stripStepDistance("左轉進入民生路，續行約 200 公尺")).toBe(
       "左轉進入民生路",
