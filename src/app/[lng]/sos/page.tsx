@@ -20,8 +20,8 @@ export default function SosLinkPage() {
   useEffect(() => {
     const token = readSosTrackingToken(window.location, ["token"]);
     const target = token
-      ? `/${lng}/#token=${encodeURIComponent(token)}`
-      : `/${lng}/`;
+      ? `/${lng}/map/#token=${encodeURIComponent(token)}`
+      : `/${lng}/map/`;
     router.replace(target);
   }, [router, lng]);
 

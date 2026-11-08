@@ -251,7 +251,7 @@ export default function ErrorPage({ error, reset }: ErrorProps) {
               asChild
               className="min-h-[44px] gap-1.5 text-xs sm:text-sm font-normal"
             >
-              <Link href={`/${currentLng}`}>
+              <Link href={`/${currentLng}/map/`}>
                 <Home className="h-3.5 w-3.5 text-muted-foreground" />
                 <span>{t("errorGoHome", "返回首頁")}</span>
               </Link>

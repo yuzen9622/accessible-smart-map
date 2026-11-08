@@ -71,7 +71,7 @@ const ZH_NUM = String.raw`約?\s*[\d.,]+\s*(?:公尺|公里|米)`;
 const EN_NUM = String.raw`(?:for\s+)?(?:about\s+|approximately\s+|approx\.\s+)?[\d.,]+\s*(?:m|meters?|metres?|km|kilometers?|kilometres?)\b`;
 // A clause that is only "verb + distance" ("，續行約 130 公尺", ", then continue for 40 m") goes with its comma.
 const ZH_CLAUSE = new RegExp(
-  String.raw`[，,]\s*[^，,。]{0,3}?${ZH_NUM}\s*(?=[，,。]|$)`,
+  String.raw`[，,]\s*(?:繼續直行|[^，,。]{0,3}?)${ZH_NUM}\s*(?=[，,。]|$)`,
   "g",
 );
 const EN_CLAUSE = new RegExp(

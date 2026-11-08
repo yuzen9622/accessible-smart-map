@@ -329,13 +329,13 @@ export default function NavigationHUD() {
     if (!stage) return;
     state.spoken.add(stage);
     if (stage === "advance") state.advanceDistanceM = distanceM;
-    if (stage === "now") {
+    if (stage === "now" && step.type !== "arrive") {
       speak(text);
       return;
     }
     const spoken = spokenDistance(distanceM);
     speak(
-      t("navSpeakAhead", {
+      t(step.type === "arrive" ? "navSpeakArrivalAhead" : "navSpeakAhead", {
         distance: t(
           spoken.unit === "km" ? "navSpeakKilometers" : "navSpeakMeters",
           { value: spoken.value },

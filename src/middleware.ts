@@ -19,6 +19,40 @@ export function middleware(req: NextRequest) {
   ) {
     return NextResponse.next();
   }
+  // Keep the public website at / and the default-language application at /map.
+  // Old shared links must still open the map with their original query intact.
+  if (path === "/") {
+    const mapKeys = [
+      "loc",
+      "place",
+      "planToken",
+      "sessionId",
+      "liff.state",
+      "sos",
+      "token",
+      "a11y",
+      "authModal",
+      "indoor",
+      "mockgeo",
+    ];
+    if (mapKeys.some((key) => req.nextUrl.searchParams.has(key))) {
+      const target = new URL(req.url);
+      target.pathname = "/map/";
+      return NextResponse.redirect(target);
+    }
+    return NextResponse.next();
+  }
+  if (path === "/map" || path === "/map/") {
+    return NextResponse.next();
+  }
+  const legacyLanguage = languages.find(
+    (lng) => path === `/${lng}` || path === `/${lng}/`,
+  );
+  if (legacyLanguage) {
+    const target = new URL(req.url);
+    target.pathname = `/${legacyLanguage}/map/`;
+    return NextResponse.redirect(target);
+  }
   // 路徑已經帶語系前綴就 pass
   if (
     languages.some((l: string) => path === `/${l}` || path.startsWith(`/${l}/`))

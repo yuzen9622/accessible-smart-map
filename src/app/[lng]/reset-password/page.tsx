@@ -74,7 +74,7 @@ function ResetPasswordContent() {
       if (res.accessToken) setSession({ accessToken: res.accessToken });
       toast.success(t("auth.resetSuccessToast"));
       // Same destination a successful login lands on — never the login page.
-      router.replace(`/${lng}`);
+      router.replace(`/${lng}/map/`);
     } catch (err) {
       if (err instanceof ApiError) {
         // 400 field-validation errors: { data: { errors: [{ path, message }] } }.
@@ -103,7 +103,7 @@ function ResetPasswordContent() {
           // The "forgot password" flow lives inside the login modal, not a
           // standalone route (see AccountLogin.tsx) — this hands off to the
           // home page with a one-shot deep-link flag it picks up on mount.
-          href: `/${lng}?authModal=forgot`,
+          href: `/${lng}/map/?authModal=forgot`,
         }}
       />
     );
@@ -120,7 +120,7 @@ function ResetPasswordContent() {
           // The "forgot password" flow lives inside the login modal, not a
           // standalone route (see AccountLogin.tsx) — this hands off to the
           // home page with a one-shot deep-link flag it picks up on mount.
-          href: `/${lng}?authModal=forgot`,
+          href: `/${lng}/map/?authModal=forgot`,
         }}
       >
         {/* Fields stay visible (not swapped away) so it's clear this is

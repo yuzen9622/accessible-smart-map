@@ -1,11 +1,12 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect } from "react";
+import { Suspense, useCallback, useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import BottomSheet from "@/components/BottomSheet/BottomSheet";
 import { VisualViewportSync } from "@/components/layout/VisualViewportSync";
 import CoachMarks from "@/components/Onboarding/CoachMarks";
+import AuthLinkDialog from "@/components/shared/AuthLinkDialog";
 import KeyboardShortcuts from "@/components/shared/KeyboardShortcuts";
 import SkipNavLink from "@/components/shared/SkipNavLink";
 import { refreshToken } from "@/lib/api/auth";
@@ -184,6 +185,9 @@ export default function ClientLayout({
         {children}
       </main>
       <BottomSheet />
+      <Suspense fallback={null}>
+        <AuthLinkDialog />
+      </Suspense>
       <CoachMarks />
       <KeyboardShortcuts />
     </div>

@@ -47,10 +47,10 @@ export const metadata: Metadata = {
     icon: "/logo.ico",
   },
   alternates: {
-    canonical: "/",
+    canonical: "/map/",
     languages: {
-      "zh-TW": "/zh-TW/",
-      en: "/en/",
+      "zh-TW": "/map/",
+      en: "/en/map/",
     },
   },
   robots: {
