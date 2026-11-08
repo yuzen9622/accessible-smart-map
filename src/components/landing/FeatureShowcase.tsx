@@ -1,54 +1,60 @@
 "use client";
 
-import { Accessibility, BusFront, Footprints, Mountain } from "lucide-react";
+import {
+  Accessibility,
+  ArrowUpRight,
+  BusFront,
+  Footprints,
+  Mountain,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { Safari } from "@/components/landing/magicui/safari";
+import Image from "./LandingImage";
 
 const features = [
   {
     id: "walking",
     label: "一般模式",
     icon: Footprints,
-    title: "你的日常，有更多走法。",
+    title: "看清每一段步行路線",
     description:
-      "從散步到日常通勤，比較路線、距離與沿途資訊，選擇適合今天的走法。",
+      "從散步到日常通勤，先看步行距離、預估時間與轉彎指引，了解接下來怎麼走。",
     image: "route-desktop",
-    alt: "一般步行模式的實際路線規劃結果與地圖",
-    notes: ["比較候選路線", "查看步行距離", "逐步導航指引"],
+    alt: "中山站附近到寧夏夜市的步行距離、高程與展開的轉彎指引",
+    notes: ["查看步行距離", "預估所需時間", "逐步路線指引"],
   },
   {
     id: "wheelchair",
     label: "輪椅模式",
     icon: Accessibility,
-    title: "把通行需要，放在起點。",
+    title: "出發前，先看通行條件",
     description:
-      "依輪椅通行需求規劃，考慮階梯、坡度與電梯資訊，出發前先看路線條件。",
+      "依輪椅通行需求規劃，對照候選路線的通行評分，也留意沿途資料不足的提醒。",
     image: "wheelchair-desktop",
-    alt: "輪椅模式的實際路線設定畫面",
-    notes: ["輪椅通行條件", "避開階梯", "查看沿途設施"],
+    alt: "輪椅模式前往寧夏夜市的公車與步行候選路線，含通行評分和資料提醒",
+    notes: ["比較候選路線", "通行評分", "資料完整度提醒"],
   },
   {
     id: "transit",
     label: "大眾運輸",
     icon: BusFront,
-    title: "走到站，再一起往前。",
+    title: "串起步行、公車與捷運",
     description:
       "串起步行、公車與捷運，查看轉乘與站點資訊，讓整段旅程有跡可循。",
     image: "transit-desktop",
-    alt: "大眾運輸模式的實際規劃結果",
+    alt: "劍潭站到台北 101 的捷運搭乘、上下車站與兩端步行接駁資訊",
     notes: ["公車與捷運", "步行接駁", "轉乘資訊"],
   },
   {
     id: "terrain",
     label: "人行道與坡度",
     icon: Mountain,
-    title: "多看一點，路就更清楚。",
+    title: "查看人行道與路線起伏",
     description:
       "從綠色人行道路段到高程起伏，將距離以外的路線條件一起納入考量。",
     image: "terrain-desktop",
-    alt: "實際路線上的綠色人行道路段與高程圖",
-    notes: ["已對應的人行道", "路線高程變化", "資料完整度提示"],
+    alt: "劍潭站到圓山大飯店的綠色人行道路段與沿途高程曲線",
+    notes: ["已對應的人行道", "路線高程變化", "累計上升與下降"],
   },
 ];
 
@@ -59,7 +65,8 @@ export default function FeatureShowcase() {
     <div className="feature-showcase" data-reveal>
       <div className="feature-tabs" role="tablist" aria-label="探索路線功能">
         {features.map((item, index) => (
-          <button
+          <motion.button
+            layout="position"
             key={item.id}
             id={`tab-${item.id}`}
             type="button"
@@ -70,9 +77,9 @@ export default function FeatureShowcase() {
             onClick={() => setSelected(index)}
             onKeyDown={(event) => {
               const next =
-                event.key === "ArrowRight"
+                event.key === "ArrowRight" || event.key === "ArrowDown"
                   ? (index + 1) % features.length
-                  : event.key === "ArrowLeft"
+                  : event.key === "ArrowLeft" || event.key === "ArrowUp"
                     ? (index + features.length - 1) % features.length
                     : event.key === "Home"
                       ? 0
@@ -90,12 +97,24 @@ export default function FeatureShowcase() {
               <motion.span
                 className="tab-indicator"
                 layoutId="feature-tab"
-                transition={{ type: "spring", stiffness: 380, damping: 34 }}
+                transition={{ duration: 0.3 }}
               />
             )}
             <item.icon size={20} aria-hidden="true" />
-            <span className="tab-label">{item.label}</span>
-          </button>
+            <span>
+              <span className="tab-label">{item.label}</span>
+              {selected === index && (
+                <motion.span
+                  className="tab-description"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  {item.notes.join(" · ")}
+                </motion.span>
+              )}
+            </span>
+            <ArrowUpRight className="tab-arrow" size={18} aria-hidden="true" />
+          </motion.button>
         ))}
       </div>
       <div
@@ -113,10 +132,6 @@ export default function FeatureShowcase() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <span className="feature-number" aria-hidden="true">
-            0{selected + 1}
-            <span> / 04</span>
-          </span>
           <h3>{feature.title}</h3>
           <p>{feature.description}</p>
           <ul>
@@ -132,15 +147,13 @@ export default function FeatureShowcase() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <Safari
-            url="map.yuzen.dev/map"
-            imageSrc={`/landing/${feature.image}.webp`}
+          <Image
+            width={1440}
+            height={1000}
+            src={`/landing/${feature.image}.webp`}
             alt={feature.alt}
             sizes="(max-width: 767px) 92vw, 70vw"
           />
-          <figcaption>
-            實際網頁版操作畫面。路線與資訊依查詢結果而異。
-          </figcaption>
         </motion.figure>
       </div>
     </div>

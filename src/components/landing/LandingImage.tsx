@@ -15,11 +15,11 @@ export default function LandingImage({
   priority?: boolean;
 }) {
   const isDesktop = src.endsWith("-desktop.webp");
-  const isNative = src.endsWith("-native.webp");
-  const originalWidth = isNative ? 1206 : 1440;
+  const isPhone = src.endsWith("-native.webp") || src.endsWith("-mobile.webp");
+  const originalWidth = isPhone ? 1206 : 1440;
   const srcSet =
-    isDesktop || isNative
-      ? (isNative ? [360, 720, 1206] : [480, 768, 1024, 1440])
+    isDesktop || isPhone
+      ? (isPhone ? [360, 720, 1206] : [480, 768, 1024, 1440])
           .map(
             (size) =>
               `${size === originalWidth ? src : src.replace(".webp", `-${size}.webp`)} ${size}w`,

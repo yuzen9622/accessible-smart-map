@@ -1,8 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Noto_Sans_TC } from "next/font/google";
+import { ThemeProvider } from "@/components/provider/ThemeProvider";
 import "./marketing.css";
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-landing-latin" });
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
+const notoSansTC = Noto_Sans_TC({
+  subsets: ["latin"],
+  variable: "--font-noto-tc",
+  weight: ["400", "500", "700"],
+});
 export const metadata: Metadata = {
   metadataBase: new URL("https://map.yuzen.dev"),
   title: "無障礙智慧地圖｜每一段路，都有你的走法",
@@ -35,8 +41,12 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-Hant-TW">
-      <body className={geist.variable}>{children}</body>
+    <html lang="zh-Hant-TW" suppressHydrationWarning>
+      <body className={`${geist.variable} ${notoSansTC.variable}`}>
+        <ThemeProvider defaultTheme="system" attribute="class" enableSystem>
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

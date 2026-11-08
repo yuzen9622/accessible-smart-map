@@ -4,20 +4,61 @@ import {
   ArrowRight,
   BusFront,
   ChevronDown,
+  CircleParking,
+  CloudSun,
   Footprints,
+  Layers3,
+  LifeBuoy,
   MapPin,
   MessageCircle,
+  MessageSquareWarning,
   Mountain,
-  Navigation,
   Route,
+  Volume2,
 } from "lucide-react";
-import AsciiBrand from "@/components/landing/AsciiBrand";
+import BusPreview from "@/components/landing/BusPreview";
 import FeatureShowcase from "@/components/landing/FeatureShowcase";
+import HeroPreview from "@/components/landing/HeroPreview";
 import Image from "@/components/landing/LandingImage";
 import LandingMotion from "@/components/landing/LandingMotion";
+import LandingNav from "@/components/landing/LandingNav";
 import LegacyMapEntry from "@/components/landing/LegacyMapEntry";
-import { Iphone } from "@/components/landing/magicui/iphone";
-import { Safari } from "@/components/landing/magicui/safari";
+
+const closingRoute =
+  "M0 190H240Q280 190 280 150V90Q280 50 320 50H680Q720 50 720 90V150Q720 190 760 190H1000";
+
+const everydayTools = [
+  {
+    icon: Accessibility,
+    title: "附近無障礙設施",
+    description: "找電梯、坡道與無障礙廁所，查看位置與設施資訊。",
+  },
+  {
+    icon: CircleParking,
+    title: "停車資訊",
+    description: "查詢附近停車場與路邊車格，出發前先看停車選擇。",
+  },
+  {
+    icon: CloudSun,
+    title: "天氣與空氣品質",
+    description: "查看所在地或目的地的環境資訊，把天氣一起考慮進行程。",
+  },
+  {
+    icon: Layers3,
+    title: "室內地圖與導航",
+    description: "在已提供圖資的場館切換樓層，查看電梯與室內路線。",
+  },
+  {
+    icon: MessageSquareWarning,
+    title: "障礙物回報",
+    description: "遇到路面障礙或設施問題，標記位置、補上照片與說明。",
+  },
+  {
+    icon: LifeBuoy,
+    title: "SOS 緊急求助",
+    description: "設定緊急聯絡人，需要協助時從地圖開啟求助流程。",
+  },
+];
 
 const faqs = [
   [
@@ -78,73 +119,46 @@ export default function LandingPage() {
               無障礙智慧地圖<small>Accessible Smart Map</small>
             </span>
           </a>
-          <nav aria-label="主要導覽">
-            <a href="#features">特色功能</a>
-            <a href="#journey">出行幫手</a>
-            <a href="#faq">常見問題</a>
-          </nav>
+          <LandingNav />
           <OpenMap />
         </div>
       </header>
-      <main id="main-content">
+      <main id="main-content" className="landing-main">
         <div className="hero-stage">
-          <AsciiBrand />
           <section
-            className="hero landing-container"
+            className="hero landing-container max-w-6xl"
             aria-labelledby="hero-title"
           >
             <div className="hero-copy">
-              <p className="eyebrow">依你的需要，規劃每一程</p>
+              <p className="eyebrow">無障礙智慧地圖</p>
               <h1 id="hero-title">
-                每一段路，<span>都有你的走法。</span>
+                找一條<span>適合自己的路</span>
               </h1>
               <p className="hero-description">
-                把人行道、坡度與沿途設施一起考慮。
+                從步行、輪椅到搭公車，找到適合的走法。
                 <br />
-                從日常步行到輪椅出行，找到適合的路。
+                語音導航、即時到站與沿途設施，陪你走完整趟路。
               </p>
               <div className="hero-actions">
                 <OpenMap />
                 <a className="landing-button button-secondary" href="#features">
-                  看看怎麼走
+                  探索功能
                   <ArrowDown size={18} aria-hidden="true" />
                 </a>
               </div>
             </div>
-            <div className="hero-visual">
-              <div className="hero-visual-label">
-                <span className="live-dot" />
-                從地圖，看見更多可能
-              </div>
-              <div className="hero-desktop">
-                <Safari
-                  url="map.yuzen.dev/map"
-                  imageSrc="/landing/route-desktop.webp"
-                  alt="無障礙智慧地圖桌機版，顯示實際路線規劃與地圖"
-                  priority
-                  sizes="(max-width: 767px) 85vw, 50vw"
-                />
-              </div>
-              <div className="hero-phone">
-                <Iphone
-                  src="/landing/route-native.webp"
-                  priority
-                  sizes="(max-width: 767px) 32vw, 210px"
-                  alt="iPhone 原生 App 的實際路線規劃畫面"
-                />
-              </div>
-            </div>
+            <HeroPreview />
           </section>
           <div className="hero-baseline landing-container">
             <a href="#features">
               <ArrowDown size={16} aria-hidden="true" />
-              往下探索，你的走法
+              從規劃到抵達，往下看看
             </a>
           </div>
         </div>
         <div className="audience-band">
           <div className="landing-container audience-inner">
-            <p>每一種出行，都值得被考慮。</p>
+            <p>依你的需要，選擇出行方式</p>
             <ul>
               <li>
                 <Footprints aria-hidden="true" />
@@ -171,32 +185,24 @@ export default function LandingPage() {
           aria-labelledby="features-title"
         >
           <div className="section-heading" data-reveal>
-            <p className="section-index">
-              <span>01</span> YOUR WAY
-            </p>
-            <h2 id="features-title">
-              同一個目的地，
-              <br className="mobile-break" />
-              不只一種抵達方式。
-            </h2>
-            <p>選擇你的出行模式，看看路線如何回應你的需要。</p>
+            <h2 id="features-title">你的需要，決定怎麼走</h2>
+            <p>切換模式，看看同一張地圖能為你多考慮什麼。</p>
           </div>
           <FeatureShowcase />
         </section>
         <section className="terrain-section" aria-labelledby="terrain-title">
           <div className="landing-container terrain-layout">
             <div className="terrain-copy" data-reveal>
-              <p className="section-index">
-                <span>02</span> EVERY DETAIL
-              </p>
-              <p className="eyebrow">距離之外，也看見路的細節</p>
+              <p className="eyebrow">路線裡的細節</p>
               <h2 id="terrain-title">
-                這條路怎麼走，
+                不只多遠，
                 <br />
-                出發前先知道。
+                也看這條路怎麼走
               </h2>
-              <p>
-                哪段有人行道？沿途會不會上坡？把原本藏在地圖裡的資訊，變成出發前可以參考的線索。
+              <p className="terrain-statement">
+                <span>哪段有人行道？</span>
+                <span>沿途會不會上坡？</span>
+                <span>出發前，多了解一點路上的事。</span>
               </p>
               <dl className="terrain-facts">
                 <div>
@@ -220,15 +226,13 @@ export default function LandingPage() {
               </a>
             </div>
             <figure className="terrain-visual" data-reveal>
-              <Safari
-                url="map.yuzen.dev/map"
-                imageSrc="/landing/terrain-desktop.webp"
-                alt="路線規劃的真實地圖與路線高程資訊"
+              <Image
+                width={1440}
+                height={1000}
+                src="/landing/terrain-desktop.webp"
+                alt="劍潭站到圓山大飯店的步行路線與高程圖，可見後段明顯上升"
                 sizes="(max-width: 767px) 92vw, 58vw"
               />
-              <figcaption>
-                綠色表示圖資對應；高程依圖資估算，均非現場通行認證。
-              </figcaption>
             </figure>
           </div>
         </section>
@@ -238,69 +242,101 @@ export default function LandingPage() {
           aria-labelledby="journey-title"
         >
           <div className="section-heading" data-reveal>
-            <p className="section-index">
-              <span>03</span> ALONG THE WAY
-            </p>
-            <h2 id="journey-title">
-              從想到出發，
-              <br />
-              到每一個轉彎。
-            </h2>
-            <p>找地點、看轉乘、跟著導航。需要的幫手，都在同一張地圖。</p>
+            <h2 id="journey-title">聽指引、看公車，路上都有幫手</h2>
+            <p>語音導航、即時到站與 AI 助理，從規劃一路用到抵達。</p>
           </div>
           <div className="journey-grid">
-            <article data-reveal className="journey-feature assistant-feature">
+            <article className="journey-feature navigation-feature">
+              <div className="journey-text">
+                <Volume2 size={28} aria-hidden="true" />
+                <h3>語音導航，轉彎用聽的</h3>
+                <p>
+                  開啟語音播報，聽取轉彎與距離指引。導航隨位置更新，畫面同步顯示下一步與預計抵達時間。
+                </p>
+                <ul className="journey-points">
+                  <li>逐步轉彎與距離播報</li>
+                  <li>隨位置更新導航進度</li>
+                  <li>剩餘距離與預計抵達時間</li>
+                </ul>
+                <p className="map-image-credit">
+                  <a href="https://openfreemap.org/">OpenFreeMap</a>
+                  {" · "}
+                  <a href="https://openmaptiles.org/">© OpenMapTiles</a>
+                  {" · "}
+                  <a href="https://www.openstreetmap.org/copyright">
+                    © OpenStreetMap
+                  </a>
+                </p>
+              </div>
+              <div className="navigation-phone">
+                <Image
+                  src="/landing/navigation-live-native.webp"
+                  width={1206}
+                  height={2622}
+                  alt="iPhone 原生 App 正式導航畫面，顯示左轉距離、目前位置及已開啟的語音導航"
+                  sizes="(max-width: 767px) 220px, 240px"
+                />
+              </div>
+            </article>
+            <article className="journey-feature bus-feature">
+              <div className="journey-text">
+                <BusFront size={28} aria-hidden="true" />
+                <h3>即時公車，知道還要等多久</h3>
+                <p>
+                  找附近站牌或輸入路線，查看到站倒數與沿途站序。需要搭無障礙公車時，也能切換篩選。
+                </p>
+                <ul className="journey-points">
+                  <li>即時到站時間與進站狀態</li>
+                  <li>無障礙公車篩選</li>
+                  <li>車快到時提醒、查看沿途站點</li>
+                </ul>
+              </div>
+              <BusPreview />
+            </article>
+            <article className="journey-feature assistant-feature">
               <div className="journey-text">
                 <MessageCircle size={28} aria-hidden="true" />
-                <h3>想去哪裡，直接說。</h3>
+                <h3>AI 助理，想去哪裡直接說</h3>
                 <p>
-                  用日常的語言告訴 AI
-                  助理你的需求，從找地點開始，一起整理出行選擇。
+                  用文字或語音說出需求，請 AI
+                  助理找地點、規劃路線，或問清楚哪一站下車、出站後還要走多遠。
                 </p>
               </div>
               <figure>
-                <Safari
-                  url="map.yuzen.dev/map"
-                  imageSrc="/landing/assistant-desktop.webp"
-                  alt="AI 助理的實際對話介面"
-                  sizes="(max-width: 767px) 92vw, 56vw"
-                />
-              </figure>
-            </article>
-            <article data-reveal className="journey-feature navigation-feature">
-              <div className="journey-text">
-                <Navigation size={28} aria-hidden="true" />
-                <h3>下一個轉彎，清楚一點。</h3>
-                <p>逐步路線指引與導航提示，讓注意力回到眼前的路。</p>
-              </div>
-              <div className="navigation-phone">
-                <Iphone
-                  src="/landing/navigation-native.webp"
-                  alt="iPhone 原生 App 的實際導航畫面"
-                  sizes="(max-width: 767px) 65vw, 260px"
-                />
-              </div>
-            </article>
-            <article data-reveal className="journey-feature transit-feature">
-              <div className="journey-text">
-                <BusFront size={28} aria-hidden="true" />
-                <h3>把下一站，也一起想好。</h3>
-                <p>查看公車、捷運與步行接駁資訊，規劃完整的一趟出行。</p>
-              </div>
-              <figure>
-                <Safari
-                  url="map.yuzen.dev/map"
-                  imageSrc="/landing/transit-desktop.webp"
-                  alt="大眾運輸路線與轉乘資訊的實際畫面"
+                <Image
+                  width={1440}
+                  height={1000}
+                  src="/landing/assistant-desktop.webp"
+                  alt="AI 助理回答台北 101 行程的下車站與出站後步行距離"
                   sizes="(max-width: 767px) 92vw, 56vw"
                 />
               </figure>
             </article>
           </div>
-          <p className="capture-note">
-            2026/11/05
-            實際操作截圖。路線、班次與設施狀態，以使用當下的查詢結果為準。
-          </p>
+        </section>
+        <section
+          className="everyday-section landing-container"
+          id="everyday"
+          aria-labelledby="everyday-title"
+        >
+          <div className="section-heading" data-reveal>
+            <h2 id="everyday-title">一張地圖，照顧更多出門的事</h2>
+            <p>找設施、看環境、回報問題。需要時，不必換一個工具。</p>
+          </div>
+          <ul className="everyday-tools">
+            {everydayTools.map((tool) => (
+              <li key={tool.title} data-reveal>
+                <tool.icon size={24} aria-hidden="true" />
+                <div>
+                  <h3>{tool.title}</h3>
+                  <p>{tool.description}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <a className="text-link everyday-link" href="/map/">
+            到地圖探索所有功能 <ArrowRight size={18} aria-hidden="true" />
+          </a>
         </section>
         <section
           className="faq-section landing-container"
@@ -308,13 +344,10 @@ export default function LandingPage() {
           aria-labelledby="faq-title"
         >
           <div className="faq-heading" data-reveal>
-            <p className="section-index">
-              <span>04</span> BEFORE YOU GO
-            </p>
             <h2 id="faq-title">
-              出發之前，
+              出發前，
               <br />
-              你可能想知道。
+              你可能想知道
             </h2>
             <p>
               關於使用方式、路線模式，
@@ -335,16 +368,34 @@ export default function LandingPage() {
           </div>
         </section>
         <section className="closing-section landing-container" data-reveal>
-          <div className="closing-pattern" aria-hidden="true" />
+          <svg
+            className="closing-route"
+            viewBox="0 0 1000 240"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d={closingRoute}
+              className="closing-route-track"
+              pathLength="1"
+              data-route-line
+            />
+            <path
+              d={closingRoute}
+              pathLength="1"
+              className="closing-route-flow closing-route-trail"
+            />
+            <path
+              d={closingRoute}
+              pathLength="1"
+              className="closing-route-flow closing-route-head"
+            />
+          </svg>
           <div className="closing-mark">
             <Image src="/logo.webp" width={72} height={72} alt="" />
           </div>
-          <h2>
-            下一段路，
-            <br />
-            從你的需要開始。
-          </h2>
-          <p>打開地圖，看看今天想去的地方。</p>
+          <h2>下一站，想去哪裡？</h2>
+          <p>從你的需要開始，規劃今天的路線</p>
           <OpenMap />
         </section>
       </main>
