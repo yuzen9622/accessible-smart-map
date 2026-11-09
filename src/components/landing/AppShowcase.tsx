@@ -3,17 +3,17 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Smartphone } from "lucide-react";
 import { useRef } from "react";
 import { Iphone } from "@/components/ui/iphone";
 import AppStoreLink from "./AppStoreLink";
+import { SplitLine } from "./LandingUI";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const screens = [
   {
     image: "explore-native",
-    title: "附近設施，一眼找到",
+    title: "附近設施一眼找到",
     description: "從地圖查看電梯與周邊地點，依需要切換坡道、廁所和停車圖層。",
     alt: "原生 App 的臺北車站周邊地圖與設施篩選入口",
   },
@@ -25,7 +25,7 @@ const screens = [
   },
   {
     image: "navigation-live-native",
-    title: "下一個轉彎，用聽的",
+    title: "下一個轉彎用聽的",
     description: "轉彎與距離即時語音播報，搭配畫面上的下一步及預計抵達時間。",
     alt: "原生 App 導航顯示 40 公尺後左轉、剩餘距離與即時語音播報",
   },
@@ -37,7 +37,7 @@ const screens = [
   },
   {
     image: "bus-route-native",
-    title: "沿途站點，接著看",
+    title: "沿途站點接著看",
     description: "確認行車方向與停靠站，從路線畫面設定到站提醒。",
     alt: "原生 App 265 區公車的行駛方向、沿途站點與到站提醒按鈕",
   },
@@ -107,9 +107,15 @@ export default function AppShowcase() {
             pin: stage,
             start: () => `top ${headerHeight()}px`,
             end: () => `+=${Math.max(distance(), window.innerHeight * 0.8)}`,
-            scrub: true,
+            scrub: 0.6,
             invalidateOnRefresh: true,
             onRefreshInit: fitCards,
+            onUpdate: (self) => {
+              section.style.setProperty(
+                "--app-progress",
+                self.progress.toFixed(4),
+              );
+            },
           },
         });
         let frame = 0;
@@ -130,6 +136,7 @@ export default function AppShowcase() {
             "--app-card-width",
             "--app-phone-width",
             "--app-caption-height",
+            "--app-progress",
           ])
             section.style.removeProperty(property);
         };
@@ -148,14 +155,18 @@ export default function AppShowcase() {
       <div className="app-stage landing-container">
         <div className="app-section-heading">
           <div>
-            <p className="eyebrow">
-              <Smartphone size={18} aria-hidden="true" />
-              無障礙智慧地圖 App
-            </p>
-            <h2 id="app-title">把出門需要的，放進口袋</h2>
+            <h2 id="app-title" data-split>
+              <SplitLine text="把出門需要的" />
+              <SplitLine text="放進口袋" className="display-accent" />
+            </h2>
           </div>
           <div className="app-heading-actions">
-            <AppStoreLink />
+            <div className="app-progress" aria-hidden="true">
+              <span className="app-progress-rail">
+                <span />
+              </span>
+            </div>
+            <AppStoreLink variant="ghost" />
           </div>
         </div>
         <section className="app-gallery" aria-label="App 功能截圖">
