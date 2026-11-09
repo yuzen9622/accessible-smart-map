@@ -3,10 +3,10 @@
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Smartphone } from "lucide-react";
 import { useRef } from "react";
 import { Iphone } from "@/components/ui/iphone";
 import AppStoreLink from "./AppStoreLink";
+import { Eyebrow, SplitLine } from "./LandingUI";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
@@ -59,6 +59,7 @@ export default function AppShowcase() {
       const gallery = section?.querySelector<HTMLElement>(".app-gallery");
       const track = section?.querySelector<HTMLElement>(".app-gallery-track");
       const card = track?.querySelector<HTMLElement>(".app-card");
+      const counter = section?.querySelector<HTMLElement>("[data-app-index]");
       if (!section || !stage || !gallery || !track || !card) return;
       const media = gsap.matchMedia();
       media.add("(prefers-reduced-motion: no-preference)", () => {
@@ -107,9 +108,22 @@ export default function AppShowcase() {
             pin: stage,
             start: () => `top ${headerHeight()}px`,
             end: () => `+=${Math.max(distance(), window.innerHeight * 0.8)}`,
-            scrub: true,
+            scrub: 0.6,
             invalidateOnRefresh: true,
             onRefreshInit: fitCards,
+            onUpdate: (self) => {
+              section.style.setProperty(
+                "--app-progress",
+                self.progress.toFixed(4),
+              );
+              if (counter)
+                counter.textContent = String(
+                  Math.min(
+                    screens.length,
+                    Math.floor(self.progress * screens.length) + 1,
+                  ),
+                ).padStart(2, "0");
+            },
           },
         });
         let frame = 0;
@@ -130,6 +144,7 @@ export default function AppShowcase() {
             "--app-card-width",
             "--app-phone-width",
             "--app-caption-height",
+            "--app-progress",
           ])
             section.style.removeProperty(property);
         };
@@ -148,19 +163,28 @@ export default function AppShowcase() {
       <div className="app-stage landing-container">
         <div className="app-section-heading">
           <div>
-            <p className="eyebrow">
-              <Smartphone size={18} aria-hidden="true" />
-              無障礙智慧地圖 App
-            </p>
-            <h2 id="app-title">把出門需要的，放進口袋</h2>
+            <Eyebrow>無障礙智慧地圖 App</Eyebrow>
+            <h2 id="app-title" data-split>
+              <SplitLine text="把出門需要的，" />
+              <SplitLine text="放進口袋" className="display-accent" />
+            </h2>
           </div>
           <div className="app-heading-actions">
-            <AppStoreLink />
+            <div className="app-progress" aria-hidden="true">
+              <span className="app-progress-count">
+                <span data-app-index>01</span>
+                <small>/ {String(screens.length).padStart(2, "0")}</small>
+              </span>
+              <span className="app-progress-rail">
+                <span />
+              </span>
+            </div>
+            <AppStoreLink variant="ghost" />
           </div>
         </div>
         <section className="app-gallery" aria-label="App 功能截圖">
           <ul className="app-gallery-track">
-            {screens.map((screen) => (
+            {screens.map((screen, index) => (
               <li key={screen.image}>
                 <figure className="app-card">
                   <div className="app-phone-container">
@@ -172,6 +196,9 @@ export default function AppShowcase() {
                     />
                   </div>
                   <figcaption>
+                    <span className="app-card-index">
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
                     <h3>{screen.title}</h3>
                     <p>{screen.description}</p>
                   </figcaption>

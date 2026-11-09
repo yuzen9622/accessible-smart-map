@@ -1,8 +1,10 @@
 "use client";
 
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { Iphone } from "@/components/ui/iphone";
+
+const ease = [0.32, 0.72, 0, 1] as const;
 
 const views = [
   {
@@ -22,7 +24,7 @@ export default function BusPreview() {
   const view = views[selected];
   return (
     <div className="bus-preview">
-      <fieldset className="bus-preview-controls" aria-label="切換公車功能展示">
+      <fieldset className="segmented" aria-label="切換公車功能展示">
         {views.map((item, index) => (
           <button
             key={item.image}
@@ -30,19 +32,30 @@ export default function BusPreview() {
             aria-pressed={selected === index}
             onClick={() => setSelected(index)}
           >
-            {item.label}
+            {selected === index && (
+              <motion.span
+                className="segmented-thumb"
+                layoutId="bus-segment"
+                transition={{ duration: 0.55, ease }}
+              />
+            )}
+            <span>{item.label}</span>
           </button>
         ))}
       </fieldset>
-      <motion.div
-        className="navigation-phone"
-        key={view.image}
-        initial={false}
-        animate={{ opacity: [0.5, 1], y: [8, 0] }}
-        transition={{ duration: 0.35 }}
-      >
-        <Iphone src={`/landing/${view.image}.webp`} alt={view.alt} />
-      </motion.div>
+      <div className="journey-phone">
+        <AnimatePresence initial={false} mode="popLayout">
+          <motion.div
+            key={view.image}
+            initial={{ opacity: 0, y: 24, rotate: -2 }}
+            animate={{ opacity: 1, y: 0, rotate: 0 }}
+            exit={{ opacity: 0, y: -16, rotate: 2 }}
+            transition={{ duration: 0.7, ease }}
+          >
+            <Iphone src={`/landing/${view.image}.webp`} alt={view.alt} />
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

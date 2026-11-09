@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Noto_Sans_TC } from "next/font/google";
+import {
+  Geist,
+  Instrument_Serif,
+  Noto_Sans_TC,
+  Noto_Serif_TC,
+} from "next/font/google";
 import { ThemeProvider } from "@/components/provider/ThemeProvider";
 import "./marketing.css";
 
@@ -8,6 +13,18 @@ const notoSansTC = Noto_Sans_TC({
   subsets: ["latin"],
   variable: "--font-noto-tc",
   weight: ["400", "500", "700"],
+});
+const instrumentSerif = Instrument_Serif({
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
+  variable: "--font-instrument",
+});
+const notoSerifTC = Noto_Serif_TC({
+  subsets: ["latin"],
+  variable: "--font-noto-serif-tc",
+  weight: ["500", "700"],
+  preload: false,
 });
 export const metadata: Metadata = {
   metadataBase: new URL("https://map.yuzen.dev"),
@@ -43,7 +60,9 @@ export default function MarketingLayout({
 }) {
   return (
     <html lang="zh-Hant-TW" suppressHydrationWarning>
-      <body className={`${geist.variable} ${notoSansTC.variable}`}>
+      <body
+        className={`${geist.variable} ${notoSansTC.variable} ${instrumentSerif.variable} ${notoSerifTC.variable}`}
+      >
         <ThemeProvider defaultTheme="system" attribute="class" enableSystem>
           {children}
         </ThemeProvider>

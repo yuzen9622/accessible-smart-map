@@ -1,9 +1,8 @@
 import {
   Accessibility,
   ArrowDown,
-  ArrowRight,
+  ArrowUpRight,
   BusFront,
-  ChevronDown,
   CircleParking,
   CloudSun,
   Footprints,
@@ -16,6 +15,7 @@ import {
   Route,
   Volume2,
 } from "lucide-react";
+import type { CSSProperties } from "react";
 import AppShowcase from "@/components/landing/AppShowcase";
 import AppStoreLink from "@/components/landing/AppStoreLink";
 import BusPreview from "@/components/landing/BusPreview";
@@ -24,42 +24,80 @@ import HeroPreview from "@/components/landing/HeroPreview";
 import Image from "@/components/landing/LandingImage";
 import LandingMotion, { HeroAppIcon } from "@/components/landing/LandingMotion";
 import LandingNav from "@/components/landing/LandingNav";
+import {
+  Bezel,
+  Eyebrow,
+  PillLink,
+  ScrubText,
+  SplitLine,
+} from "@/components/landing/LandingUI";
 import LegacyMapEntry from "@/components/landing/LegacyMapEntry";
 import { Iphone } from "@/components/ui/iphone";
 
+const thin = { strokeWidth: 1.4, "aria-hidden": true } as const;
+
+const heroRoute =
+  "M-40 610 C 120 600 180 520 300 512 S 470 560 560 470 S 690 300 820 300 S 1010 220 1120 140 S 1300 90 1500 60";
+
 const closingRoute =
   "M0 190H240Q280 190 280 150V90Q280 50 320 50H680Q720 50 720 90V150Q720 190 760 190H1000";
+
+const modes = [
+  { icon: Footprints, label: "日常步行" },
+  { icon: Accessibility, label: "輪椅出行" },
+  { icon: BusFront, label: "大眾運輸" },
+  { icon: MapPin, label: "陪伴同行" },
+];
+
+const ticker = [
+  "日常步行",
+  "輪椅出行",
+  "語音導航",
+  "即時公車",
+  "無障礙設施",
+  "人行道與坡度",
+  "語音助理",
+  "室內地圖",
+  "障礙物回報",
+  "SOS 緊急求助",
+];
 
 const everydayTools = [
   {
     icon: Accessibility,
     title: "附近無障礙設施",
     description: "找電梯、坡道與無障礙廁所，查看位置與設施資訊。",
-  },
-  {
-    icon: CircleParking,
-    title: "停車資訊",
-    description: "查詢附近停車場與路邊車格，出發前先看停車選擇。",
-  },
-  {
-    icon: CloudSun,
-    title: "天氣與空氣品質",
-    description: "查看所在地或目的地的環境資訊，把天氣一起考慮進行程。",
+    span: "tool-wide",
   },
   {
     icon: Layers3,
     title: "室內地圖與導航",
     description: "在已提供圖資的場館切換樓層，查看電梯與室內路線。",
+    span: "tool-tall",
+  },
+  {
+    icon: CircleParking,
+    title: "停車資訊",
+    description: "查詢附近停車場與路邊車格，出發前先看停車選擇。",
+    span: "",
+  },
+  {
+    icon: CloudSun,
+    title: "天氣與空氣品質",
+    description: "查看所在地或目的地的環境資訊，把天氣一起考慮進行程。",
+    span: "",
   },
   {
     icon: MessageSquareWarning,
     title: "障礙物回報",
     description: "遇到路面障礙或設施問題，標記位置、補上照片與說明。",
+    span: "",
   },
   {
     icon: LifeBuoy,
     title: "SOS 緊急求助",
     description: "設定緊急聯絡人，需要協助時從地圖開啟求助流程。",
+    span: "tool-wide tool-alert",
   },
 ];
 
@@ -90,15 +128,30 @@ const faqs = [
   ],
 ];
 
-function OpenMap({ secondary = false }: { secondary?: boolean }) {
+function MapTexture() {
   return (
-    <a
-      className={`landing-button ${secondary ? "button-secondary" : "button-primary"}`}
-      href="/map/"
+    <svg
+      className="hero-map"
+      viewBox="0 0 1440 720"
+      preserveAspectRatio="xMidYMid slice"
+      fill="none"
+      aria-hidden="true"
     >
-      開啟地圖
-      <ArrowRight size={19} aria-hidden="true" />
-    </a>
+      <g className="hero-map-streets">
+        <path d="M0 120H1440M0 260H1440M0 430H1440M0 590H1440" />
+        <path d="M140 0V720M380 0V720M610 0V720M880 0V720M1120 0V720M1330 0V720" />
+        <path d="M0 700L700 0M420 720L1140 0M900 720L1440 180" />
+      </g>
+      <path className="hero-map-route-glow" d={heroRoute} />
+      <path
+        className="hero-map-route"
+        d={heroRoute}
+        pathLength="1"
+        data-route-line
+      />
+      <circle className="hero-map-stop" cx="300" cy="512" r="7" />
+      <circle className="hero-map-stop" cx="820" cy="300" r="7" />
+    </svg>
   );
 }
 
@@ -109,312 +162,461 @@ export default function LandingPage() {
       <a href="#main-content" className="landing-skip">
         跳至主要內容
       </a>
-      <header className="landing-header">
-        <div className="reading-progress" aria-hidden="true" />
-        <div className="landing-container header-inner">
-          <a
-            href="/"
-            className="brand"
-            aria-label="無障礙智慧地圖 Accessible Smart Map 首頁"
-          >
-            <Image src="/logo.webp" width={40} height={40} alt="" />
-            <span>
-              無障礙智慧地圖<small>Accessible Smart Map</small>
-            </span>
-          </a>
-          <LandingNav />
-          <OpenMap />
-        </div>
-      </header>
+      <div className="landing-grain" aria-hidden="true" />
+      <LandingNav />
       <main id="main-content" className="landing-main">
-        <div className="hero-stage">
-          <section
-            className="hero app-hero landing-container"
-            aria-labelledby="hero-title"
-          >
+        {/* ── Hero ─────────────────────────────────────────── */}
+        <section className="hero" aria-labelledby="hero-title">
+          <div className="hero-backdrop" aria-hidden="true">
+            <div className="hero-orb hero-orb-a" />
+            <div className="hero-orb hero-orb-b" />
+            <MapTexture />
+          </div>
+          <div className="hero-inner landing-container">
             <div className="hero-copy">
               <div className="hero-app-identity">
                 <HeroAppIcon />
-                <p>無障礙智慧地圖 App</p>
+                <Eyebrow>iOS App 已上架・也能直接用網頁版</Eyebrow>
               </div>
-              <h1 id="hero-title">
-                找一條<span>適合自己的路</span>
+              <h1 id="hero-title" data-split="hero">
+                <SplitLine text="找一條" />
+                <SplitLine
+                  text="適合自己的路"
+                  className="display-accent hero-accent"
+                />
               </h1>
               <p className="hero-description">
-                從步行、輪椅到搭公車，找到適合自己的路。
-                <br />
-                語音導航、即時到站與語音助理，陪你走完整趟路。
+                從步行、輪椅到搭公車，依你的需要規劃路線。語音導航、即時到站與語音助理，陪你走完整趟路。
               </p>
               <div className="hero-actions">
                 <AppStoreLink />
-                <OpenMap secondary />
+                <PillLink href="/map/" variant="ghost">
+                  開啟網頁版地圖
+                </PillLink>
               </div>
-              <p className="hero-platform-note">
-                <a className="text-link" href="#app">
-                  探索 App 功能與實際畫面
-                  <ArrowDown size={16} aria-hidden="true" />
-                </a>
-              </p>
+              <ul className="hero-modes" aria-label="支援的出行方式">
+                {modes.map((mode) => (
+                  <li key={mode.label}>
+                    <mode.icon size={16} {...thin} />
+                    {mode.label}
+                  </li>
+                ))}
+              </ul>
             </div>
             <HeroPreview />
-          </section>
-          <div className="hero-baseline landing-container">
-            <a href="#features">
-              <ArrowDown size={16} aria-hidden="true" />
-              從規劃到抵達，往下看看
-            </a>
+          </div>
+          <a className="hero-scroll-cue" href="#manifesto">
+            <span className="hero-scroll-line" aria-hidden="true" />
+            往下捲動，從規劃一路看到抵達
+          </a>
+        </section>
+
+        {/* ── Ticker ───────────────────────────────────────── */}
+        <div className="ticker" aria-hidden="true">
+          <div className="ticker-track">
+            {[0, 1].map((copy) => (
+              <ul key={copy}>
+                {ticker.map((item) => (
+                  <li key={item}>
+                    {item}
+                    <span className="ticker-star">✦</span>
+                  </li>
+                ))}
+              </ul>
+            ))}
           </div>
         </div>
-        <div className="audience-band">
-          <div className="landing-container audience-inner">
-            <p>依你的需要，選擇出行方式</p>
-            <ul>
-              <li>
-                <Footprints aria-hidden="true" />
-                日常步行
-              </li>
-              <li>
-                <Accessibility aria-hidden="true" />
-                輪椅出行
-              </li>
-              <li>
-                <BusFront aria-hidden="true" />
-                大眾運輸
-              </li>
-              <li>
-                <MapPin aria-hidden="true" />
-                陪伴同行
-              </li>
-            </ul>
+
+        {/* ── Manifesto ────────────────────────────────────── */}
+        <section
+          className="manifesto landing-container"
+          id="manifesto"
+          aria-labelledby="manifesto-title"
+        >
+          <div className="manifesto-side" data-reveal>
+            <Eyebrow>我們在意的事</Eyebrow>
+            <h2 id="manifesto-title" className="sr-only">
+              我們在意的事
+            </h2>
           </div>
-        </div>
+          <p className="manifesto-text" data-scrub-text>
+            <ScrubText text="距離，只是路線的一部分。哪裡有階梯、哪段要上坡、電梯在哪個出口、公車還要等多久——這些，才決定你能不能好好出門。" />
+          </p>
+        </section>
+
         <AppShowcase />
+
+        {/* ── Route modes ──────────────────────────────────── */}
         <section
           className="section landing-container"
           id="features"
           aria-labelledby="features-title"
         >
-          <div className="section-heading" data-reveal>
-            <h2 id="features-title">你的需要，決定怎麼走</h2>
-            <p>切換模式，看看同一張地圖能為你多考慮什麼。</p>
+          <div className="section-heading">
+            <Eyebrow>路線規劃</Eyebrow>
+            <h2 id="features-title" data-split>
+              <SplitLine text="你的需要，" />
+              <SplitLine text="決定怎麼走" className="display-accent" />
+            </h2>
+            <p data-reveal>切換模式，看看同一張地圖能為你多考慮什麼。</p>
           </div>
           <FeatureShowcase />
         </section>
-        <section className="terrain-section" aria-labelledby="terrain-title">
-          <div className="landing-container terrain-layout">
-            <div className="terrain-copy" data-reveal>
-              <p className="eyebrow">路線裡的細節</p>
-              <h2 id="terrain-title">
-                不只多遠，
-                <br />
-                也看這條路怎麼走
+
+        {/* ── Terrain bento ────────────────────────────────── */}
+        <section
+          className="section landing-container"
+          id="terrain"
+          aria-labelledby="terrain-title"
+        >
+          <div className="section-heading section-heading-split">
+            <div>
+              <Eyebrow>路線裡的細節</Eyebrow>
+              <h2 id="terrain-title" data-split>
+                <SplitLine text="不只多遠，" />
+                <SplitLine text="也看這條路怎麼走" className="display-accent" />
               </h2>
-              <p className="terrain-statement">
-                <span>哪段有人行道？</span>
-                <span>沿途會不會上坡？</span>
-                <span>出發前，多了解一點路上的事。</span>
-              </p>
-              <dl className="terrain-facts">
-                <div>
-                  <dt>
-                    <Route aria-hidden="true" />
-                    人行道路段
-                  </dt>
-                  <dd>以綠色標示已對應的人行道，了解路線的資料覆蓋情況。</dd>
-                </div>
-                <div>
-                  <dt>
-                    <Mountain aria-hidden="true" />
-                    沿途高程與坡度
-                  </dt>
-                  <dd>查看路線起伏與爬升變化，衡量自己的體力與通行需要。</dd>
-                </div>
-              </dl>
-              <a className="text-link" href="#faq">
-                了解圖資與通行限制
-                <ArrowRight size={18} aria-hidden="true" />
-              </a>
             </div>
-            <figure className="terrain-visual" data-reveal>
-              <Image
-                width={1440}
-                height={1000}
-                src="/landing/terrain-desktop.webp"
-                alt="劍潭站到圓山大飯店的步行路線與高程圖，可見後段明顯上升"
-                sizes="(max-width: 767px) 92vw, 58vw"
-              />
-            </figure>
+            <p data-reveal>
+              哪段有人行道？沿途會不會上坡？出發前，多了解一點路上的事。
+            </p>
+          </div>
+          <div className="terrain-bento">
+            <Bezel className="bento-hero" coreClassName="bento-shot">
+              <figure data-parallax-media>
+                <Image
+                  width={1440}
+                  height={1000}
+                  src="/landing/terrain-desktop.webp"
+                  alt="劍潭站到圓山大飯店的步行路線與高程圖，可見後段明顯上升"
+                  sizes="(max-width: 767px) 92vw, 62vw"
+                />
+              </figure>
+              <p className="bento-tag">
+                實際畫面・捷運劍潭站一號出口 → 圓山大飯店
+              </p>
+            </Bezel>
+            <Bezel className="bento-stat" coreClassName="bento-card">
+              <Mountain size={22} {...thin} />
+              <div className="stat-pair">
+                <p>
+                  <span className="stat-number" data-count="30">
+                    30
+                  </span>
+                  <small>m</small>
+                </p>
+                <p className="stat-label">累計上升</p>
+              </div>
+              <div className="stat-pair">
+                <p>
+                  <span className="stat-number" data-count="4">
+                    4
+                  </span>
+                  <small>m</small>
+                </p>
+                <p className="stat-label">累計下降</p>
+              </div>
+              <p className="bento-note">
+                此範例路線的高程估算，查看起伏與爬升變化，衡量自己的體力與通行需要。
+              </p>
+            </Bezel>
+            <Bezel className="bento-route" coreClassName="bento-card">
+              <Route size={22} {...thin} />
+              <svg
+                className="bento-route-line"
+                viewBox="0 0 320 80"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  className="route-muted"
+                  d="M8 60 C 60 60 70 20 120 20 S 190 64 240 50 S 300 20 312 20"
+                />
+                <path
+                  className="route-green"
+                  d="M8 60 C 60 60 70 20 120 20 S 190 64 240 50 S 300 20 312 20"
+                  pathLength="1"
+                  data-route-line
+                />
+              </svg>
+              <h3>人行道路段</h3>
+              <p>以綠色標示已對應的人行道，了解路線的資料覆蓋情況。</p>
+              <a className="text-link" href="#faq">
+                綠色不等於通行認證
+                <ArrowUpRight size={15} strokeWidth={1.5} aria-hidden="true" />
+              </a>
+            </Bezel>
           </div>
         </section>
+
+        {/* ── Journey stack ────────────────────────────────── */}
         <section
           className="section landing-container"
           id="journey"
           aria-labelledby="journey-title"
         >
-          <div className="section-heading" data-reveal>
-            <h2 id="journey-title">聽指引、看公車，路上都有幫手</h2>
-            <p>語音導航、即時到站與語音助理，從規劃一路用到抵達。</p>
+          <div className="section-heading">
+            <Eyebrow>出行幫手</Eyebrow>
+            <h2 id="journey-title" data-split>
+              <SplitLine text="聽指引、看公車，" />
+              <SplitLine text="路上都有幫手" className="display-accent" />
+            </h2>
+            <p data-reveal>
+              語音導航、即時到站與語音助理，從規劃一路用到抵達。
+            </p>
           </div>
-          <div className="journey-grid">
-            <article className="journey-feature navigation-feature">
-              <div className="journey-text">
-                <Volume2 size={28} aria-hidden="true" />
-                <h3>語音導航，轉彎用聽的</h3>
-                <p>
-                  開啟語音播報，聽取轉彎與距離指引。導航隨位置更新，畫面同步顯示下一步與預計抵達時間。
-                </p>
-                <ul className="journey-points">
-                  <li>逐步轉彎與距離播報</li>
-                  <li>隨位置更新導航進度</li>
-                  <li>剩餘距離與預計抵達時間</li>
-                </ul>
-              </div>
-              <div className="navigation-phone">
-                <Iphone
-                  src="/landing/navigation-live-native.webp"
-                  alt="iPhone 原生 App 正式導航畫面，顯示左轉距離、目前位置及即時語音導航"
-                />
-              </div>
+          <div className="journey-stack">
+            <article
+              className="journey-card"
+              style={{ "--i": 0 } as CSSProperties}
+            >
+              <Bezel coreClassName="journey-core">
+                <div className="journey-text">
+                  <span className="journey-index">01</span>
+                  <span className="journey-icon">
+                    <Volume2 size={22} {...thin} />
+                  </span>
+                  <h3>語音導航，轉彎用聽的</h3>
+                  <p>
+                    開啟語音播報，聽取轉彎與距離指引。導航隨位置更新，畫面同步顯示下一步與預計抵達時間。
+                  </p>
+                  <ul className="journey-points">
+                    <li>逐步轉彎與距離播報</li>
+                    <li>隨位置更新導航進度</li>
+                    <li>剩餘距離與預計抵達時間</li>
+                  </ul>
+                </div>
+                <div className="journey-visual">
+                  <div className="journey-phone">
+                    <Iphone
+                      src="/landing/navigation-live-native.webp"
+                      alt="iPhone 原生 App 正式導航畫面，顯示左轉距離、目前位置及即時語音導航"
+                    />
+                  </div>
+                </div>
+              </Bezel>
             </article>
-            <article className="journey-feature bus-feature">
-              <div className="journey-text">
-                <BusFront size={28} aria-hidden="true" />
-                <h3>即時公車，知道還要等多久</h3>
-                <p>
-                  找附近站牌或輸入路線，查看到站倒數與沿途站序。需要搭無障礙公車時，也能切換篩選。
-                </p>
-                <ul className="journey-points">
-                  <li>即時到站時間與進站狀態</li>
-                  <li>無障礙公車篩選</li>
-                  <li>車快到時提醒、查看沿途站點</li>
-                </ul>
-              </div>
-              <BusPreview />
+            <article
+              className="journey-card"
+              style={{ "--i": 1 } as CSSProperties}
+            >
+              <Bezel coreClassName="journey-core">
+                <div className="journey-text">
+                  <span className="journey-index">02</span>
+                  <span className="journey-icon">
+                    <BusFront size={22} {...thin} />
+                  </span>
+                  <h3>即時公車，知道還要等多久</h3>
+                  <p>
+                    找附近站牌或輸入路線，查看到站倒數與沿途站序。需要搭無障礙公車時，也能切換篩選。
+                  </p>
+                  <ul className="journey-points">
+                    <li>即時到站時間與進站狀態</li>
+                    <li>無障礙公車篩選</li>
+                    <li>車快到時提醒、查看沿途站點</li>
+                  </ul>
+                </div>
+                <div className="journey-visual">
+                  <BusPreview />
+                </div>
+              </Bezel>
             </article>
-            <article className="journey-feature assistant-feature">
-              <div className="journey-text">
-                <MessageCircle size={28} aria-hidden="true" />
-                <h3>語音助理</h3>
-                <p>
-                  用文字或語音說出需求，請語音助理找地點、規劃路線，或問清楚哪一站下車、出站後還要走多遠。
-                </p>
-              </div>
-              <figure>
-                <Image
-                  width={1440}
-                  height={1000}
-                  src="/landing/assistant-desktop.webp"
-                  alt="助理回答台北 101 行程的下車站與出站後步行距離"
-                  sizes="(max-width: 767px) 92vw, 56vw"
-                />
-              </figure>
+            <article
+              className="journey-card journey-card-wide"
+              style={{ "--i": 2 } as CSSProperties}
+            >
+              <Bezel coreClassName="journey-core">
+                <div className="journey-text">
+                  <span className="journey-index">03</span>
+                  <span className="journey-icon">
+                    <MessageCircle size={22} {...thin} />
+                  </span>
+                  <h3>語音助理，把問題說出來</h3>
+                  <p>
+                    用文字或語音說出需求，請語音助理找地點、規劃路線，或問清楚哪一站下車、出站後還要走多遠。
+                  </p>
+                </div>
+                <div className="journey-visual">
+                  <figure className="journey-shot">
+                    <Image
+                      width={1440}
+                      height={1000}
+                      src="/landing/assistant-desktop.webp"
+                      alt="助理回答台北 101 行程的下車站與出站後步行距離"
+                      sizes="(max-width: 767px) 92vw, 56vw"
+                    />
+                  </figure>
+                </div>
+              </Bezel>
             </article>
           </div>
         </section>
+
+        {/* ── Everyday bento ───────────────────────────────── */}
         <section
-          className="everyday-section landing-container"
+          className="section landing-container"
           id="everyday"
           aria-labelledby="everyday-title"
         >
-          <div className="section-heading" data-reveal>
-            <h2 id="everyday-title">一張地圖，照顧更多出門的事</h2>
-            <p>找設施、看環境、回報問題。需要時，不必換一個工具。</p>
+          <div className="section-heading section-heading-split">
+            <div>
+              <Eyebrow>更多功能</Eyebrow>
+              <h2 id="everyday-title" data-split>
+                <SplitLine text="一張地圖，" />
+                <SplitLine text="照顧更多出門的事" className="display-accent" />
+              </h2>
+            </div>
+            <p data-reveal>
+              找設施、看環境、回報問題。需要時，不必換一個工具。
+            </p>
           </div>
-          <ul className="everyday-tools">
-            {everydayTools.map((tool) => (
-              <li key={tool.title} data-reveal>
-                <tool.icon size={24} aria-hidden="true" />
-                <div>
-                  <h3>{tool.title}</h3>
-                  <p>{tool.description}</p>
+          <ul className="tools-bento">
+            {everydayTools.map((tool, index) => (
+              <li
+                key={tool.title}
+                className={`bezel tool ${tool.span}`}
+                data-reveal
+                data-spotlight
+              >
+                <div className="bezel-core tool-core">
+                  <span className="tool-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="tool-icon">
+                    <tool.icon size={22} {...thin} />
+                  </span>
+                  <div>
+                    <h3>{tool.title}</h3>
+                    <p>{tool.description}</p>
+                  </div>
                 </div>
               </li>
             ))}
           </ul>
-          <a className="text-link everyday-link" href="/map/">
-            到地圖探索所有功能 <ArrowRight size={18} aria-hidden="true" />
-          </a>
+          <div className="tools-footer" data-reveal>
+            <PillLink href="/map/" variant="ghost">
+              到地圖探索所有功能
+            </PillLink>
+          </div>
         </section>
+
+        {/* ── FAQ ──────────────────────────────────────────── */}
         <section
           className="faq-section landing-container"
           id="faq"
           aria-labelledby="faq-title"
         >
-          <div className="faq-heading" data-reveal>
-            <h2 id="faq-title">
-              出發前，
-              <br />
-              你可能想知道
+          <div className="faq-heading">
+            <Eyebrow>常見問題</Eyebrow>
+            <h2 id="faq-title" data-split>
+              <SplitLine text="出發前，" />
+              <SplitLine text="你可能想知道" className="display-accent" />
             </h2>
-            <p>
-              關於使用方式、路線模式，
-              <br />
-              以及地圖能告訴你的事。
+            <p data-reveal>
+              關於使用方式、路線模式，以及地圖能告訴你的事——還有它不能保證的事。
             </p>
           </div>
           <div className="faq-list">
-            {faqs.map(([question, answer]) => (
-              <details key={question}>
+            {faqs.map(([question, answer], index) => (
+              <details key={question} data-reveal>
                 <summary>
-                  {question}
-                  <ChevronDown size={20} aria-hidden="true" />
+                  <span className="faq-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className="faq-question">{question}</span>
+                  <span className="faq-toggle" aria-hidden="true" />
                 </summary>
-                <p>{answer}</p>
+                <div className="faq-answer">
+                  <p>{answer}</p>
+                </div>
               </details>
             ))}
           </div>
         </section>
-        <section className="closing-section landing-container" data-reveal>
-          <svg
-            className="closing-route"
-            viewBox="0 0 1000 240"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d={closingRoute}
-              className="closing-route-track"
-              pathLength="1"
-              data-route-line
-            />
-            <path
-              d={closingRoute}
-              pathLength="1"
-              className="closing-route-flow closing-route-trail"
-            />
-            <path
-              d={closingRoute}
-              pathLength="1"
-              className="closing-route-flow closing-route-head"
-            />
-          </svg>
-          <div className="closing-mark">
-            <Image src="/logo.webp" width={72} height={72} alt="" />
+
+        {/* ── Closing ──────────────────────────────────────── */}
+        <section className="closing" aria-labelledby="closing-title">
+          <div className="closing-inner landing-container">
+            <svg
+              className="closing-route"
+              viewBox="0 0 1000 240"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d={closingRoute}
+                className="closing-route-track"
+                pathLength="1"
+                data-route-line
+              />
+              <path
+                d={closingRoute}
+                pathLength="1"
+                className="closing-route-flow closing-route-trail"
+              />
+              <path
+                d={closingRoute}
+                pathLength="1"
+                className="closing-route-flow closing-route-head"
+              />
+            </svg>
+            <div className="closing-mark" data-reveal>
+              <Image src="/logo.webp" width={72} height={72} alt="" />
+            </div>
+            <h2 id="closing-title" data-split>
+              <SplitLine text="下一站，" />
+              <SplitLine text="想去哪裡？" className="display-accent" />
+            </h2>
+            <p data-reveal>從你的需要開始，規劃今天的路線。</p>
+            <div className="closing-actions" data-reveal>
+              <PillLink href="/map/">開啟地圖</PillLink>
+              <AppStoreLink variant="ghost" />
+            </div>
           </div>
-          <h2>下一站，想去哪裡？</h2>
-          <p>從你的需要開始，規劃今天的路線</p>
-          <OpenMap />
         </section>
       </main>
+
       <footer className="landing-footer">
         <div className="landing-container footer-inner">
-          <a href="/" className="brand">
-            <Image src="/logo.webp" width={32} height={32} alt="" />
-            <span>無障礙智慧地圖</span>
-          </a>
-          <p>Accessible Smart Map</p>
-          <nav aria-label="法律文件">
-            <a href="/zh-TW/policies/privacy-policy/">隱私權政策</a>
-            <a href="/zh-TW/policies/terms-of-use/">使用條款</a>
-          </nav>
+          <div className="footer-top">
+            <a href="/" className="brand">
+              <Image src="/logo.webp" width={32} height={32} alt="" />
+              <span>無障礙智慧地圖</span>
+            </a>
+            <nav aria-label="頁尾導覽">
+              <a href="#app">App 介紹</a>
+              <a href="#features">路線規劃</a>
+              <a href="#journey">出行幫手</a>
+              <a href="#faq">常見問題</a>
+            </nav>
+            <nav aria-label="法律文件">
+              <a href="/zh-TW/policies/privacy-policy/">隱私權政策</a>
+              <a href="/zh-TW/policies/terms-of-use/">使用條款</a>
+            </nav>
+            <a className="footer-top-link" href="#main-content">
+              回到頂端
+              <ArrowDown
+                size={14}
+                strokeWidth={1.5}
+                aria-hidden="true"
+                className="flip"
+              />
+            </a>
+          </div>
+          <p className="footer-wordmark" aria-hidden="true">
+            Accessible Smart Map
+          </p>
+          <p className="footer-map-credit">
+            地圖資料：
+            <a href="https://openfreemap.org/">OpenFreeMap</a>
+            {" · "}
+            <a href="https://openmaptiles.org/">© OpenMapTiles</a>
+            {" · "}
+            <a href="https://www.openstreetmap.org/copyright">
+              © OpenStreetMap
+            </a>
+          </p>
         </div>
-        <p className="landing-container footer-map-credit">
-          <a href="https://openfreemap.org/">OpenFreeMap</a>
-          {" · "}
-          <a href="https://openmaptiles.org/">© OpenMapTiles</a>
-          {" · "}
-          <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>
-        </p>
       </footer>
     </LandingMotion>
   );
