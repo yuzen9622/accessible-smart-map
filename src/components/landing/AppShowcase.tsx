@@ -6,14 +6,14 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useRef } from "react";
 import { Iphone } from "@/components/ui/iphone";
 import AppStoreLink from "./AppStoreLink";
-import { Eyebrow, SplitLine } from "./LandingUI";
+import { SplitLine } from "./LandingUI";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const screens = [
   {
     image: "explore-native",
-    title: "附近設施，一眼找到",
+    title: "附近設施一眼找到",
     description: "從地圖查看電梯與周邊地點，依需要切換坡道、廁所和停車圖層。",
     alt: "原生 App 的臺北車站周邊地圖與設施篩選入口",
   },
@@ -25,7 +25,7 @@ const screens = [
   },
   {
     image: "navigation-live-native",
-    title: "下一個轉彎，用聽的",
+    title: "下一個轉彎用聽的",
     description: "轉彎與距離即時語音播報，搭配畫面上的下一步及預計抵達時間。",
     alt: "原生 App 導航顯示 40 公尺後左轉、剩餘距離與即時語音播報",
   },
@@ -37,7 +37,7 @@ const screens = [
   },
   {
     image: "bus-route-native",
-    title: "沿途站點，接著看",
+    title: "沿途站點接著看",
     description: "確認行車方向與停靠站，從路線畫面設定到站提醒。",
     alt: "原生 App 265 區公車的行駛方向、沿途站點與到站提醒按鈕",
   },
@@ -59,7 +59,6 @@ export default function AppShowcase() {
       const gallery = section?.querySelector<HTMLElement>(".app-gallery");
       const track = section?.querySelector<HTMLElement>(".app-gallery-track");
       const card = track?.querySelector<HTMLElement>(".app-card");
-      const counter = section?.querySelector<HTMLElement>("[data-app-index]");
       if (!section || !stage || !gallery || !track || !card) return;
       const media = gsap.matchMedia();
       media.add("(prefers-reduced-motion: no-preference)", () => {
@@ -116,13 +115,6 @@ export default function AppShowcase() {
                 "--app-progress",
                 self.progress.toFixed(4),
               );
-              if (counter)
-                counter.textContent = String(
-                  Math.min(
-                    screens.length,
-                    Math.floor(self.progress * screens.length) + 1,
-                  ),
-                ).padStart(2, "0");
             },
           },
         });
@@ -163,18 +155,13 @@ export default function AppShowcase() {
       <div className="app-stage landing-container">
         <div className="app-section-heading">
           <div>
-            <Eyebrow>無障礙智慧地圖 App</Eyebrow>
             <h2 id="app-title" data-split>
-              <SplitLine text="把出門需要的，" />
+              <SplitLine text="把出門需要的" />
               <SplitLine text="放進口袋" className="display-accent" />
             </h2>
           </div>
           <div className="app-heading-actions">
             <div className="app-progress" aria-hidden="true">
-              <span className="app-progress-count">
-                <span data-app-index>01</span>
-                <small>/ {String(screens.length).padStart(2, "0")}</small>
-              </span>
               <span className="app-progress-rail">
                 <span />
               </span>
@@ -184,7 +171,7 @@ export default function AppShowcase() {
         </div>
         <section className="app-gallery" aria-label="App 功能截圖">
           <ul className="app-gallery-track">
-            {screens.map((screen, index) => (
+            {screens.map((screen) => (
               <li key={screen.image}>
                 <figure className="app-card">
                   <div className="app-phone-container">
@@ -196,9 +183,6 @@ export default function AppShowcase() {
                     />
                   </div>
                   <figcaption>
-                    <span className="app-card-index">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
                     <h3>{screen.title}</h3>
                     <p>{screen.description}</p>
                   </figcaption>

@@ -24,7 +24,7 @@ const features = [
     id: "wheelchair",
     label: "輪椅模式",
     icon: Accessibility,
-    title: "出發前，先看通行條件",
+    title: "出發前先看通行條件",
     description:
       "依輪椅通行需求規劃，對照候選路線的通行評分，也留意沿途資料不足的提醒。",
     image: "wheelchair-desktop",
@@ -106,9 +106,6 @@ export default function FeatureShowcase() {
                   transition={{ duration: 0.6, ease }}
                 />
               )}
-              <span className="tab-index">
-                {String(index + 1).padStart(2, "0")}
-              </span>
               <span className="tab-icon">
                 <item.icon size={18} strokeWidth={1.4} aria-hidden="true" />
               </span>

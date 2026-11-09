@@ -31,16 +31,24 @@ export default function HeroPreview() {
           className={`hero-phone hero-phone-${preview.position}`}
           key={preview.image}
           data-hero-phone={preview.position}
+          aria-label={preview.label}
         >
           <div className="hero-phone-tilt">
             <Iphone src={`/landing/${preview.image}.webp`} alt={preview.alt} />
           </div>
-          <figcaption className="hero-chip">
-            <span aria-hidden="true" />
-            {preview.label}
-          </figcaption>
         </figure>
       ))}
+      {/* Labels sit outside the rotated phones so they always read level. */}
+      <ul className="hero-chips" aria-hidden="true">
+        {previews.map((preview) => (
+          <li
+            key={preview.image}
+            className={`hero-chip hero-chip-${preview.position}`}
+          >
+            {preview.label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

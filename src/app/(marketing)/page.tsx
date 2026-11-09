@@ -9,30 +9,25 @@ import {
   Layers3,
   LifeBuoy,
   MapPin,
-  MessageCircle,
   MessageSquareWarning,
   Mountain,
   Route,
-  Volume2,
 } from "lucide-react";
-import type { CSSProperties } from "react";
 import AppShowcase from "@/components/landing/AppShowcase";
 import AppStoreLink from "@/components/landing/AppStoreLink";
-import BusPreview from "@/components/landing/BusPreview";
 import FeatureShowcase from "@/components/landing/FeatureShowcase";
 import HeroPreview from "@/components/landing/HeroPreview";
+import JourneyDeck from "@/components/landing/JourneyDeck";
 import Image from "@/components/landing/LandingImage";
 import LandingMotion, { HeroAppIcon } from "@/components/landing/LandingMotion";
 import LandingNav from "@/components/landing/LandingNav";
 import {
   Bezel,
-  Eyebrow,
   PillLink,
   ScrubText,
   SplitLine,
 } from "@/components/landing/LandingUI";
 import LegacyMapEntry from "@/components/landing/LegacyMapEntry";
-import { Iphone } from "@/components/ui/iphone";
 
 const thin = { strokeWidth: 1.4, "aria-hidden": true } as const;
 
@@ -60,6 +55,13 @@ const ticker = [
   "室內地圖",
   "障礙物回報",
   "SOS 緊急求助",
+];
+
+const manifestoQuestions = [
+  "哪裡有階梯",
+  "哪段要上坡",
+  "電梯在哪個出口",
+  "公車還要等多久",
 ];
 
 const everydayTools = [
@@ -176,7 +178,7 @@ export default function LandingPage() {
             <div className="hero-copy">
               <div className="hero-app-identity">
                 <HeroAppIcon />
-                <Eyebrow>iOS App 已上架・也能直接用網頁版</Eyebrow>
+                <p className="hero-label">無障礙智慧地圖</p>
               </div>
               <h1 id="hero-title" data-split="hero">
                 <SplitLine text="找一條" />
@@ -231,16 +233,33 @@ export default function LandingPage() {
         <section
           className="manifesto landing-container"
           id="manifesto"
-          aria-labelledby="manifesto-title"
+          aria-label="我們在意的事"
         >
-          <div className="manifesto-side" data-reveal>
-            <Eyebrow>我們在意的事</Eyebrow>
-            <h2 id="manifesto-title" className="sr-only">
-              我們在意的事
-            </h2>
-          </div>
-          <p className="manifesto-text" data-scrub-text>
-            <ScrubText text="距離，只是路線的一部分。哪裡有階梯、哪段要上坡、電梯在哪個出口、公車還要等多久——這些，才決定你能不能好好出門。" />
+          <p className="manifesto-lead" data-scrub-text>
+            <span>
+              <ScrubText text="距離" />
+            </span>
+            <span className="manifesto-lead-rest">
+              <ScrubText text="只是路線的一部分" />
+            </span>
+          </p>
+          <ol className="manifesto-questions">
+            {manifestoQuestions.map((question) => (
+              <li key={question} data-scrub-text>
+                <span className="manifesto-stop" aria-hidden="true" />
+                <span className="manifesto-question">
+                  <ScrubText text={question} />
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p className="manifesto-close" data-scrub-text>
+            <span className="manifesto-close-line" aria-hidden="true" />
+            <span>
+              <ScrubText text="這些" />
+              <br />
+              <ScrubText text="才決定你能不能好好出門" />
+            </span>
           </p>
         </section>
 
@@ -253,9 +272,8 @@ export default function LandingPage() {
           aria-labelledby="features-title"
         >
           <div className="section-heading">
-            <Eyebrow>路線規劃</Eyebrow>
             <h2 id="features-title" data-split>
-              <SplitLine text="你的需要，" />
+              <SplitLine text="你的需要" />
               <SplitLine text="決定怎麼走" className="display-accent" />
             </h2>
             <p data-reveal>切換模式，看看同一張地圖能為你多考慮什麼。</p>
@@ -271,9 +289,8 @@ export default function LandingPage() {
         >
           <div className="section-heading section-heading-split">
             <div>
-              <Eyebrow>路線裡的細節</Eyebrow>
               <h2 id="terrain-title" data-split>
-                <SplitLine text="不只多遠，" />
+                <SplitLine text="不只多遠" />
                 <SplitLine text="也看這條路怎麼走" className="display-accent" />
               </h2>
             </div>
@@ -292,9 +309,7 @@ export default function LandingPage() {
                   sizes="(max-width: 767px) 92vw, 62vw"
                 />
               </figure>
-              <p className="bento-tag">
-                實際畫面・捷運劍潭站一號出口 → 圓山大飯店
-              </p>
+              <p className="bento-tag">捷運劍潭站一號出口 → 圓山大飯店</p>
             </Bezel>
             <Bezel className="bento-stat" coreClassName="bento-card">
               <Mountain size={22} {...thin} />
@@ -349,108 +364,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* ── Journey stack ────────────────────────────────── */}
-        <section
-          className="section landing-container"
-          id="journey"
-          aria-labelledby="journey-title"
-        >
-          <div className="section-heading">
-            <Eyebrow>出行幫手</Eyebrow>
-            <h2 id="journey-title" data-split>
-              <SplitLine text="聽指引、看公車，" />
-              <SplitLine text="路上都有幫手" className="display-accent" />
-            </h2>
-            <p data-reveal>
-              語音導航、即時到站與語音助理，從規劃一路用到抵達。
-            </p>
-          </div>
-          <div className="journey-stack">
-            <article
-              className="journey-card"
-              style={{ "--i": 0 } as CSSProperties}
-            >
-              <Bezel coreClassName="journey-core">
-                <div className="journey-text">
-                  <span className="journey-index">01</span>
-                  <span className="journey-icon">
-                    <Volume2 size={22} {...thin} />
-                  </span>
-                  <h3>語音導航，轉彎用聽的</h3>
-                  <p>
-                    開啟語音播報，聽取轉彎與距離指引。導航隨位置更新，畫面同步顯示下一步與預計抵達時間。
-                  </p>
-                  <ul className="journey-points">
-                    <li>逐步轉彎與距離播報</li>
-                    <li>隨位置更新導航進度</li>
-                    <li>剩餘距離與預計抵達時間</li>
-                  </ul>
-                </div>
-                <div className="journey-visual">
-                  <div className="journey-phone">
-                    <Iphone
-                      src="/landing/navigation-live-native.webp"
-                      alt="iPhone 原生 App 正式導航畫面，顯示左轉距離、目前位置及即時語音導航"
-                    />
-                  </div>
-                </div>
-              </Bezel>
-            </article>
-            <article
-              className="journey-card"
-              style={{ "--i": 1 } as CSSProperties}
-            >
-              <Bezel coreClassName="journey-core">
-                <div className="journey-text">
-                  <span className="journey-index">02</span>
-                  <span className="journey-icon">
-                    <BusFront size={22} {...thin} />
-                  </span>
-                  <h3>即時公車，知道還要等多久</h3>
-                  <p>
-                    找附近站牌或輸入路線，查看到站倒數與沿途站序。需要搭無障礙公車時，也能切換篩選。
-                  </p>
-                  <ul className="journey-points">
-                    <li>即時到站時間與進站狀態</li>
-                    <li>無障礙公車篩選</li>
-                    <li>車快到時提醒、查看沿途站點</li>
-                  </ul>
-                </div>
-                <div className="journey-visual">
-                  <BusPreview />
-                </div>
-              </Bezel>
-            </article>
-            <article
-              className="journey-card journey-card-wide"
-              style={{ "--i": 2 } as CSSProperties}
-            >
-              <Bezel coreClassName="journey-core">
-                <div className="journey-text">
-                  <span className="journey-index">03</span>
-                  <span className="journey-icon">
-                    <MessageCircle size={22} {...thin} />
-                  </span>
-                  <h3>語音助理，把問題說出來</h3>
-                  <p>
-                    用文字或語音說出需求，請語音助理找地點、規劃路線，或問清楚哪一站下車、出站後還要走多遠。
-                  </p>
-                </div>
-                <div className="journey-visual">
-                  <figure className="journey-shot">
-                    <Image
-                      width={1440}
-                      height={1000}
-                      src="/landing/assistant-desktop.webp"
-                      alt="助理回答台北 101 行程的下車站與出站後步行距離"
-                      sizes="(max-width: 767px) 92vw, 56vw"
-                    />
-                  </figure>
-                </div>
-              </Bezel>
-            </article>
-          </div>
-        </section>
+        <JourneyDeck />
 
         {/* ── Everyday bento ───────────────────────────────── */}
         <section
@@ -460,9 +374,8 @@ export default function LandingPage() {
         >
           <div className="section-heading section-heading-split">
             <div>
-              <Eyebrow>更多功能</Eyebrow>
               <h2 id="everyday-title" data-split>
-                <SplitLine text="一張地圖，" />
+                <SplitLine text="一張地圖" />
                 <SplitLine text="照顧更多出門的事" className="display-accent" />
               </h2>
             </div>
@@ -471,7 +384,7 @@ export default function LandingPage() {
             </p>
           </div>
           <ul className="tools-bento">
-            {everydayTools.map((tool, index) => (
+            {everydayTools.map((tool) => (
               <li
                 key={tool.title}
                 className={`bezel tool ${tool.span}`}
@@ -479,9 +392,6 @@ export default function LandingPage() {
                 data-spotlight
               >
                 <div className="bezel-core tool-core">
-                  <span className="tool-index">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
                   <span className="tool-icon">
                     <tool.icon size={22} {...thin} />
                   </span>
@@ -507,22 +417,18 @@ export default function LandingPage() {
           aria-labelledby="faq-title"
         >
           <div className="faq-heading">
-            <Eyebrow>常見問題</Eyebrow>
             <h2 id="faq-title" data-split>
-              <SplitLine text="出發前，" />
+              <SplitLine text="出發前" />
               <SplitLine text="你可能想知道" className="display-accent" />
             </h2>
             <p data-reveal>
-              關於使用方式、路線模式，以及地圖能告訴你的事——還有它不能保證的事。
+              關於使用方式、路線模式，以及地圖能告訴你的事，也包括它不能保證的事。
             </p>
           </div>
           <div className="faq-list">
-            {faqs.map(([question, answer], index) => (
+            {faqs.map(([question, answer]) => (
               <details key={question} data-reveal>
                 <summary>
-                  <span className="faq-index">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
                   <span className="faq-question">{question}</span>
                   <span className="faq-toggle" aria-hidden="true" />
                 </summary>
@@ -564,7 +470,7 @@ export default function LandingPage() {
               <Image src="/logo.webp" width={72} height={72} alt="" />
             </div>
             <h2 id="closing-title" data-split>
-              <SplitLine text="下一站，" />
+              <SplitLine text="下一站" />
               <SplitLine text="想去哪裡？" className="display-accent" />
             </h2>
             <p data-reveal>從你的需要開始，規劃今天的路線。</p>
@@ -577,6 +483,9 @@ export default function LandingPage() {
       </main>
 
       <footer className="landing-footer">
+        <p className="footer-wordmark" aria-hidden="true">
+          Accessible Smart Map
+        </p>
         <div className="landing-container footer-inner">
           <div className="footer-top">
             <a href="/" className="brand">
@@ -603,9 +512,6 @@ export default function LandingPage() {
               />
             </a>
           </div>
-          <p className="footer-wordmark" aria-hidden="true">
-            Accessible Smart Map
-          </p>
           <p className="footer-map-credit">
             地圖資料：
             <a href="https://openfreemap.org/">OpenFreeMap</a>

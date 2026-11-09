@@ -83,7 +83,6 @@ export default function LandingNav() {
             {links.map(([href, label, note], index) => (
               <li key={href} style={{ "--i": index } as CSSProperties}>
                 <a href={href} onClick={() => setOpen(false)}>
-                  <small>{String(index + 1).padStart(2, "0")}</small>
                   <span>{label}</span>
                   <em>{note}</em>
                 </a>

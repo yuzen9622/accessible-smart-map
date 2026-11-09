@@ -1,15 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 import type { ReactNode } from "react";
 
-export function Eyebrow({ children }: { children: ReactNode }) {
-  return (
-    <p className="eyebrow">
-      <span className="eyebrow-dot" aria-hidden="true" />
-      {children}
-    </p>
-  );
-}
-
 /** Pill CTA with the trailing icon nested in its own circle. */
 export function PillLink({
   href,

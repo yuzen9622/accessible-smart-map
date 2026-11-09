@@ -45,11 +45,11 @@ export default function LandingMotion({ children }: { children: ReactNode }) {
 
       const chars = element.querySelectorAll("#hero-title .split-char");
       const copy = element.querySelectorAll(
-        ".hero-app-identity .eyebrow, .hero-description, .hero-actions > *, .hero-modes li",
+        ".hero-label, .hero-description, .hero-actions > *, .hero-modes li",
       );
       const phones = element.querySelectorAll("[data-hero-phone]");
       const extras = element.querySelectorAll(
-        ".hero-scroll-cue, .landing-header, .hero-halo",
+        ".hero-scroll-cue, .landing-header, .hero-halo, .hero-chip",
       );
       const rect = heroIcon.getBoundingClientRect();
       const iconSize = Math.min(220, Math.max(150, window.innerWidth * 0.2));
@@ -222,24 +222,122 @@ export default function LandingMotion({ children }: { children: ReactNode }) {
         { autoAlpha: 0 },
       );
 
-      // Manifesto lights up character by character.
-      const scrub = element.querySelector("[data-scrub-text]");
-      if (scrub)
+      // Manifesto lines light up character by character.
+      gsap.utils.toArray<HTMLElement>("[data-scrub-text]").forEach((line) => {
         gsap.fromTo(
-          scrub.querySelectorAll(".scrub-char"),
-          { opacity: 0.14 },
+          line.querySelectorAll(".scrub-char"),
+          { opacity: 0.12 },
           {
             opacity: 1,
-            stagger: 0.05,
+            stagger: 0.08,
             ease: "none",
             scrollTrigger: {
-              trigger: scrub,
-              start: "top 78%",
-              end: "bottom 42%",
+              trigger: line,
+              start: "top 82%",
+              end: "bottom 58%",
               scrub: 0.4,
             },
           },
         );
+      });
+
+      // Manifesto: the lead settles, the route draws through each question
+      // stop, and the rows slide out into their staircase.
+      const manifesto = element.querySelector<HTMLElement>(".manifesto");
+      if (manifesto) {
+        const lead = manifesto.querySelector(".manifesto-lead");
+        gsap.fromTo(
+          manifesto.querySelector(".manifesto-lead > span:first-child"),
+          { scale: 0.72, transformOrigin: "0% 100%" },
+          {
+            scale: 1,
+            ease: "none",
+            scrollTrigger: {
+              trigger: lead,
+              start: "top 92%",
+              end: "top 45%",
+              scrub: 0.6,
+            },
+          },
+        );
+        gsap.fromTo(
+          manifesto.querySelector(".manifesto-lead-rest"),
+          { xPercent: 40, autoAlpha: 0 },
+          {
+            xPercent: 0,
+            autoAlpha: 1,
+            ease: "none",
+            scrollTrigger: {
+              trigger: lead,
+              start: "top 85%",
+              end: "top 50%",
+              scrub: 0.6,
+            },
+          },
+        );
+        const questions = manifesto.querySelector(".manifesto-questions");
+        gsap.fromTo(
+          questions,
+          { "--trace": 0 },
+          {
+            "--trace": 1,
+            ease: "none",
+            scrollTrigger: {
+              trigger: questions,
+              start: "top 75%",
+              end: "bottom 55%",
+              scrub: 0.6,
+            },
+          },
+        );
+        gsap.utils
+          .toArray<HTMLElement>(".manifesto-questions li", manifesto)
+          .forEach((row) => {
+            const text = row.querySelector<HTMLElement>(".manifesto-question");
+            const indent = text
+              ? Number.parseFloat(getComputedStyle(text).paddingLeft)
+              : 0;
+            const rowScroll = {
+              trigger: row,
+              start: "top 85%",
+              end: "top 50%",
+              scrub: 0.6,
+            };
+            gsap.fromTo(
+              row,
+              { "--draw": 0, "--lit": 0 },
+              {
+                "--draw": 1,
+                "--lit": 1,
+                ease: "none",
+                scrollTrigger: rowScroll,
+              },
+            );
+            if (text)
+              gsap.fromTo(
+                text,
+                { x: -indent - 40 },
+                { x: 0, ease: "none", scrollTrigger: rowScroll },
+              );
+          });
+        const close = manifesto.querySelector(".manifesto-close");
+        const closeScroll = {
+          trigger: close,
+          start: "top 90%",
+          end: "top 60%",
+          scrub: 0.6,
+        };
+        gsap.fromTo(
+          manifesto.querySelector(".manifesto-close-line"),
+          { scaleX: 0, transformOrigin: "100% 50%" },
+          { scaleX: 1, ease: "none", scrollTrigger: closeScroll },
+        );
+        gsap.fromTo(
+          manifesto.querySelector(".manifesto-close > span:last-child"),
+          { x: 60 },
+          { x: 0, ease: "none", scrollTrigger: closeScroll },
+        );
+      }
 
       // Hero: phones fan out and copy recedes as the reader leaves.
       const heroScroll = {
@@ -352,29 +450,11 @@ export default function LandingMotion({ children }: { children: ReactNode }) {
         });
 
       const media = gsap.matchMedia();
-      // Sticky journey cards recede as the next one slides over them.
-      media.add("(min-width: 960px) and (min-height: 760px)", () => {
-        const cards = gsap.utils.toArray<HTMLElement>(".journey-card");
-        cards.slice(0, -1).forEach((card, i) => {
-          gsap.to(card, {
-            scale: 0.92,
-            "--dim": 1,
-            transformOrigin: "50% 0%",
-            ease: "none",
-            scrollTrigger: {
-              trigger: cards[i + 1],
-              start: "top 92%",
-              end: "top 20%",
-              scrub: true,
-            },
-          });
-        });
-      });
-
       // Pointer physics on precise pointers only.
       media.add("(hover: hover) and (pointer: fine)", () => {
         const preview = element.querySelector<HTMLElement>(".hero-preview");
         const hero = element.querySelector<HTMLElement>(".hero");
+        if (preview) gsap.set(preview, { rotateX: 0, rotateY: 0 });
         const tilt = preview
           ? {
               x: gsap.quickTo(preview, "rotateY", {
