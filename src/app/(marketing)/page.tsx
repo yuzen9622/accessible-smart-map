@@ -16,13 +16,16 @@ import {
   Route,
   Volume2,
 } from "lucide-react";
+import AppShowcase from "@/components/landing/AppShowcase";
+import AppStoreLink from "@/components/landing/AppStoreLink";
 import BusPreview from "@/components/landing/BusPreview";
 import FeatureShowcase from "@/components/landing/FeatureShowcase";
 import HeroPreview from "@/components/landing/HeroPreview";
 import Image from "@/components/landing/LandingImage";
-import LandingMotion from "@/components/landing/LandingMotion";
+import LandingMotion, { HeroAppIcon } from "@/components/landing/LandingMotion";
 import LandingNav from "@/components/landing/LandingNav";
 import LegacyMapEntry from "@/components/landing/LegacyMapEntry";
+import { Iphone } from "@/components/ui/iphone";
 
 const closingRoute =
   "M0 190H240Q280 190 280 150V90Q280 50 320 50H680Q720 50 720 90V150Q720 190 760 190H1000";
@@ -82,8 +85,8 @@ const faqs = [
     "可以直接開啟網頁版開始探索地圖與規劃路線。部分個人化與帳號功能需要登入；實際可用功能以介面提示為準。",
   ],
   [
-    "AI 助理能幫忙做什麼？",
-    "你可以用自然語言描述要找的地點或出行需求，讓 AI 助理協助查詢與規劃。規劃結果仍須確認路線、設施資訊與現場狀況，AI 回覆不是通行保證。",
+    "語音助理能幫忙做什麼？",
+    "你可以用文字或語音描述要找的地點與出行需求，讓語音助理協助查詢與規劃。規劃結果仍須確認路線、設施資訊與現場狀況，助理回覆不是通行保證。",
   ],
 ];
 
@@ -126,26 +129,32 @@ export default function LandingPage() {
       <main id="main-content" className="landing-main">
         <div className="hero-stage">
           <section
-            className="hero landing-container max-w-6xl"
+            className="hero app-hero landing-container"
             aria-labelledby="hero-title"
           >
             <div className="hero-copy">
-              <p className="eyebrow">無障礙智慧地圖</p>
+              <div className="hero-app-identity">
+                <HeroAppIcon />
+                <p>無障礙智慧地圖 App</p>
+              </div>
               <h1 id="hero-title">
                 找一條<span>適合自己的路</span>
               </h1>
               <p className="hero-description">
-                從步行、輪椅到搭公車，找到適合的走法。
+                從步行、輪椅到搭公車，找到適合自己的路。
                 <br />
-                語音導航、即時到站與沿途設施，陪你走完整趟路。
+                語音導航、即時到站與語音助理，陪你走完整趟路。
               </p>
               <div className="hero-actions">
-                <OpenMap />
-                <a className="landing-button button-secondary" href="#features">
-                  探索功能
-                  <ArrowDown size={18} aria-hidden="true" />
-                </a>
+                <AppStoreLink />
+                <OpenMap secondary />
               </div>
+              <p className="hero-platform-note">
+                <a className="text-link" href="#app">
+                  探索 App 功能與實際畫面
+                  <ArrowDown size={16} aria-hidden="true" />
+                </a>
+              </p>
             </div>
             <HeroPreview />
           </section>
@@ -179,6 +188,7 @@ export default function LandingPage() {
             </ul>
           </div>
         </div>
+        <AppShowcase />
         <section
           className="section landing-container"
           id="features"
@@ -243,7 +253,7 @@ export default function LandingPage() {
         >
           <div className="section-heading" data-reveal>
             <h2 id="journey-title">聽指引、看公車，路上都有幫手</h2>
-            <p>語音導航、即時到站與 AI 助理，從規劃一路用到抵達。</p>
+            <p>語音導航、即時到站與語音助理，從規劃一路用到抵達。</p>
           </div>
           <div className="journey-grid">
             <article className="journey-feature navigation-feature">
@@ -258,23 +268,11 @@ export default function LandingPage() {
                   <li>隨位置更新導航進度</li>
                   <li>剩餘距離與預計抵達時間</li>
                 </ul>
-                <p className="map-image-credit">
-                  <a href="https://openfreemap.org/">OpenFreeMap</a>
-                  {" · "}
-                  <a href="https://openmaptiles.org/">© OpenMapTiles</a>
-                  {" · "}
-                  <a href="https://www.openstreetmap.org/copyright">
-                    © OpenStreetMap
-                  </a>
-                </p>
               </div>
               <div className="navigation-phone">
-                <Image
+                <Iphone
                   src="/landing/navigation-live-native.webp"
-                  width={1206}
-                  height={2622}
-                  alt="iPhone 原生 App 正式導航畫面，顯示左轉距離、目前位置及已開啟的語音導航"
-                  sizes="(max-width: 767px) 220px, 240px"
+                  alt="iPhone 原生 App 正式導航畫面，顯示左轉距離、目前位置及即時語音導航"
                 />
               </div>
             </article>
@@ -296,10 +294,9 @@ export default function LandingPage() {
             <article className="journey-feature assistant-feature">
               <div className="journey-text">
                 <MessageCircle size={28} aria-hidden="true" />
-                <h3>AI 助理，想去哪裡直接說</h3>
+                <h3>語音助理</h3>
                 <p>
-                  用文字或語音說出需求，請 AI
-                  助理找地點、規劃路線，或問清楚哪一站下車、出站後還要走多遠。
+                  用文字或語音說出需求，請語音助理找地點、規劃路線，或問清楚哪一站下車、出站後還要走多遠。
                 </p>
               </div>
               <figure>
@@ -307,7 +304,7 @@ export default function LandingPage() {
                   width={1440}
                   height={1000}
                   src="/landing/assistant-desktop.webp"
-                  alt="AI 助理回答台北 101 行程的下車站與出站後步行距離"
+                  alt="助理回答台北 101 行程的下車站與出站後步行距離"
                   sizes="(max-width: 767px) 92vw, 56vw"
                 />
               </figure>
@@ -411,6 +408,13 @@ export default function LandingPage() {
             <a href="/zh-TW/policies/terms-of-use/">使用條款</a>
           </nav>
         </div>
+        <p className="landing-container footer-map-credit">
+          <a href="https://openfreemap.org/">OpenFreeMap</a>
+          {" · "}
+          <a href="https://openmaptiles.org/">© OpenMapTiles</a>
+          {" · "}
+          <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>
+        </p>
       </footer>
     </LandingMotion>
   );

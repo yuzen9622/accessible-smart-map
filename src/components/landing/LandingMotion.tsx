@@ -4,32 +4,142 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { MotionConfig } from "motion/react";
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, useRef, useState } from "react";
+import Image from "./LandingImage";
 
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
+export function HeroAppIcon() {
+  return (
+    <div className="hero-app-icon">
+      <div className="hero-brand-image">
+        <Image src="/logo.webp" width={256} height={256} alt="" priority />
+      </div>
+    </div>
+  );
+}
+
 export default function LandingMotion({ children }: { children: ReactNode }) {
   const root = useRef<HTMLDivElement>(null);
+  const [intro, setIntro] = useState(true);
+
   useGSAP(
     () => {
       const element = root.current;
       if (!element) return;
-      gsap.from(".hero-copy > *", {
-        y: 24,
-        opacity: 0,
-        stagger: 0.1,
-        duration: 0.7,
-        ease: "power2.out",
-        clearProps: "all",
+      const heroIcon = element.querySelector<HTMLElement>(".hero-brand-image");
+      if (
+        !heroIcon ||
+        window.location.hash ||
+        window.scrollY > 0 ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        setIntro(false);
+        return;
+      }
+
+      const copy = element.querySelectorAll(
+        ".hero-app-identity > p, .hero-copy > :not(.hero-app-identity)",
+      );
+      const preview = element.querySelector(".hero-preview");
+      const baseline = element.querySelector(".hero-baseline");
+      const rect = heroIcon.getBoundingClientRect();
+      const iconSize = Math.min(256, Math.max(180, window.innerWidth * 0.24));
+      const overflow = document.documentElement.style.overflow;
+      document.documentElement.style.overflow = "hidden";
+
+      gsap.set(copy, { y: 24, autoAlpha: 0 });
+      gsap.set([preview, baseline], { y: 40, autoAlpha: 0 });
+      gsap.set(heroIcon, {
+        x: window.innerWidth / 2 - (rect.left + rect.width / 2),
+        y: window.innerHeight / 2 - (rect.top + rect.height / 2),
+        scale: iconSize / rect.width,
+        transformOrigin: "center center",
+        zIndex: 101,
+        position: "relative",
       });
-      gsap.from(".hero-preview", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        delay: 0.15,
-        ease: "power2.out",
-        clearProps: "all",
-      });
+
+      const timeline = gsap.timeline({ paused: true });
+      timeline
+        .to(
+          ".landing-intro-backdrop",
+          {
+            opacity: 0,
+            duration: 0.65,
+            ease: "power2.out",
+          },
+          0,
+        )
+        .to(
+          heroIcon,
+          {
+            x: 0,
+            y: 0,
+            scale: 1,
+            duration: 0.85,
+            ease: "power3.inOut",
+            clearProps: "transform,transformOrigin,zIndex,position",
+          },
+          0,
+        )
+        .addLabel("arrived")
+        .call(
+          () => {
+            document.documentElement.style.overflow = overflow;
+            setIntro(false);
+          },
+          [],
+          "arrived",
+        )
+        .to(
+          copy,
+          {
+            y: 0,
+            autoAlpha: 1,
+            stagger: 0.08,
+            duration: 0.7,
+            ease: "power2.out",
+            clearProps: "opacity,visibility,transform",
+          },
+          "arrived",
+        )
+        .to(
+          [preview, baseline],
+          {
+            y: 0,
+            autoAlpha: 1,
+            stagger: 0.12,
+            duration: 1,
+            ease: "power2.out",
+            clearProps: "opacity,visibility,transform",
+          },
+          "arrived+=0.2",
+        );
+
+      const delay = gsap.delayedCall(0.85, () => timeline.play());
+      const skip = (event: KeyboardEvent) => {
+        if (event.key !== "Escape") return;
+        delay.kill();
+        timeline.play();
+      };
+      window.addEventListener("keydown", skip);
+      return () => {
+        document.documentElement.style.overflow = overflow;
+        window.removeEventListener("keydown", skip);
+      };
+    },
+    { scope: root, dependencies: [] },
+  );
+
+  useGSAP(
+    () => {
+      const element = root.current;
+      if (
+        !element ||
+        intro ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      )
+        return;
       gsap.utils.toArray<HTMLElement>("[data-reveal]").forEach((target) => {
         if (target.getBoundingClientRect().top < window.innerHeight) return;
         gsap.from(target, {
@@ -124,16 +234,20 @@ export default function LandingMotion({ children }: { children: ReactNode }) {
         element.removeEventListener("focusin", showFocused);
       };
     },
-    { scope: root },
+    { scope: root, dependencies: [intro], revertOnUpdate: true },
   );
   return (
     <MotionConfig
-      reducedMotion="never"
+      reducedMotion="user"
       transition={{ duration: 0.35, ease: [0.2, 0.8, 0.2, 1] }}
     >
-      <div className="landing" ref={root}>
+      <div className="landing" ref={root} data-intro={intro}>
         {children}
+        {intro && <div className="landing-intro-backdrop" aria-hidden="true" />}
       </div>
+      <noscript>
+        <style>{`.landing-intro-backdrop { display: none; }`}</style>
+      </noscript>
     </MotionConfig>
   );
 }

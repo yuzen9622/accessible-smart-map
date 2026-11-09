@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { useState } from "react";
-import Image from "./LandingImage";
+import { Iphone } from "@/components/ui/iphone";
 
 const views = [
   {
@@ -41,13 +41,7 @@ export default function BusPreview() {
         animate={{ opacity: [0.5, 1], y: [8, 0] }}
         transition={{ duration: 0.35 }}
       >
-        <Image
-          src={`/landing/${view.image}.webp`}
-          width={1206}
-          height={2622}
-          alt={view.alt}
-          sizes="(max-width: 767px) 220px, 240px"
-        />
+        <Iphone src={`/landing/${view.image}.webp`} alt={view.alt} />
       </motion.div>
     </div>
   );

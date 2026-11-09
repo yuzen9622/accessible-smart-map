@@ -26,7 +26,7 @@ export default function LandingImage({
           )
           .join(", ")
       : undefined;
-  const source = src === "/logo.webp" ? "/landing/brand-mark.webp" : src;
+  const source = src;
   return (
     <>
       {priority && (

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
 const links = [
+  ["#app", "App 介紹"],
   ["#features", "路線規劃"],
   ["#journey", "出行幫手"],
   ["#everyday", "更多功能"],

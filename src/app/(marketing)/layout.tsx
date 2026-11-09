@@ -13,12 +13,13 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://map.yuzen.dev"),
   title: "無障礙智慧地圖｜每一段路，都有你的走法",
   description:
-    "依你的需要規劃每一程。探索一般與輪椅模式、大眾運輸、人行道路段與沿途坡度，透過 AI 助理尋找地點，出發前看懂路線。",
+    "無障礙智慧地圖 App，把適合自己的走法帶在身邊。探索一般與輪椅路線、語音導航、即時公車與語音助理，也能直接使用網頁版。",
   icons: { icon: "/logo.ico" },
   alternates: { canonical: "/" },
   openGraph: {
     title: "無障礙智慧地圖｜每一段路，都有你的走法",
-    description: "設施探索、路線規劃、大眾運輸。依你的需要，規劃每一程。",
+    description:
+      "無障礙智慧地圖 App，整合設施探索、路線規劃、語音導航、即時公車與語音助理。依你的需要，規劃每一程。",
     url: "/",
     siteName: "無障礙智慧地圖",
     locale: "zh_TW",
