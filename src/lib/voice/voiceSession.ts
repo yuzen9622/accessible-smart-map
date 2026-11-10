@@ -136,7 +136,17 @@ export interface VoiceNavigationState {
     waitMinutes: number | null;
     expectedAt?: string;
   };
+  /**
+   * Guiding a DRIVE/MOTORCYCLE leg: the speed limit the HUD shows for the
+   * segment route progress places the vehicle on. Omitted otherwise.
+   */
+  speedLimit?: VoiceSpeedLimit;
 }
+
+/** Exactly the backend's strict `nav.state.speedLimit` shape. */
+export type VoiceSpeedLimit =
+  | { kind: "known"; limitKph: number }
+  | { kind: "unlimited" | "unknown"; limitKph: null };
 
 /** Server -> client: auth + Gemini connect done, client may now send audio. */
 interface SessionReadyMessage {

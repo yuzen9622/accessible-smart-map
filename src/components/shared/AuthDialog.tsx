@@ -301,7 +301,7 @@ export default function AuthDialog({
           <div>
             <div className="mb-8 flex items-center gap-2.5">
               <Image
-                src="/logo.webp"
+                src="/app-icon.webp"
                 alt=""
                 width={36}
                 height={36}

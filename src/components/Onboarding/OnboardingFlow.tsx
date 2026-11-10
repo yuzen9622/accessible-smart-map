@@ -326,7 +326,7 @@ function IntroStep({
     <div className="flex flex-col items-center text-center">
       <div className="relative mb-8 h-28 w-28 overflow-hidden rounded-3xl shadow-sm">
         <Image
-          src="/logo.webp"
+          src="/app-icon.webp"
           alt=""
           fill
           sizes="112px"

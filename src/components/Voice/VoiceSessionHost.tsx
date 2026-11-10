@@ -10,6 +10,7 @@ import {
   busWaitOf,
   currentNavigationState,
   setVoiceCueSink,
+  speedLimitOf,
 } from "@/lib/voice/voiceNavigationControl";
 import {
   isVoiceSpeechChannelLive,
@@ -170,7 +171,11 @@ export default function VoiceSessionHost() {
         // must answer from what the screen shows. The guide object is rebuilt
         // on every GPS sample, so compare what is sent, not the reference.
         JSON.stringify(busWaitOf(state.transitGuide)) !==
-          JSON.stringify(busWaitOf(previous.transitGuide));
+          JSON.stringify(busWaitOf(previous.transitGuide)) ||
+        // The HUD's speed limit changed (progress moved into another
+        // segment, or left the vehicle leg): resend like the waiting card.
+        JSON.stringify(speedLimitOf(useMapStore.getState(), state)) !==
+          JSON.stringify(speedLimitOf(useMapStore.getState(), previous));
       if (changed) publishState(true);
       else if (state.distanceToNextM !== previous.distanceToNextM)
         publishState(false);

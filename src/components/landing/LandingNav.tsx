@@ -42,7 +42,7 @@ export default function LandingNav() {
           className="brand"
           aria-label="無障礙智慧地圖 Accessible Smart Map 首頁"
         >
-          <Image src="/logo.webp" width={32} height={32} alt="" />
+          <Image src="/app-icon.webp" width={32} height={32} alt="" />
           <span>無障礙智慧地圖</span>
         </a>
         <nav className="desktop-nav" aria-label="主要導覽">

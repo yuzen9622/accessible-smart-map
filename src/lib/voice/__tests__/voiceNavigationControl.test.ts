@@ -24,6 +24,7 @@ import {
   handleVoiceUiCommand,
   runNavigationControl,
   setVoiceCueSink,
+  speedLimitOf,
 } from "../voiceNavigationControl";
 
 // A road route running north along 121.52 in Taipei.
@@ -286,6 +287,107 @@ describe("engine state the assistant answers from", () => {
       }),
     ).toEqual({});
     expect(busWaitOf(null)).toEqual({});
+  });
+
+  it("tells the assistant the HUD's speed limit only while guiding a vehicle leg", async () => {
+    const limited = {
+      ...ride,
+      legs: [
+        {
+          ...ride.legs[0],
+          speedLimits: {
+            status: "available",
+            direction: "along_leg",
+            segments: [
+              {
+                fromIndex: 0,
+                toIndex: 1,
+                kind: "known",
+                limitKph: 50,
+                source: "valhalla",
+              },
+            ],
+          },
+        },
+      ],
+    } as AccessibleRoute;
+    const now = Date.now();
+    const progress = {
+      routeToken: "tok-ride",
+      navigationId: "nav-ride",
+      routeVersion: 1,
+      legIndex: 0,
+      segmentIndex: 0,
+      alongM: 10,
+      observedAt: now,
+      source: "gps" as const,
+    };
+    const map = {
+      isNavigating: true,
+      activeNavigationRoute: limited,
+      selectRoute: null,
+    };
+    const nav = {
+      arrived: false,
+      navigationMode: "live" as const,
+      routeProgress: progress,
+      navigationId: "nav-ride",
+      routeVersion: 1,
+    };
+    // Exactly the backend's strict shape: no extra keys.
+    expect(speedLimitOf(map, nav, now)).toEqual({
+      speedLimit: { kind: "known", limitKph: 50 },
+    });
+    const unknownLeg = {
+      ...limited,
+      legs: [{ ...limited.legs[0], speedLimits: undefined }],
+    } as AccessibleRoute;
+    expect(
+      speedLimitOf({ ...map, activeNavigationRoute: unknownLeg }, nav, now),
+    ).toEqual({ speedLimit: { kind: "unknown", limitKph: null } });
+    // No valid progress, preview, arrival or a walking leg: omitted.
+    expect(speedLimitOf(map, { ...nav, routeProgress: null }, now)).toEqual({});
+    expect(
+      speedLimitOf(map, { ...nav, navigationMode: "preview" }, now),
+    ).toEqual({});
+    expect(speedLimitOf(map, { ...nav, arrived: true }, now)).toEqual({});
+    expect(speedLimitOf(map, nav, now + 60_000)).toEqual({});
+    const walking = {
+      ...limited,
+      legs: [{ ...limited.legs[0], type: "WALK" }],
+    } as AccessibleRoute;
+    expect(
+      speedLimitOf({ ...map, activeNavigationRoute: walking }, nav, now),
+    ).toEqual({});
+
+    // The nav.state the engine publishes carries it.
+    useMapStore.setState({
+      isNavigating: true,
+      activeNavigationRoute: limited,
+    });
+    useNavStore.setState({
+      ...nav,
+      instructions: [
+        {
+          text: "向左轉進入「忠孝西路二段」，請走左邊數來第二車道",
+          type: "turn",
+          bearing: null,
+          relativeDirection: null,
+          distanceM: 300,
+          streetName: "忠孝西路二段",
+          legType: "MOTORCYCLE",
+          polylineIndex: 1,
+        },
+      ] as never,
+    });
+    expect(currentNavigationState()).toMatchObject({
+      speedLimit: { kind: "known", limitKph: 50 },
+      steps: [
+        {
+          instruction: "向左轉進入「忠孝西路二段」，請走左邊數來第二車道",
+        },
+      ],
+    });
   });
 
   it("reports an indoor arrival as finished", async () => {

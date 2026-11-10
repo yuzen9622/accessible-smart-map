@@ -355,8 +355,7 @@ svg {
   white-space: nowrap;
 }
 .brand img {
-  border-radius: 9px;
-  box-shadow: 0 0 0 1px var(--hair);
+  border-radius: 8px;
 }
 .desktop-nav {
   display: flex;
@@ -624,10 +623,8 @@ svg {
   height: 52px;
 }
 .hero-brand-image {
-  border-radius: 14px;
-  box-shadow:
-    0 0 0 1px var(--hair),
-    0 14px 30px -12px oklch(0.2 0.04 260 / 0.35);
+  border-radius: 12px;
+  box-shadow: 0 14px 30px -12px oklch(0.2 0.04 260 / 0.35);
   overflow: hidden;
 }
 .hero-brand-image img {
@@ -1825,13 +1822,9 @@ svg {
 }
 .closing-mark {
   position: relative;
-  padding: 6px;
-  border-radius: 26px;
-  background: var(--shell);
-  box-shadow: 0 0 0 1px var(--hair);
 }
 .closing-mark img {
-  border-radius: 20px;
+  border-radius: 17px;
   box-shadow: var(--ambient);
 }
 .closing h2 {

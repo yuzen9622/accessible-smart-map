@@ -5,6 +5,7 @@ import {
   Car,
   CheckCircle2,
   Footprints,
+  Gauge,
   List,
   RefreshCw,
   Square,
@@ -22,6 +23,7 @@ import {
 } from "@/components/BottomSheet/VenueJourneyContent";
 import { NumberTicker } from "@/components/motion/number-ticker";
 import useComputeRoute from "@/hook/useComputeRoute";
+import useDrivingGuidance from "@/hook/useDrivingGuidance";
 import useNavigationAudio from "@/hook/useNavigationAudio";
 import { useAppTranslation } from "@/i18n/client";
 import { getAppLanguage } from "@/i18n/language";
@@ -77,6 +79,7 @@ import {
   TriangleAlertIcon,
   type TriangleAlertIconHandle,
 } from "../ui/triangle-alert-icon";
+import { LaneGuidanceRow } from "./LaneGuidanceRow";
 import { NavDistanceTicker } from "./NavDistanceTicker";
 import { stepIcon } from "./navStepIcon";
 import type { RecalculateContext } from "./RecalculateOverlay";
@@ -217,6 +220,19 @@ export default function NavigationHUD() {
   const handoffIndex = findLegHandoffIndex(instructions, currentStep);
   const handoffStep =
     handoffIndex != null ? instructions[handoffIndex] : undefined;
+  // Current segment speed limit and upcoming lanes from route progress;
+  // unknown limits show nothing rather than an earlier segment's number.
+  const drivingGuidance = useDrivingGuidance();
+  const speedLimit = drivingGuidance.speedLimit;
+  const speedLimitBadge =
+    speedLimit?.kind === "known"
+      ? {
+          text: t("speedLimitKnown", { value: speedLimit.limitKph }),
+          label: t("speedLimitKnownLabel", { value: speedLimit.limitKph }),
+        }
+      : speedLimit?.kind === "unlimited"
+        ? { text: t("speedLimitUnlimited"), label: t("speedLimitUnlimited") }
+        : null;
 
   // ---- Voice announcements (state lives in the store; UI toggle sits in the
   // right-hand control stack) ----
@@ -252,7 +268,7 @@ export default function NavigationHUD() {
   const priorSpeechInstructions = useRef(instructions);
   const speechCoordinator = useRef(createTransitSpeechCoordinator());
   const speak = useCallback(
-    (text: string, alight = false) => {
+    (text: string, alight = false, queue = false) => {
       const nav = useNavStore.getState();
       if (nav.navigationSource === "local" && nav.navigationMode === "preview")
         return;
@@ -271,7 +287,8 @@ export default function NavigationHUD() {
       if (!maySpeak || !synthRef.current) return;
       // The WALK/arrival/advisory effects must not interrupt an alight reminder.
       if (alightUtterance.current && !alight) return;
-      synthRef.current.cancel();
+      // A queued line waits for the current one instead of cutting it off.
+      if (!queue) synthRef.current.cancel();
       const utter = new SpeechSynthesisUtterance(text);
       if (alight) {
         alightUtterance.current = utter;
@@ -470,6 +487,23 @@ export default function NavigationHUD() {
   useEffect(() => {
     if (arrived) speak(arrivalSpeech);
   }, [arrived, speak, arrivalSpeech]);
+
+  // Entering a segment whose known limit differs from the last known one is
+  // announced once; unknown stretches neither speak nor reset the baseline.
+  const knownLimitKph =
+    speedLimit?.kind === "known" ? speedLimit.limitKph : null;
+  const lastKnownLimit = useRef<{ scope: string; kph: number } | null>(null);
+  useEffect(() => {
+    if (!speechScope || preview || arrived) {
+      lastKnownLimit.current = null;
+      return;
+    }
+    if (knownLimitKph == null) return;
+    const last = lastKnownLimit.current;
+    lastKnownLimit.current = { scope: speechScope, kph: knownLimitKph };
+    if (last?.scope === speechScope && last.kph !== knownLimitKph)
+      speak(t("navSpeakSpeedLimit", { value: knownLimitKph }), false, true);
+  }, [speechScope, preview, arrived, knownLimitKph, speak, t]);
 
   const spokenAdvisoryKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -822,6 +856,16 @@ export default function NavigationHUD() {
                       <ModeIcon className="h-3.5 w-3.5 shrink-0" />
                       {modeLabel}
                     </span>
+                    {speedLimitBadge && (
+                      <span
+                        role="img"
+                        aria-label={speedLimitBadge.label}
+                        className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold tabular-nums"
+                      >
+                        <Gauge className="h-3.5 w-3.5 shrink-0" />
+                        {speedLimitBadge.text}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -831,9 +875,22 @@ export default function NavigationHUD() {
                     <ModeIcon className="h-3.5 w-3.5 shrink-0" />
                     {modeLabel}
                   </span>
+                  {speedLimitBadge && (
+                    <span
+                      role="img"
+                      aria-label={speedLimitBadge.label}
+                      className="flex items-center gap-1.5 text-xs bg-white/15 rounded-full px-3 py-1.5 text-white/80 font-semibold tabular-nums"
+                    >
+                      <Gauge className="h-3.5 w-3.5 shrink-0" />
+                      {speedLimitBadge.text}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
+            {drivingGuidance.lanes && !transitGuide && (
+              <LaneGuidanceRow guidance={drivingGuidance.lanes} t={t} />
+            )}
             {nextStep && !transitGuide && (
               <div className="flex items-center gap-2.5 bg-white/5 border-t border-white/10 px-6 py-3">
                 <span className="text-xs text-white/40 shrink-0 font-medium uppercase tracking-wider">
