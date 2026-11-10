@@ -609,11 +609,11 @@ export default function BottomSheet() {
               MapControlsWrapper.tsx) — it's an independent floating button
               next to SOS/locate, not living in this fixed 56px column. */}
           <div
-            className="flex items-center justify-center h-9 w-9 mb-2  overflow-hidden shrink-0"
+            className="flex items-center justify-center h-9 w-9 mb-2 overflow-hidden rounded-[9px] shrink-0"
             role="img"
             aria-label={t("title")}
           >
-            <Image src="/logo.webp" alt="" width={36} height={36} priority />
+            <Image src="/app-icon.webp" alt="" width={36} height={36} priority />
           </div>
 
           {/* Divider */}

@@ -467,7 +467,7 @@ export default function LandingPage() {
               />
             </svg>
             <div className="closing-mark" data-reveal>
-              <Image src="/logo.webp" width={72} height={72} alt="" />
+              <Image src="/app-icon.webp" width={72} height={72} alt="" />
             </div>
             <h2 id="closing-title" data-split>
               <SplitLine text="下一站" />
@@ -489,7 +489,7 @@ export default function LandingPage() {
         <div className="landing-container footer-inner">
           <div className="footer-top">
             <a href="/" className="brand">
-              <Image src="/logo.webp" width={32} height={32} alt="" />
+              <Image src="/app-icon.webp" width={32} height={32} alt="" />
               <span>無障礙智慧地圖</span>
             </a>
             <nav aria-label="頁尾導覽">

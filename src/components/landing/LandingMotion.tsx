@@ -17,7 +17,7 @@ export function HeroAppIcon() {
   return (
     <div className="hero-app-icon">
       <div className="hero-brand-image">
-        <Image src="/logo.webp" width={256} height={256} alt="" priority />
+        <Image src="/app-icon.webp" width={256} height={256} alt="" priority />
       </div>
     </div>
   );

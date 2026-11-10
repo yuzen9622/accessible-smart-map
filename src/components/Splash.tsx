@@ -39,10 +39,11 @@ export default function Splash({
               transition={{ duration: 0.5, ease: "easeOut" }}
             >
               <Image
-                src="/logo.webp"
+                src="/app-icon.webp"
                 alt={t("title")}
                 width={96}
                 height={96}
+                className="rounded-[22px]"
                 draggable={false}
                 priority
               />
