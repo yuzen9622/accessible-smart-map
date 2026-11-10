@@ -6,6 +6,10 @@ import {
   startNavigation,
   stopNavigation,
 } from "@/lib/navigation/navigationLifecycle";
+import {
+  currentDrivingPosition,
+  speedLimitAt,
+} from "@/lib/navigation/roadGuidance";
 import useMapStore from "@/stores/useMapStore";
 import useNavStore from "@/stores/useNavStore";
 import type { AccessibleRoute } from "@/types/route";
@@ -154,6 +158,36 @@ export function busWaitOf(
   };
 }
 
+/** What the HUD shows as the current segment's speed limit on a vehicle leg. */
+export function speedLimitOf(
+  map: Pick<
+    ReturnType<typeof useMapStore.getState>,
+    "isNavigating" | "activeNavigationRoute" | "selectRoute"
+  >,
+  nav: Pick<
+    ReturnType<typeof useNavStore.getState>,
+    | "arrived"
+    | "navigationMode"
+    | "routeProgress"
+    | "navigationId"
+    | "routeVersion"
+  >,
+  now: number = Date.now(),
+): Pick<VoiceNavigationState, "speedLimit"> {
+  if (!map.isNavigating || nav.arrived || nav.navigationMode !== "live")
+    return {};
+  const position = currentDrivingPosition({
+    route: map.activeNavigationRoute ?? map.selectRoute?.route,
+    progress: nav.routeProgress,
+    navigationId: nav.navigationId,
+    routeVersion: nav.routeVersion,
+    now,
+  });
+  return position
+    ? { speedLimit: speedLimitAt(position.leg, position.segmentIndex) }
+    : {};
+}
+
 /** The navigation engine's state, which the assistant answers route questions from. */
 export function currentNavigationState(): VoiceNavigationState {
   const map = useMapStore.getState();
@@ -190,6 +224,7 @@ export function currentNavigationState(): VoiceNavigationState {
     remainingDistanceM: nav.remainingM,
     remainingDurationSec: nav.remainingDurationSec,
     ...busWaitOf(nav.transitGuide),
+    ...speedLimitOf(map, nav),
     steps: nav.instructions.map((step, index) => ({
       index,
       instruction: step.text,

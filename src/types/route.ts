@@ -380,7 +380,92 @@ export interface DriveIncident {
   location: { lat: number; lng: number };
 }
 
+/** Lane arrow direction from the road router (left to right per lane). */
+export type RoadLaneDirection =
+  | "none"
+  | "straight"
+  | "left"
+  | "slight_left"
+  | "sharp_left"
+  | "right"
+  | "slight_right"
+  | "sharp_right"
+  | "uturn"
+  | "merge_left"
+  | "merge_right";
+
+export interface RoadSigns {
+  exitNumbers: string[];
+  branches: string[];
+  destinations: string[];
+  exitNames: string[];
+}
+
+/** One lane of a lane-guidance array; the array runs left to right. */
+export interface RoadLane {
+  directions: RoadLaneDirection[];
+  recommendation: "preferred" | "usable" | "not_recommended";
+  maneuverDirection: RoadLaneDirection | null;
+}
+
+/** Half-open vertex range [fromIndex, toIndex) on the leg's own polyline. */
+export interface RoadRange {
+  fromIndex: number;
+  toIndex: number;
+}
+
+export type RoadSpeedLimitSegment = RoadRange &
+  (
+    | {
+        kind: "known";
+        limitKph: number;
+        source: "valhalla" | "osm_directional";
+      }
+    | {
+        kind: "unlimited";
+        limitKph: null;
+        source: "valhalla" | "osm_directional";
+      }
+    | { kind: "unknown"; limitKph: null; source: null }
+  );
+
+/** Speed limits along a DRIVE/MOTORCYCLE leg, indexed by polyline segment. */
+export type RoadSpeedLimits =
+  | {
+      status: "available";
+      direction: "along_leg";
+      segments: RoadSpeedLimitSegment[];
+    }
+  | {
+      status: "unavailable";
+      direction: "along_leg";
+      segments: [];
+      reason: string;
+    };
+
+/** Structured road guidance on a vehicle instruction (indices are leg-local). */
+export interface RoadGuidance {
+  maneuverIndex: number;
+  maneuver: string;
+  endPolylineIndex: number;
+  streetNames: string[];
+  beginStreetNames?: string[];
+  bearingBefore?: number;
+  bearingAfter?: number;
+  signs?: RoadSigns;
+  lanes?: RoadLane[];
+  laneApproachRange?: RoadRange;
+  /** Lane advice already appended to the instruction text ("靠最左側車道"). */
+  laneHint?: string;
+}
+
 export interface DriveManeuver {
+  beginStreetNames?: string[];
+  bearingBefore?: number;
+  bearingAfter?: number;
+  signs?: RoadSigns;
+  lanes?: RoadLane[];
+  laneApproachRange?: RoadRange;
   instruction?: string;
   type: number;
   lengthKm: number;
@@ -411,6 +496,7 @@ export interface DriveLeg extends RouteSourceNames {
   polyline: [number, number][];
   steps?: DriveStep[];
   maneuvers?: DriveManeuver[];
+  speedLimits?: RoadSpeedLimits;
 }
 
 export type RouteLeg =
@@ -642,6 +728,8 @@ export interface NavInstruction {
   polylineIndex: number | null;
   /** Routing-engine walk maneuver (e.g. CONTINUE, LEFT); null for non-walk steps. */
   maneuver?: string | null;
+  /** DRIVE/MOTORCYCLE steps only; absent on older servers. */
+  roadGuidance?: RoadGuidance;
 }
 
 export type VenueStepType = VenueRouteResponse["steps"][number]["type"];
@@ -652,6 +740,8 @@ export type NavWarning =
   | "ROAD_STEPS_UNAVAILABLE";
 
 export interface DriveStep {
+  /** Index into the leg's original `maneuvers` array. */
+  maneuverIndex?: number;
   instruction: string;
   maneuver?: string;
   distanceM: number;
